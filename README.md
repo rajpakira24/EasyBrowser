@@ -2,6 +2,12 @@
 
 A privacy-focused Android browser built on **Mozilla GeckoView** — not WebView. Native tabs, ad/tracker blocking, HTTPS-only mode, private browsing, downloads with pause/resume, bookmarks, history, and per-site user styles.
 
+## Screenshots
+
+| Home | Search | Page loaded |
+|:---:|:---:|:---:|
+| ![Home screen with privacy stats and quick access](test_screens/01_main.png) | ![Search popup overlay](test_screens/02_search_popup.png) | ![Brave search results loaded](test_screens/03_page_loaded.png) |
+
 ## Why GeckoView
 
 Most "alternative" Android browsers wrap the system WebView, which means they inherit whatever the OEM ships. Easy Browser embeds Gecko (the same engine that powers Firefox), giving consistent rendering and modern security features across all Android 5.0+ devices.
