@@ -1,0 +1,127 @@
+plugins {
+    alias(libs.plugins.android.application)
+}
+
+def hasGoogleServicesConfig = file("google-services.json").exists()
+if (hasGoogleServicesConfig) {
+    apply plugin: "com.google.gms.google-services"
+    apply plugin: "com.google.firebase.crashlytics"
+}
+
+// Release signing — copy keystore.properties.example → keystore.properties and fill in real values.
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+def hasKeystoreConfig = keystorePropertiesFile.exists()
+if (hasKeystoreConfig) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+android {
+    namespace 'com.webstudio.easybrowser'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "com.webstudio.easybrowser"
+        minSdk 21
+        targetSdk 36
+        versionCode 1
+        versionName "1.0"
+
+        // Required for GeckoView — must match the channel of the artifact below.
+        manifestPlaceholders = [
+                geckoViewChannel: "release"
+        ]
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        release {
+            if (hasKeystoreConfig) {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            buildConfigField "boolean", "DEBUG", "false"
+            if (hasKeystoreConfig) {
+                signingConfig signingConfigs.release
+            }
+        }
+        debug {
+            buildConfigField "boolean", "DEBUG", "true"
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+    buildFeatures {
+        dataBinding true
+        buildConfig true
+    }
+    packagingOptions {
+        resources {
+            excludes += ['META-INF/INDEX.LIST', 'META-INF/DEPENDENCIES']
+        }
+    }
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+}
+
+dependencies {
+
+    implementation libs.appcompat
+    implementation libs.material
+    implementation libs.material3
+    implementation libs.activity
+    implementation libs.constraintlayout
+    testImplementation libs.junit
+    androidTestImplementation libs.ext.junit
+    androidTestImplementation libs.espresso.core
+
+
+    implementation 'org.mozilla.geckoview:geckoview:143.0.20251003115653'
+
+    // Image loading
+    implementation 'com.github.bumptech.glide:glide:4.16.0'
+    annotationProcessor 'com.github.bumptech.glide:compiler:4.16.0'
+
+    // JSON parsing
+    implementation 'com.google.code.gson:gson:2.11.0'
+
+    // Room database
+    def room_version = "2.6.1"
+    implementation "androidx.room:room-runtime:$room_version"
+    annotationProcessor "androidx.room:room-compiler:$room_version"
+
+    // Firebase. The Google Services and Crashlytics plugins are applied only
+    // when app/google-services.json is present, so local debug builds still work.
+    if (hasGoogleServicesConfig) {
+        implementation 'com.google.firebase:firebase-crashlytics:20.0.5'
+    }
+    //implementation 'com.google.firebase:firebase-analytics:22.4.0'
+
+    // Preferences/Settings
+    implementation 'androidx.preference:preference:1.2.1'
+
+    // Network
+    implementation 'com.squareup.okhttp3:okhttp:5.3.2'
+
+    // Splash Screen
+    implementation 'androidx.core:core-splashscreen:1.2.0'
+
+    // Pull-to-refresh
+    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.2.0'
+}

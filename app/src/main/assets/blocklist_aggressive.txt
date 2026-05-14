@@ -1,0 +1,15 @@
+# Aggressive ad/tracker blocklist — one hostname substring per line.
+# Lines starting with # are ignored. Reload the app to pick up changes.
+ads.
+.ads.
+adserver
+adservice
+advertising
+tracking
+tracker
+metrics
+telemetry
+analytics
+pixel
+beacon
+affiliate

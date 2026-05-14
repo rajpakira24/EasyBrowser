@@ -1,0 +1,742 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App Info -->
+    <string name="app_name">Easy Browser</string>
+    <string name="app_version">Version 1.0</string>
+
+    <!-- Main Activity -->
+    <string name="search_or_type_url">Search or type URL</string>
+    <string name="quick_access">Quick Access</string>
+    <string name="home_start_title">Browse faster</string>
+    <string name="home_start_subtitle">Search, open saved pages, and continue from your most visited sites.</string>
+    <string name="home_chrome_style_subtitle">Fast, colorful, and private</string>
+    <string name="privacy_stats">Privacy Stats</string>
+    <string name="pages_protected">Pages protected</string>
+    <string name="items_blocked">Items blocked</string>
+    <string name="time_saved">Time saved</string>
+    <string name="quick_access_home_summary">Your most visited pages appear here automatically.</string>
+    <string name="show_privacy_stats">Show Privacy Stats</string>
+    <string name="show_privacy_stats_summary">Show protection counters on the home screen.</string>
+    <string name="show_quick_access">Show Quick Access</string>
+    <string name="show_quick_access_summary">Show most visited sites on the home screen.</string>
+    <string name="browser_tools">Browser Tools</string>
+    <string name="voice_search">Voice Search</string>
+    <string name="security_info">Security Information</string>
+
+    <!-- Bottom Navigation -->
+    <string name="home">Home</string>
+    <string name="tabs">Tabs</string>
+    <string name="bookmarks">Bookmarks</string>
+    <string name="settings">Settings</string>
+    <string name="more">More</string>
+    <string name="tab_count">%d tabs</string>
+
+    <!-- Browser Actions -->
+    <string name="refresh">Refresh</string>
+    <string name="stop">Stop</string>
+    <string name="forward">Forward</string>
+    <string name="backward">Back</string>
+    <string name="share">Share</string>
+    <string name="copy_link">Copy Link</string>
+    <string name="download">Download</string>
+    <string name="find_in_page">Find in Page</string>
+    <string name="desktop_site">Desktop Site</string>
+
+    <!-- Quick Access -->
+    <string name="add_quick_access">Add Quick Access</string>
+    <string name="edit_quick_access">Edit Quick Access</string>
+    <string name="remove_quick_access">Remove</string>
+    <string name="quick_access_title">Title</string>
+    <string name="quick_access_url">URL</string>
+
+    <!-- Bookmarks -->
+    <string name="add_bookmark">Add Bookmark</string>
+    <string name="remove_bookmark">Remove Bookmark</string>
+    <string name="edit_bookmark">Edit Bookmark</string>
+    <string name="bookmark_added">Bookmark Added</string>
+    <string name="bookmark_removed">Bookmark Removed</string>
+    <string name="bookmark_title">Title</string>
+    <string name="bookmark_url">URL</string>
+    <string name="bookmark_folder">Folder</string>
+    <string name="new_folder">New Folder</string>
+
+    <!-- Tabs -->
+    <string name="new_tab">New Tab</string>
+    <string name="close_tab">Close Tab</string>
+    <string name="close_all_tabs">Close All Tabs</string>
+    <string name="private_tab">Private Tab</string>
+    <string name="tab_restored">Tab Restored</string>
+
+    <!-- Settings -->
+    <string name="general_settings">General</string>
+    <string name="privacy_settings">Privacy</string>
+    <string name="account">Account</string>
+    <string name="browser_profile">Browser Profile</string>
+    <string name="not_signed_in">Not signed in</string>
+    <string name="profile_unavailable_message">Account sign-in is not available in this build. Browser data stays local on this device.</string>
+    <string name="shields">Shields</string>
+    <string name="ad_blocking">Ad and Tracker Blocking</string>
+    <string name="ad_blocking_off">Off</string>
+    <string name="ad_blocking_balanced">Balanced</string>
+    <string name="ad_blocking_aggressive">Aggressive</string>
+    <string name="block_cookie_banners">Block Cookie Banners</string>
+    <string name="block_cookie_banners_summary">Reject common cookie prompts where supported.</string>
+    <string name="strip_tracking_params">Strip Tracking Parameters</string>
+    <string name="strip_tracking_params_summary">Remove known tracking query parameters from links.</string>
+    <string name="search_settings">Search</string>
+    <string name="accessibility_settings">Accessibility</string>
+    <string name="about_settings">About</string>
+
+    <!-- General Settings -->
+    <string name="default_search_engine">Default Search Engine</string>
+    <string name="homepage">Homepage</string>
+    <string name="text_size">Text Size</string>
+    <string name="text_size_percent">%d%%</string>
+    <string name="show_images">Show Images</string>
+    <string name="block_popups">Block Pop-ups</string>
+    <string name="block_popups_summary">Block unwanted new windows without blocking links you tap.</string>
+    <string name="save_history">Save History</string>
+    <string name="save_history_summary">Store visited pages for history and quick access.</string>
+    <string name="open_links_new_tab">Open New Windows as Tabs</string>
+    <string name="open_links_new_tab_summary">Open website pop-out links in a new browser tab.</string>
+    <string name="javascript">JavaScript</string>
+    <string name="location">Location</string>
+    <string name="notifications">Notifications</string>
+
+    <!-- Privacy Settings -->
+    <string name="clear_data">Clear Browsing Data</string>
+    <string name="clear_cache">Clear Cache</string>
+    <string name="clear_cookies">Clear Cookies</string>
+    <string name="clear_history">Clear History</string>
+    <string name="do_not_track">Do Not Track</string>
+    <string name="safe_browsing">Safe Browsing</string>
+    <string name="password_manager">Password Manager</string>
+    <string name="autofill">Autofill Forms</string>
+
+    <!-- Search Engines -->
+    <string name="search_engine_google">Google</string>
+    <string name="search_engine_bing">Bing</string>
+    <string name="search_engine_duckduckgo">DuckDuckGo</string>
+    <string name="search_engine_yahoo">Yahoo</string>
+    <string name="custom_search_engine">Custom Search Engine</string>
+
+    <!-- Messages -->
+    <string name="loading">Loading…</string>
+    <string name="error_page_title">Page Not Available</string>
+    <string name="error_no_internet">No Internet Connection</string>
+    <string name="error_connection_problem">Connection Problem</string>
+    <string name="error_timeout">Connection Timeout</string>
+    <string name="error_unknown">Unknown Error</string>
+
+    <!-- Dialogs -->
+    <string name="dialog_ok">OK</string>
+    <string name="dialog_cancel">Cancel</string>
+    <string name="dialog_yes">Yes</string>
+    <string name="dialog_no">No</string>
+    <string name="dialog_close">Close</string>
+    <string name="dialog_save">Save</string>
+    <string name="dialog_delete">Delete</string>
+    <string name="dialog_edit">Edit</string>
+
+    <!-- Permissions -->
+    <string name="permission_camera">Camera Permission</string>
+    <string name="permission_location">Location Permission</string>
+    <string name="permission_microphone">Microphone Permission</string>
+    <string name="permission_storage">Storage Permission</string>
+    <string name="permission_required">Permission Required</string>
+    <string name="permission_denied">Permission Denied</string>
+    <string name="permission">Permission</string>
+    <string name="allow">Allow</string>
+    <string name="deny">Deny</string>
+    <string name="camera">Camera</string>
+    <string name="microphone">Microphone</string>
+    <string name="camera_and_microphone">Camera and microphone</string>
+    <string name="persistent_storage">Persistent storage</string>
+    <string name="webxr">WebXR</string>
+    <string name="autoplay">Autoplay</string>
+    <string name="protected_media">Protected media</string>
+    <string name="storage_access">Storage access</string>
+    <string name="unknown_site">Unknown site</string>
+    <string name="site_permission_request_title">%s request</string>
+    <string name="site_permission_request_message">%1$s wants to use %2$s.</string>
+
+    <!-- Security -->
+    <string name="secure_connection">Secure Connection</string>
+    <string name="insecure_connection">Insecure Connection</string>
+    <string name="mixed_content">Mixed Content</string>
+    <string name="certificate_info">Certificate Information</string>
+    <string name="ssl_certificate">SSL Certificate</string>
+
+    <!-- Downloads -->
+    <string name="download_started">Download Started</string>
+    <string name="download_completed">Download Completed</string>
+    <string name="download_failed">Download Failed</string>
+    <string name="download_cancel">Cancel Download</string>
+    <string name="download_pause">Pause Download</string>
+    <string name="download_resume">Resume Download</string>
+
+    <!-- Share -->
+    <string name="share_link">Share Link</string>
+    <string name="share_image">Share Image</string>
+    <string name="share_via">Share via</string>
+
+    <!-- Accessibility -->
+    <string name="accessibility_zoom_in">Zoom In</string>
+    <string name="accessibility_zoom_out">Zoom Out</string>
+    <string name="accessibility_tab_switcher">Switch Tabs</string>
+    <string name="accessibility_close_tab">Close Current Tab</string>
+
+    <!-- Advanced Settings -->
+    <string name="advanced_settings">Advanced Settings</string>
+    <string name="javascript_summary">Enable JavaScript for web pages</string>
+    <string name="remote_debugging">Remote Debugging</string>
+    <string name="remote_debugging_summary">Debug browser content using external tools</string>
+
+    <!-- View Types -->
+    <string name="change_view">Change View</string>
+    <string name="grid_view">Grid View</string>
+    <string name="list_view">List View</string>
+
+    <!-- Privacy -->
+    <string name="clear_data_summary">Clear browsing history, cache, and cookies</string>
+    <string name="do_not_track_summary">Request websites not to track your browsing</string>
+
+    <!-- Search -->
+    <string name="search_engine_summary">Choose your default search engine</string>
+    <string name="homepage_summary">Set your start page</string>
+
+    <!-- Quick Access -->
+    <string name="quick_access_empty">Add your favorite sites here</string>
+    <string name="edit_quick_access_title">Edit Quick Access</string>
+    <string name="quick_access_url_hint">Enter website URL</string>
+    <string name="quick_access_name_hint">Enter site name</string>
+
+    <!-- Tabs -->
+    <string name="tab_title_default">New Tab</string>
+    <string name="close_all_tabs_confirm">Close all tabs?</string>
+    <string name="tab_count_plural">%d tabs open</string>
+    <string name="tab_count_singular">1 tab open</string>
+
+    <!-- Bookmarks -->
+    <string name="no_bookmarks">No bookmarks yet</string>
+    <string name="bookmark_added_message">Bookmark added</string>
+    <string name="bookmark_removed_message">Bookmark removed</string>
+    <string name="bookmark_exists">Bookmark already exists</string>
+    <string name="bookmark_edit_title">Edit Bookmark</string>
+    <string name="bookmark_name_hint">Enter bookmark name</string>
+    <string name="bookmark_url_hint">Enter bookmark URL</string>
+
+    <!-- Bookmarks Activity -->
+    <string name="no_search_results">No bookmarks match your search</string>
+    <string name="bookmark_updated">Bookmark updated</string>
+    <string name="search_bookmarks">Search bookmarks</string>
+
+    <!-- Security -->
+    <string name="secure_connection_title">Secure Connection</string>
+    <string name="insecure_connection_title">Connection Not Secure</string>
+    <string name="mixed_content_title">Mixed Content</string>
+    <string name="certificate_info_title">Certificate Information</string>
+    <string name="security_details">Security Details</string>
+
+    <!-- Settings Categories -->
+    <string name="category_general">General</string>
+    <string name="category_privacy">Privacy</string>
+    <string name="category_advanced">Advanced</string>
+    <string name="category_about">About</string>
+
+    <!-- Data Management -->
+    <string name="clear_all_data">Clear All Data</string>
+    <string name="clear_history_only">Clear History Only</string>
+    <string name="clear_cookies_only">Clear Cookies Only</string>
+    <string name="clear_cache_only">Clear Cache Only</string>
+    <string name="clearing_data">Clearing data…</string>
+    <string name="data_cleared">Data cleared</string>
+
+    <!-- Downloads -->
+    <string name="download_in_progress">Download in progress</string>
+    <string name="download_complete">Download complete</string>
+    <string name="download_location">Download location</string>
+    <string name="no_downloads">No downloads</string>
+
+    <!-- Permissions -->
+    <string name="permission_camera_rationale">Camera access is needed to take pictures</string>
+    <string name="permission_location_rationale">Location access is needed for maps and local results</string>
+    <string name="permission_microphone_rationale">Microphone access is needed for voice search</string>
+    <string name="permission_storage_rationale">Storage access is needed to download files</string>
+
+    <!-- Errors -->
+    <string name="error_no_connection">No internet connection</string>
+    <string name="network_status_offline">You are offline</string>
+    <string name="network_status_online">You are now online</string>
+    <string name="popup_blocked">Popup blocked</string>
+    <string name="error_page_not_found">Page not found</string>
+    <string name="error_invalid_url">Invalid URL</string>
+    <string name="error_connection">Could not connect to the server</string>
+    <string name="error_ssl">SSL certificate error</string>
+    <string name="error_generic">Something went wrong</string>
+
+    <!-- Actions -->
+    <string name="action_share">Share</string>
+    <string name="action_copy_link">Copy link</string>
+    <string name="action_find_in_page">Find in page</string>
+    <string name="action_desktop_site">Desktop site</string>
+    <string name="action_add_to_home">Add to home screen</string>
+    <string name="action_print">Print</string>
+
+    <!-- Context Menu -->
+    <string name="context_menu_open_new_tab">Open in new tab</string>
+    <string name="context_menu_open_private_tab">Open in private tab</string>
+    <string name="context_menu_share_link">Share link</string>
+    <string name="context_menu_copy_link">Copy link</string>
+    <string name="context_menu_copy_text">Copy text</string>
+    <string name="context_menu_download_link">Download link</string>
+    <string name="context_menu_open_image">Open image</string>
+    <string name="context_menu_save_image">Save image</string>
+    <string name="context_menu_share_image">Share image</string>
+
+    <!-- Dialogs -->
+    <string name="dialog_title_warning">Warning</string>
+    <string name="dialog_title_error">Error</string>
+    <string name="dialog_title_success">Success</string>
+    <string name="dialog_title_confirm">Confirm</string>
+    <string name="dialog_message_exit">Exit browser?</string>
+    <string name="dialog_message_delete">This action cannot be undone</string>
+
+    <!-- Accessibility -->
+    <string name="accessibility_tab_list">List of open tabs</string>
+    <string name="accessibility_bookmark_list">List of bookmarks</string>
+    <string name="accessibility_search_bar">Search or enter URL</string>
+    <string name="accessibility_security_icon">Security status icon</string>
+    <string name="accessibility_more_options">More options</string>
+
+    <!-- Voice Search -->
+    <string name="voice_search_prompt">Speak to search…</string>
+    <string name="voice_search_not_available">Voice search is not available on this device</string>
+
+    <!-- Quick Access -->
+    <string name="quick_access_edit">Edit Quick Access</string>
+    <string name="quick_access_remove">Remove from Quick Access</string>
+    <string name="quick_access_edit_title">Edit Quick Access Item</string>
+    <string name="quick_access_new_title">Add Quick Access Item</string>
+    <string name="quick_access_removed">Removed from Quick Access</string>
+    <string name="quick_access_added">Added to Quick Access</string>
+    <string name="quick_access_updated">Quick Access Updated</string>
+    <string name="quick_access_error">Error updating Quick Access</string>
+
+    <!-- Dialogs -->
+    <string name="edit">Edit</string>
+    <string name="remove">Remove</string>
+    <string name="delete">Delete</string>
+    <string name="clear">Clear</string>
+    <string name="cancel">Cancel</string>
+    <string name="save">Save</string>
+
+    <!-- Security -->
+    <string name="security_info_message">This page is using a secure connection. Your information (such as passwords or credit card numbers) is private when it is sent to this website.</string>
+
+
+    <!-- Browser Actions -->
+    <string name="page_loaded">Page loaded</string>
+    <string name="loading_page">Loading page…</string>
+    <string name="stop_loading">Stop loading</string>
+    <string name="reload_page">Reload page</string>
+    <string name="bookmark">Bookmark</string>
+    <string name="search">Search</string>
+    <string name="clear_input">Clear Input</string>
+    <string name="back">Back</string>
+    <string name="reload">Reload</string>
+    <string name="exit">Exit</string>
+    <string name="help_feedback"><![CDATA[Help & Feedback]]></string>
+    <string name="feedback_subject">Easy Browser feedback</string>
+    <string name="feedback_body">Describe the issue or suggestion here.</string>
+    <string name="recent_tabs">Recent Tabs</string>
+    <string name="extensions">Extensions</string>
+    <string name="extension_url_hint">Extension .xpi URL</string>
+    <string name="install_extension">Install Extension</string>
+    <string name="installed_extensions">Installed Extensions</string>
+    <string name="extension_tab_installed">Installed</string>
+    <string name="extension_tab_recommended">Recommended</string>
+    <string name="no_extensions">No extensions installed</string>
+    <string name="extension_installing">Installing extension...</string>
+    <string name="extension_installed">Extension installed</string>
+    <string name="extension_install_failed">Extension install failed</string>
+    <string name="recommended_extensions">Recommended Extensions</string>
+    <string name="extension_marketplace">Marketplace</string>
+    <string name="search_extensions">Search extensions</string>
+    <string name="extension_marketplace_loading">Loading extensions...</string>
+    <string name="extension_marketplace_failed">Could not load marketplace extensions.</string>
+    <string name="extension_marketplace_empty">No matching extensions found.</string>
+    <string name="extension_installed_label">Installed</string>
+    <string name="extension_users_count">%1$d users</string>
+    <string name="extension_ublock_origin">uBlock Origin</string>
+    <string name="extension_privacy_badger">Privacy Badger</string>
+    <string name="extension_clearurls">ClearURLs</string>
+    <string name="extension_dark_reader">Dark Reader</string>
+    <string name="extension_decentraleyes">Decentraleyes</string>
+    <string name="extension_ublock_origin_summary">Block ads, trackers, and heavy scripts.</string>
+    <string name="extension_privacy_badger_summary">Learn and block invisible trackers.</string>
+    <string name="extension_clearurls_summary">Remove tracking parameters from links.</string>
+    <string name="extension_dark_reader_summary">Dark mode for websites.</string>
+    <string name="extension_decentraleyes_summary">Protect against CDN tracking where supported.</string>
+    <string name="all_recommended_extensions_installed">All recommended extensions are installed.</string>
+    <string name="remove_extension">Remove Extension</string>
+    <string name="remove_extension_confirm">Remove %s?</string>
+    <string name="extension_removed">Extension removed</string>
+    <string name="extension_remove_failed">Extension remove failed</string>
+    <string name="extension_install_prompt_message">Install %s?</string>
+    <string name="extension_permissions">Permissions</string>
+    <string name="extension_origins">Site access</string>
+    <string name="choose_file">Choose file</string>
+    <string name="error_no_app_for_link">No app can open this link</string>
+    <string name="downloads">Downloads</string>
+    <string name="history">History</string>
+    <string name="new_private_tab">New Private Tab</string>
+    <string name="duplicate_tab">Duplicate Tab</string>
+    <string name="open_in_private_tab">Open in Private Tab</string>
+    <string name="private_tab_started">Private tab started</string>
+    <string name="private_tab_label">Private: %s</string>
+    <string name="public_tabs">Public Tabs</string>
+    <string name="private_tabs">Private Tabs</string>
+    <string name="tab_filter_count">%1$d public / %2$d private</string>
+    <string name="no_public_tabs">No public tabs</string>
+    <string name="no_private_tabs">No private tabs</string>
+    <string name="current_tab">Current tab</string>
+
+    <!-- Search View -->
+    <string name="search_view_hint">Search bookmarks…</string>
+
+    <!-- Empty States -->
+    <string name="empty_view">Empty View</string>
+
+    <!-- Settings Dialogs -->
+    <string name="search_engine_dialog_title">Choose search engine</string>
+    <string name="homepage_dialog_title">Set homepage</string>
+    <string name="clear_data_dialog_title">Clear data</string>
+
+    <!-- Clear Data Options -->
+    <string name="clear_data_title">Clear Browsing Data</string>
+    <string name="clear_all_data_confirm">This will delete all browsing data, bookmarks, and settings. This cannot be undone.</string>
+    <string name="clear_history_confirm">This will delete your browsing history. This cannot be undone.</string>
+    <string name="clear_cookies_confirm">This will delete all cookies. You may be signed out of websites.</string>
+    <string name="clear_cache_confirm">This will clear the browser cache to free up space.</string>
+
+    <!-- Progress Messages -->
+    <string name="progress_clearing_data">Clearing data…</string>
+    <string name="progress_loading">Loading…</string>
+
+    <!-- Toast Messages -->
+    <string name="bookmark_updated_message">Bookmark updated successfully</string>
+    <string name="homepage_updated">Homepage updated</string>
+    <string name="search_engine_updated">Search engine updated</string>
+
+    <!-- Input Hints -->
+    <string name="homepage_hint">Enter homepage URL</string>
+    <string name="bookmark_title_hint">Bookmark name</string>
+
+    <!-- Permission Requests -->
+    <string name="permission_storage_title">Storage Permission Required</string>
+    <string name="permission_storage_message">Storage permission is needed to download files</string>
+
+    <!-- Error Messages -->
+    <string name="error_bookmark_add">Failed to add bookmark</string>
+    <string name="error_bookmark_remove">Failed to remove bookmark</string>
+    <string name="error_bookmark_update">Failed to update bookmark</string>
+    <string name="error_clear_data">Failed to clear data</string>
+
+    <!-- URL Validation -->
+    <string name="error_invalid_homepage">Please enter a valid URL</string>
+    <string name="error_empty_bookmark_title">Bookmark title cannot be empty</string>
+    <string name="error_empty_bookmark_url">Bookmark URL cannot be empty</string>
+
+    <!-- Confirm Dialogs -->
+    <string name="confirm_delete_bookmark">Delete this bookmark?</string>
+    <string name="confirm_clear_all_data">Clear all browsing data?</string>
+    <string name="confirm_clear_history">Clear browsing history?</string>
+    <string name="confirm_clear_cookies">Clear all cookies?</string>
+    <string name="confirm_clear_cache">Clear browser cache?</string>
+
+    <!-- Menu Items -->
+    <string name="menu_search">Search</string>
+    <string name="menu_filter">Filter</string>
+    <string name="menu_sort">Sort</string>
+    <string name="menu_select_all">Select All</string>
+
+    <!-- Sort Options -->
+    <string name="sort_by_name">Name</string>
+    <string name="sort_by_date">Date Added</string>
+    <string name="sort_by_most_visited">Most Visited</string>
+
+    <!-- Accessibility -->
+    <string name="accessibility_bookmark_item">Bookmark: %1$s at %2$s</string>
+    <string name="accessibility_bookmark_delete">Delete bookmark %s</string>
+    <string name="accessibility_search_bookmarks">Search bookmarks</string>
+    <string name="accessibility_add_bookmark">Add new bookmark</string>
+
+    <!-- Notifications -->
+    <string name="notification_channel_downloads">Downloads</string>
+    <string name="notification_channel_downloads_description">Download progress and completion notifications</string>
+
+    <!-- Downloads Activity -->
+    <string name="delete_download">Delete Download</string>
+    <string name="confirm_delete_download">Delete %s?</string>
+    <string name="download_deleted">Download deleted</string>
+    <string name="download_details">Download Details</string>
+    <string name="view_details">View Details</string>
+    <string name="download_pending">Waiting to download</string>
+    <string name="download_paused">Paused</string>
+    <string name="download_cancelled">Cancelled</string>
+    <string name="confirm_cancel_download">Cancel download of %s?</string>
+    <string name="clear_completed_downloads">Clear Completed</string>
+    <string name="clear_all_downloads">Clear All</string>
+    <string name="confirm_clear_completed">Delete all completed downloads?</string>
+    <string name="confirm_clear_all_downloads">Delete all downloads?</string>
+    <string name="file_name">File Name</string>
+    <string name="file_size">File Size</string>
+    <string name="status">Status</string>
+    <string name="progress">Progress</string>
+    <string name="retry_download">Retry Download</string>
+    <string name="error_opening_file">Cannot open file</string>
+    <string name="open_file">Open File</string>
+
+    <!-- History Activity -->
+    <string name="no_history">No browsing history</string>
+    <string name="search_history">Search history</string>
+    <string name="history_cleared">History cleared</string>
+    <string name="confirm_clear_all_history">This will delete all your browsing history permanently.</string>
+    <string name="clear_today_history">Clear Today</string>
+    <string name="clear_week_history">Clear This Week</string>
+    <string name="confirm_clear_today_history">Delete today\'s browsing history?</string>
+    <string name="confirm_clear_week_history">Delete this week\'s browsing history?</string>
+    <string name="delete_history_item">Delete History Item</string>
+    <string name="confirm_delete_history">Delete %s from history?</string>
+    <string name="history_item_deleted">History item deleted</string>
+    <string name="open_in_new_tab">Open in New Tab</string>
+    <string name="link_copied">Link copied to clipboard</string>
+    <string name="private_copy_blocked">Copy disabled in private tabs</string>
+
+    <!-- Menu Items -->
+    <string name="action_clear_history">Clear History</string>
+    <string name="action_clear_today">Clear Today</string>
+    <string name="action_clear_week">Clear This Week</string>
+    <string name="action_clear_completed">Clear Completed</string>
+    <string name="action_clear_all">Clear All</string>
+
+    <!-- Error States -->
+    <string name="error_loading_downloads">Failed to load downloads</string>
+    <string name="error_loading_history">Failed to load history</string>
+
+    <!-- Empty States -->
+    <string name="empty_downloads_message">No downloads yet. Downloaded files will appear here.</string>
+    <string name="empty_history_message">Your browsing history will appear here as you visit websites.</string>
+
+    <!-- Time Formats -->
+    <string name="time_today">Today</string>
+    <string name="time_yesterday">Yesterday</string>
+    <string name="time_this_week">This week</string>
+    <string name="time_last_week">Last week</string>
+    <string name="time_this_month">This month</string>
+    <string name="time_older">Older</string>
+
+    <!-- Download Status Messages -->
+    <string name="download_notification_title">Download Complete</string>
+    <string name="download_notification_description">%s has been downloaded</string>
+    <string name="download_completed_notification">Download completed successfully</string>
+    <string name="download_failed_notification">Download failed</string>
+    <string name="download_progress_notification">Downloading %1$s (%2$d%%)</string>
+    <string name="download_speed_remaining">%1$s/s • %2$s left</string>
+
+    <!-- Confirmation Dialogs -->
+    <string name="dialog_clear">Clear</string>
+    <string name="dialog_retry">Retry</string>
+    <string name="url">URL</string>
+
+    <!-- Accessibility -->
+    <string name="accessibility_download_progress">Download progress: %d percent</string>
+    <string name="accessibility_download_complete">Download complete</string>
+    <string name="accessibility_download_failed">Download failed</string>
+    <string name="accessibility_open_download">Open downloaded file</string>
+    <string name="accessibility_pause_download">Pause download</string>
+    <string name="accessibility_resume_download">Resume download</string>
+    <string name="accessibility_cancel_download">Cancel download</string>
+    <string name="accessibility_retry_download">Retry download</string>
+    <string name="accessibility_history_item">History item: %1$s visited at %2$s</string>
+    <string name="accessibility_delete_history">Delete history item</string>
+
+    <!-- Sorting Options -->
+    <string name="sort_by_name_asc">Name (A-Z)</string>
+    <string name="sort_by_name_desc">Name (Z-A)</string>
+    <string name="sort_by_date_newest">Newest First</string>
+    <string name="sort_by_date_oldest">Oldest First</string>
+    <string name="sort_by_size_largest">Largest First</string>
+    <string name="sort_by_size_smallest">Smallest First</string>
+
+    <!-- Date Categories -->
+    <string name="category_today">Today</string>
+    <string name="category_yesterday">Yesterday</string>
+    <string name="category_last_7_days">Last 7 days</string>
+    <string name="category_last_30_days">Last 30 days</string>
+    <string name="category_older">Older</string>
+
+    <!-- Reader Mode -->
+    <string name="reader_mode">Reader Mode</string>
+    <string name="reader_mode_on">Exit Reader Mode</string>
+
+    <!-- Translation -->
+    <string name="translate_page">Translate Page</string>
+
+    <!-- Print -->
+    <string name="print">Print</string>
+    <string name="print_failed">Could not prepare page for printing</string>
+    <string name="preparing_print">Preparing print…</string>
+
+    <!-- Save Page -->
+    <string name="save_page">Save as PDF</string>
+    <string name="page_saved">Page saved to Downloads</string>
+    <string name="save_page_failed">Could not save page</string>
+
+    <!-- Quick Access from browser -->
+    <string name="add_to_quick_access">Add to Quick Access</string>
+    <string name="added_to_quick_access">Added to Quick Access</string>
+
+    <!-- Recently Closed Tabs -->
+    <string name="recently_closed">Recently Closed</string>
+    <string name="restore_tab">Restore</string>
+    <string name="no_recently_closed">No recently closed tabs</string>
+
+    <!-- Swipe Gestures -->
+    <string name="swipe_to_navigate">Swipe left/right to navigate</string>
+
+    <!-- Search Suggestions -->
+    <string name="suggestions">Suggestions</string>
+
+    <!-- Custom Downloads Folder -->
+    <string name="downloads_folder">Downloads Folder</string>
+    <string name="downloads_folder_summary">Choose where downloaded files are saved</string>
+    <string name="downloads_folder_default">Default (Downloads/Easy Browser)</string>
+    <string name="downloads_folder_custom">Custom folder name</string>
+    <string name="downloads_folder_hint">Folder name inside Downloads</string>
+    <string name="downloads_folder_updated">Downloads folder updated</string>
+
+    <!-- Cookie Manager -->
+    <string name="cookie_manager">Cookie Manager</string>
+    <string name="cookie_manager_summary">View and clear cookies for specific sites</string>
+    <string name="site_cookies">Site Cookies</string>
+    <string name="clear_site_cookies">Clear cookies for this site?</string>
+    <string name="cookies_cleared">Cookies cleared</string>
+    <string name="no_cookie_sites">No sites with stored cookies found in history</string>
+
+    <!-- Site Permissions -->
+    <string name="site_permissions">Site Permissions</string>
+    <string name="site_permissions_summary">Manage permissions granted to websites</string>
+    <string name="no_site_permissions">No site permissions stored</string>
+    <string name="revoke_permission">Revoke</string>
+    <string name="permission_revoked">Permission revoked</string>
+    <string name="granted_permissions">Granted Permissions</string>
+
+    <!-- Tab Groups -->
+    <string name="tab_group">Group</string>
+    <string name="create_group">Create Group</string>
+    <string name="group_name">Group Name</string>
+    <string name="group_name_hint">Enter group name…</string>
+    <string name="no_group">No Group</string>
+
+    <!-- PiP -->
+    <string name="pip_not_supported">Picture-in-Picture not supported on this device</string>
+
+    <!-- Find in page -->
+    <string name="find_next">Find next</string>
+    <string name="find_previous">Find previous</string>
+
+    <!-- HTTPS-only mode -->
+    <string name="https_only_mode">HTTPS-only mode</string>
+    <string name="https_only_mode_summary">Automatically upgrade insecure http:// requests to https://</string>
+
+    <!-- Per-site zoom -->
+    <string name="zoom_for_site">Zoom for this site</string>
+    <string name="zoom_for_site_title">Zoom: %s</string>
+    <string name="zoom_reset">Reset</string>
+    <string name="zoom_percent">%d%%</string>
+
+    <!-- Tab history -->
+    <string name="tab_history">Tab history</string>
+    <string name="no_tab_history">No history for this tab</string>
+
+    <!-- Bookmark folders -->
+    <string name="folder_all">All</string>
+
+    <!-- Picture-in-Picture -->
+    <string name="pip_mode">Picture-in-Picture</string>
+
+    <!-- Downloads -->
+    <string name="download_queued_wifi">Download queued — waiting for WiFi</string>
+    <string name="download_queued">Waiting for WiFi</string>
+    <string name="download_start_now">Start Now</string>
+    <string name="download_wifi_only_title">Download on WiFi Only</string>
+    <string name="download_wifi_only_summary">Queue downloads when on a metered connection</string>
+    <string name="download_bandwidth_limit_title">Bandwidth Limit</string>
+
+    <!-- F8 — Custom Search Engines -->
+    <string name="add_custom_engine">Add Custom Engine</string>
+    <string name="custom_engine_name_hint">Engine name (e.g. Startpage)</string>
+    <string name="custom_engine_name_required">Engine name cannot be empty</string>
+    <string name="custom_engine_url_invalid">URL must contain %%s and start with http:// or https://</string>
+    <string name="custom_engine_saved">Custom search engine saved</string>
+
+    <!-- F9 — User-Agent Presets -->
+    <string name="user_agent">User Agent</string>
+    <string name="ua_mobile">Mobile</string>
+    <string name="ua_desktop">Desktop</string>
+    <string name="ua_iphone">iPhone (Safari)</string>
+    <string name="ua_ipad">iPad (Safari)</string>
+    <string name="ua_custom">Custom</string>
+    <string name="ua_custom_hint">Paste full user agent string…</string>
+
+    <!-- F10 — Add to Home Screen -->
+    <string name="add_to_home_screen">Add to Home Screen</string>
+    <string name="shortcut_added">Shortcut added to home screen</string>
+
+    <!-- F11 — Reading List -->
+    <string name="reading_list">Reading List</string>
+    <string name="save_to_reading_list">Save to Reading List</string>
+    <string name="saving_to_reading_list">Saving to reading list…</string>
+    <string name="saved_to_reading_list">Saved to reading list</string>
+    <string name="reading_list_empty">Your reading list is empty</string>
+    <string name="reading_list_file_missing">File not found. Open online instead?</string>
+
+    <!-- F12 — Site Info / Cookie Inspector -->
+    <string name="site_info_secure">Connection is secure</string>
+    <string name="site_info_not_secure">Connection is not secure</string>
+    <string name="clear_site_cache">Clear Cache</string>
+    <string name="clear_site_storage">Clear Storage</string>
+    <string name="clear_site_permissions">Clear Permissions</string>
+    <string name="site_data_cleared">Site data cleared</string>
+
+    <!-- F13 — Auto-clear on exit -->
+    <string name="auto_clear_on_exit">Auto-clear on exit</string>
+    <string name="auto_clear_on_exit_summary">Clear selected data when you close the browser</string>
+    <string name="auto_clear_cookies">Cookies</string>
+    <string name="auto_clear_cache">Cache</string>
+    <string name="auto_clear_history">History</string>
+
+    <!-- F14 — User Styles (Custom CSS) -->
+    <string name="user_styles">User Styles</string>
+    <string name="user_styles_summary">Inject custom CSS into websites</string>
+    <string name="recommended_styles">Recommended</string>
+    <string name="apply_to_hostname">Apply to hostname</string>
+    <string name="user_styles_empty">No user styles added</string>
+    <string name="add_user_style">Add Style</string>
+    <string name="edit_user_style">Edit Style</string>
+    <string name="user_style_hostname">Hostname (e.g. example.com)</string>
+    <string name="user_style_css">CSS</string>
+    <string name="user_style_deleted">Style deleted</string>
+    <string name="user_style_hostname_required">Hostname cannot be empty</string>
+
+    <!-- F15 — DNS-over-HTTPS -->
+    <string name="doh_mode">DNS-over-HTTPS</string>
+    <string name="doh_mode_off">Off</string>
+    <string name="doh_mode_opportunistic">Opportunistic</string>
+    <string name="doh_mode_strict">Strict</string>
+    <string name="doh_provider">DNS Provider</string>
+    <string name="doh_custom">Custom</string>
+    <string name="doh_uri_hint">Custom DNS-over-HTTPS URL</string>
+</resources>

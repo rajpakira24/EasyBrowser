@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+
+    <!-- File and Camera Permissions -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Hardware features -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.autofocus"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.microphone"
+        android:required="false" />
+
+    <application
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.EasyBrowser"
+        android:largeHeap="true"
+        android:networkSecurityConfig="@xml/network_security_config"
+        tools:targetApi="31">
+
+        <!-- Main Activity -->
+        <activity
+            android:name=".ui.activity.MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.EasyBrowser">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- General browser deep link support (without auto-verify) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <!-- Handle all HTTP URLs -->
+                <data android:scheme="http" />
+
+                <!-- Handle all HTTPS URLs -->
+                <data android:scheme="https" />
+            </intent-filter>
+
+            <!-- Optional: Specific domain with App Links verification -->
+            <!-- Only add this if you control a specific domain and want verified deep links -->
+            <!--
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https"
+                      android:host="yourdomain.com" />
+            </intent-filter>
+            -->
+
+            <!-- Handle text sharing (URLs shared from other apps) -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+
+            <!-- Shortcuts support -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+        </activity>
+
+        <!-- Browser Activity -->
+        <activity
+            android:name=".ui.activity.BrowserActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:windowSoftInputMode="adjustResize"
+            android:launchMode="singleTask"
+            android:supportsPictureInPicture="true"
+            android:exported="false" />
+
+        <!-- Tab Management Activity -->
+        <activity
+            android:name=".ui.activity.TabsActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.activity.BrowserActivity" />
+
+        <!-- Settings Activity -->
+        <activity
+            android:name=".ui.activity.SettingsActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.activity.MainActivity" />
+
+        <!-- Bookmarks Activity -->
+        <activity
+            android:name=".ui.activity.BookmarksActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.activity.MainActivity" />
+
+        <!-- Downloads Activity -->
+        <activity
+            android:name=".ui.activity.DownloadsActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.activity.BrowserActivity" />
+
+        <!-- History Activity -->
+        <activity
+            android:name=".ui.activity.HistoryActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.activity.BrowserActivity" />
+
+        <!-- Extensions Activity -->
+        <activity
+            android:name=".ui.activity.ExtensionsActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.activity.BrowserActivity" />
+
+        <!-- Cookie Manager Activity -->
+        <activity
+            android:name=".ui.activity.CookieManagerActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.activity.BrowserActivity" />
+
+        <!-- Site Permissions Activity -->
+        <activity
+            android:name=".ui.activity.SitePermissionsActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.activity.SettingsActivity" />
+
+        <!-- Reading List Activity (F11) -->
+        <activity
+            android:name=".ui.activity.ReadingListActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.activity.BrowserActivity" />
+
+        <!-- User Styles Activity (F14) -->
+        <activity
+            android:name=".ui.activity.UserStylesActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.activity.BrowserActivity" />
+
+        <!-- File provider for sharing files -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.webstudio.easybrowser.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+    </application>
+
+</manifest>

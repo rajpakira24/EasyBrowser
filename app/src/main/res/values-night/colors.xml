@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#8AB4F8</color>
+    <color name="colorPrimaryVariant">#669DF6</color>
+    <color name="colorOnPrimary">#0B0F14</color>
+    <color name="brandBlue">#8AB4F8</color>
+    <color name="brandRed">#F28B82</color>
+    <color name="brandYellow">#FDD663</color>
+    <color name="brandGreen">#81C995</color>
+    <color name="shieldPurple">#B8A7FF</color>
+    <color name="shieldTeal">#5AD7C8</color>
+
+    <color name="colorSecondary">#81C995</color>
+    <color name="colorSecondaryVariant">#5BB974</color>
+    <color name="colorOnSecondary">#0B0F14</color>
+
+    <color name="backgroundColor">#101418</color>
+    <color name="colorBackground">#101418</color>
+    <color name="colorOnBackground">#E8EAED</color>
+    <color name="colorSurface">#1B2027</color>
+    <color name="colorOnSurface">#E8EAED</color>
+
+    <color name="white">#1B2027</color>
+    <color name="black">#E8EAED</color>
+    <color name="gray">#A8B0BA</color>
+    <color name="light_gray">#303742</color>
+    <color name="dark_gray">#C5CCD6</color>
+
+    <color name="search_bar_background">#242A33</color>
+    <color name="search_bar_border">#3A424E</color>
+    <color name="search_bar_stroke">#3A424E</color>
+    <color name="border_color">#303742</color>
+    <color name="quick_access_bg">#242A33</color>
+
+    <color name="error">#F28B82</color>
+    <color name="success">#81C995</color>
+    <color name="warning">#FDD663</color>
+    <color name="info">#8AB4F8</color>
+    <color name="tab_selected">#8AB4F8</color>
+    <color name="tab_unselected">#A8B0BA</color>
+    <color name="secure_connection">#81C995</color>
+    <color name="insecure_connection">#F28B82</color>
+    <color name="black_overlay">#99000000</color>
+    <color name="white_overlay">#33FFFFFF</color>
+</resources>

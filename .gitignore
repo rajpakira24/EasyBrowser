@@ -1,0 +1,24 @@
+# Gradle / Android build outputs
+.gradle/
+build/
+**/build/
+/captures
+.externalNativeBuild
+.cxx
+
+# IDE
+*.iml
+.idea/
+.DS_Store
+
+# Local config — never commit
+local.properties
+keystore.properties
+*.jks
+*.keystore
+google-services.json
+
+# Claude Code / tooling output
+.claude/
+.graphify_python
+graphify-out/

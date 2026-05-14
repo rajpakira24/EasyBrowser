@@ -1,0 +1,260 @@
+--------- beginning of main
+E/OpenGLRenderer(10692): Unable to match the desired swap behavior.
+E/OpenGLRenderer(10692): Unable to match the desired swap behavior.
+E/OpenGLRenderer( 8570): Unable to match the desired swap behavior.
+E/OpenGLRenderer(10692): Unable to match the desired swap behavior.
+--------- beginning of system
+E/Transition(  524): Trying to add a ready-group twice: Display{#0 state=ON size=1344x2992 ROTATION_0}
+E/GeckoLibLoad(10692): Load sqlite start
+E/GeckoLibLoad(10692): Load sqlite done
+E/GeckoLibLoad(10692): Load nss start
+E/GeckoLibLoad(10692): Load nss done
+E/GeckoLibLoad(10692): Loaded libs in 45.147300ms total, 12ms(34ms) user, 29ms(55ms) system, 0(0) faults
+E/OpenGLRenderer(10692): Unable to match the desired swap behavior.
+E/GrantPermissionsViewModel(  874): None of [android.permission.ACCESS_FINE_LOCATION, android.permission.ACCESS_COARSE_LOCATION, android.permission.READ_MEDIA_IMAGES, android.permission.READ_MEDIA_VIDEO, android.permission.READ_MEDIA_AUDIO, android.permission.READ_MEDIA_VISUAL_USER_SELECTED] in {android.permission-group.CAMERA=[android.permission.CAMERA], android.permission-group.MICROPHONE=[android.permission.RECORD_AUDIO], android.permission-group.NOTIFICATIONS=[android.permission.POST_NOTIFICATIONS]}
+E/GeckoConsole(10692): [JavaScript Error: "Error: File resource://default-theme/ does not contain a valid manifest" {file: "resource://gre/modules/addons/XPIInstall.sys.mjs" line: 700}]
+E/GeckoConsole(10692): [JavaScript Error: "Error: File resource://default-theme/ does not contain a valid manifest" {file: "resource://gre/modules/addons/XPIInstall.sys.mjs" line: 700}]
+E/ImeBackDispatcher(10692): Ime callback not found. Ignoring unregisterReceivedCallback. callbackId: 267799846
+E/TaskPersister(  524): File error accessing recents directory (directory doesn't exist?).
+E/GeckoLibLoad(10907): Load sqlite start
+E/GeckoLibLoad(10907): Load sqlite done
+E/GeckoLibLoad(10907): Load nss start
+E/GeckoLibLoad(10907): Load nss done
+E/GeckoLibLoad(10907): Loaded libs in 30.823000ms total, 12ms(12ms) user, 12ms(12ms) system, 0(0) faults
+E/GeckoLibLoad(10938): Load sqlite start
+E/GeckoLibLoad(10938): Load sqlite done
+E/GeckoLibLoad(10938): Load nss start
+E/GeckoLibLoad(10938): Load nss done
+E/GeckoLibLoad(10938): Loaded libs in 56.215600ms total, 1ms(7ms) user, 51ms(47ms) system, 0(0) faults
+E/webrender::device::gl(10938): Failed to load a program object with a program binary: gpu_cache_update renderer Android Emulator OpenGL ES Translator (Intel(R) UHD Graphics 770)
+E/webrender_bindings::program_cache(10938): shader-cache: Failed program_binary
+E/GeckoLibLoad(11033): Load sqlite start
+E/GeckoLibLoad(11033): Load sqlite done
+E/GeckoLibLoad(11033): Load nss start
+E/GeckoLibLoad(11033): Load nss done
+E/webrender::device::gl(10938): Failed to load a program object with a program binary: gpu_cache_update renderer Android Emulator OpenGL ES Translator (Intel(R) UHD Graphics 770)
+E/webrender_bindings::program_cache(10938): shader-cache: Failed program_binary
+E/webrender::device::gl(10938): Failed to load a program object with a program binary: gpu_cache_update renderer Android Emulator OpenGL ES Translator (Intel(R) UHD Graphics 770)
+E/webrender_bindings::program_cache(10938): shader-cache: Failed program_binary
+I/GeckoSession(10692): zerdatime 775472 - chrome startup finished
+E/GeckoLibLoad(11033): Loaded libs in 40.347300ms total, 0ms(1ms) user, 37ms(35ms) system, 0(0) faults
+I/GeckoSession(10692): zerdatime 775483 - chrome startup finished
+I/GeckoSession(10692): zerdatime 775487 - chrome startup finished
+D/GeckoSession(10692): handleMessage GeckoView:PageStart uri=about:blank
+D/GeckoSession(10692): handleMessage GeckoView:LocationChange uri=about:blank
+D/GeckoSession(10692): handleMessage GeckoView:PageStop uri=null
+D/GeckoSession(10692): handleMessage GeckoView:ProgressChanged uri=null
+D/GeckoSession(10692): handleMessage GeckoView:PageStart uri=https://www.flipkart.com/hp-amd-ryzen-5-hexa-core-5500u-8-gb-512-gb-ssd-windows-11-home-15s-eq2144au-thin-light-laptop/p/itmd57b41ed8750a?pid=COMGBH9JDPVGD8BH&lid=LSTCOMGBH9JDPVGD8BHJGCHV7&marketplace=FLIPKART&cmpid=content_computer_8965229628_gmc&affExtParam1=YT3-gkZF4FgJzR_36e5uxe1HPhdMyaQ0pf0YUS4ur4mblOb_iw9FIA04HYpDTBOt52yCLWUTO5f89_9KBfnCqnIqr6VoFAPaBxCeoGMX2A&affid=ytflipkart
+D/GeckoSession(10692): handleMessage GeckoView:ProgressChanged uri=null
+D/GeckoSession(10692): handleMessage GeckoView:PageStop uri=null
+D/GeckoSession(10692): handleMessage GeckoView:ProgressChanged uri=null
+D/GeckoSession(10692): handleMessage GeckoView:PageStart uri=https://search.brave.com/search?q=fgs%20global
+E/OpenGLRenderer(10692): Unable to match the desired swap behavior.
+D/GeckoSession(10692): handleMessage GeckoView:LocationChange uri=https://search.brave.com/search?q=fgs%20global
+D/GeckoSession(10692): handleMessage GeckoView:SecurityChanged uri=null
+D/GeckoSession(10692): handleMessage GeckoView:LocationChange uri=https://search.brave.com/search?q=fgs%20global
+E/InputConnectionParser( 8570): InputConnectionParser.responseWithError():106 responseWithError(): parse_code: 2
+E/InputContextProxyV4( 8570): InputContextProxyV4.reset():371 reset(): un-successful, parse_code: 2, input_state_id 0
+E/OpenGLRenderer( 8570): Unable to match the desired swap behavior.
+E/webrender::device::gl(10938): Failed to load a program object with a program binary: cs_clip_rectangle renderer Android Emulator OpenGL ES Translator (Intel(R) UHD Graphics 770)
+E/webrender_bindings::program_cache(10938): shader-cache: Failed program_binary
+E/webrender::device::gl(10938): Failed to load a program object with a program binary: cs_blur renderer Android Emulator OpenGL ES Translator (Intel(R) UHD Graphics 770)
+E/webrender_bindings::program_cache(10938): shader-cache: Failed program_binary
+E/webrender::device::gl(10938): Failed to load a program object with a program binary: cs_border_solid renderer Android Emulator OpenGL ES Translator (Intel(R) UHD Graphics 770)
+E/webrender_bindings::program_cache(10938): shader-cache: Failed program_binary
+E/webrender::device::gl(10938): Failed to load a program object with a program binary: cs_fast_linear_gradient renderer Android Emulator OpenGL ES Translator (Intel(R) UHD Graphics 770)
+E/webrender_bindings::program_cache(10938): shader-cache: Failed program_binary
+E/webrender::device::gl(10938): Failed to load a program object with a program binary: cs_clip_rectangle renderer Android Emulator OpenGL ES Translator (Intel(R) UHD Graphics 770)
+E/webrender_bindings::program_cache(10938): shader-cache: Failed program_binary
+E/webrender::device::gl(10938): Failed to load a program object with a program binary: cs_clip_box_shadow renderer Android Emulator OpenGL ES Translator (Intel(R) UHD Graphics 770)
+E/webrender_bindings::program_cache(10938): shader-cache: Failed program_binary
+E/webrender::device::gl(10938): Failed to load a program object with a program binary: brush_image renderer Android Emulator OpenGL ES Translator (Intel(R) UHD Graphics 770)
+E/webrender_bindings::program_cache(10938): shader-cache: Failed program_binary
+E/webrender::device::gl(10938): Failed to load a program object with a program binary: ps_quad_textured renderer Android Emulator OpenGL ES Translator (Intel(R) UHD Graphics 770)
+E/webrender_bindings::program_cache(10938): shader-cache: Failed program_binary
+E/webrender::device::gl(10938): Failed to load a program object with a program binary: ps_quad_mask renderer Android Emulator OpenGL ES Translator (Intel(R) UHD Graphics 770)
+E/webrender_bindings::program_cache(10938): shader-cache: Failed program_binary
+E/webrender::device::gl(10938): Failed to load a program object with a program binary: brush_solid renderer Android Emulator OpenGL ES Translator (Intel(R) UHD Graphics 770)
+E/webrender_bindings::program_cache(10938): shader-cache: Failed program_binary
+E/webrender::device::gl(10938): Failed to load a program object with a program binary: composite renderer Android Emulator OpenGL ES Translator (Intel(R) UHD Graphics 770)
+E/webrender_bindings::program_cache(10938): shader-cache: Failed program_binary
+E/webrender::device::gl(10938): Failed to load a program object with a program binary: composite renderer Android Emulator OpenGL ES Translator (Intel(R) UHD Graphics 770)
+E/webrender_bindings::program_cache(10938): shader-cache: Failed program_binary
+E/webrender::device::gl(10938): Failed to load a program object with a program binary: brush_opacity renderer Android Emulator OpenGL ES Translator (Intel(R) UHD Graphics 770)
+E/webrender_bindings::program_cache(10938): shader-cache: Failed program_binary
+D/GeckoSession(10692): handleMessage GeckoView:ProgressChanged uri=null
+D/GeckoSession(10692): handleMessage GeckoView:StateUpdated uri=null
+W/GeckoSession(10692): No history entries found.
+D/GeckoSession(10692): handleMessage GeckoView:ProgressChanged uri=null
+E/webrender::device::gl(10938): Failed to load a program object with a program binary: ps_text_run renderer Android Emulator OpenGL ES Translator (Intel(R) UHD Graphics 770)
+E/webrender_bindings::program_cache(10938): shader-cache: Failed program_binary
+D/GeckoSession(10692): handleMessage GeckoView:ProgressChanged uri=null
+D/GeckoSession(10692): handleMessage GeckoView:PageStop uri=null
+E/webrender::device::gl(10938): Failed to load a program object with a program binary: cs_scale renderer Android Emulator OpenGL ES Translator (Intel(R) UHD Graphics 770)
+E/webrender_bindings::program_cache(10938): shader-cache: Failed program_binary
+D/GeckoSession(10692): handleMessage GeckoView:StateUpdated uri=null
+E/OpenGLRenderer(10692): Unable to match the desired swap behavior.
+D/GeckoSession(10692): handleMessage GeckoView:ProgressChanged uri=null
+D/GeckoSession(10692): handleMessage GeckoView:PageStart uri=https://search.brave.com/search?q=fgs%20global
+E/OpenGLRenderer(10692): Unable to match the desired swap behavior.
+E/InputConnectionWrapper( 8570): InputConnectionWrapper.waitForInputConnectionFutureInternal():1530 Failed to get the input connection call's result.
+E/InputConnectionWrapper( 8570): java.util.concurrent.TimeoutException: Waited 500 milliseconds (plus 428300 nanoseconds delay) for muo@edf4de0[status=PENDING, info=[task=[running=[RUNNING ON ICWrapper-1], huw@a0e9899]]]
+E/InputConnectionWrapper( 8570): 	at mrp.get(PG:46)
+E/InputConnectionWrapper( 8570): 	at hvf.h(PG:1)
+E/InputConnectionWrapper( 8570): 	at hvf.w(PG:5)
+E/InputConnectionWrapper( 8570): 	at pgk.n(PG:6)
+E/InputConnectionWrapper( 8570): 	at hvo.z(PG:1)
+E/InputConnectionWrapper( 8570): 	at hvo.m(PG:1)
+E/InputConnectionWrapper( 8570): 	at hvf.r(PG:2)
+E/InputConnectionWrapper( 8570): 	at btv.q(PG:113)
+E/InputConnectionWrapper( 8570): 	at dfg.onStartInputView(PG:30)
+E/InputConnectionWrapper( 8570): 	at android.inputmethodservice.InputMethodService.doStartInput(InputMethodService.java:3121)
+E/InputConnectionWrapper( 8570): 	at android.inputmethodservice.InputMethodService$InputMethodImpl.startInput(InputMethodService.java:824)
+E/InputConnectionWrapper( 8570): 	at android.inputmethodservice.InputMethodService$InputMethodImpl.dispatchStartInput(InputMethodService.java:853)
+E/InputConnectionWrapper( 8570): 	at android.inputmethodservice.IInputMethodWrapper.executeMessage(IInputMethodWrapper.java:197)
+E/InputConnectionWrapper( 8570): 	at com.android.internal.os.HandlerCaller$MyHandler.handleMessage(HandlerCaller.java:44)
+E/InputConnectionWrapper( 8570): 	at android.os.Handler.dispatchMessage(Handler.java:106)
+E/InputConnectionWrapper( 8570): 	at android.os.Looper.loopOnce(Looper.java:205)
+E/InputConnectionWrapper( 8570): 	at android.os.Looper.loop(Looper.java:294)
+E/InputConnectionWrapper( 8570): 	at android.app.ActivityThread.main(ActivityThread.java:8177)
+E/InputConnectionWrapper( 8570): 	at java.lang.reflect.Method.invoke(Native Method)
+E/InputConnectionWrapper( 8570): 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:552)
+E/InputConnectionWrapper( 8570): 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:971)
+E/ImeBackDispatcher(10692): Ime callback not found. Ignoring unregisterReceivedCallback. callbackId: 267799846
+D/GeckoSession(10692): handleMessage GeckoView:LocationChange uri=https://search.brave.com/search?q=fgs%20global
+D/GeckoSession(10692): handleMessage GeckoView:SecurityChanged uri=null
+D/GeckoSession(10692): handleMessage GeckoView:ProgressChanged uri=null
+D/GeckoSession(10692): handleMessage GeckoView:ProgressChanged uri=null
+D/GeckoSession(10692): handleMessage GeckoView:PageStop uri=null
+E/InputConnectionWrapper( 8570): InputConnectionWrapper.waitForInputConnectionFutureInternal():1530 Failed to get the input connection call's result.
+E/InputConnectionWrapper( 8570): java.util.concurrent.TimeoutException: Waited 500 milliseconds (plus 372300 nanoseconds delay) for muo@23c9028[status=PENDING, info=[task=[running=[RUNNING ON ICWrapper-1], huw@ea5c141]]]
+E/InputConnectionWrapper( 8570): 	at mrp.get(PG:46)
+E/InputConnectionWrapper( 8570): 	at hvf.h(PG:1)
+E/InputConnectionWrapper( 8570): 	at hvf.w(PG:5)
+E/InputConnectionWrapper( 8570): 	at pgk.n(PG:6)
+E/InputConnectionWrapper( 8570): 	at dfg.R(PG:21)
+E/InputConnectionWrapper( 8570): 	at huq.m(PG:1)
+E/InputConnectionWrapper( 8570): 	at huq.h(PG:15)
+E/InputConnectionWrapper( 8570): 	at hug.af(PG:5)
+E/InputConnectionWrapper( 8570): 	at huj.g(PG:2)
+E/InputConnectionWrapper( 8570): 	at btv.q(PG:120)
+E/InputConnectionWrapper( 8570): 	at dfg.onStartInputView(PG:30)
+E/InputConnectionWrapper( 8570): 	at android.inputmethodservice.InputMethodService.doStartInput(InputMethodService.java:3121)
+E/InputConnectionWrapper( 8570): 	at android.inputmethodservice.InputMethodService$InputMethodImpl.startInput(InputMethodService.java:824)
+E/InputConnectionWrapper( 8570): 	at android.inputmethodservice.InputMethodService$InputMethodImpl.dispatchStartInput(InputMethodService.java:853)
+E/InputConnectionWrapper( 8570): 	at android.inputmethodservice.IInputMethodWrapper.executeMessage(IInputMethodWrapper.java:197)
+E/InputConnectionWrapper( 8570): 	at com.android.internal.os.HandlerCaller$MyHandler.handleMessage(HandlerCaller.java:44)
+E/InputConnectionWrapper( 8570): 	at android.os.Handler.dispatchMessage(Handler.java:106)
+E/InputConnectionWrapper( 8570): 	at android.os.Looper.loopOnce(Looper.java:205)
+E/InputConnectionWrapper( 8570): 	at android.os.Looper.loop(Looper.java:294)
+E/InputConnectionWrapper( 8570): 	at android.app.ActivityThread.main(ActivityThread.java:8177)
+E/InputConnectionWrapper( 8570): 	at java.lang.reflect.Method.invoke(Native Method)
+E/InputConnectionWrapper( 8570): 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:552)
+E/InputConnectionWrapper( 8570): 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:971)
+D/GeckoSession(10692): handleMessage GeckoView:LocationChange uri=https://search.brave.com/search?q=fgs%20global
+E/InputConnectionParser( 8570): InputConnectionParser.responseWithError():106 responseWithError(): parse_code: 2
+E/InputContextProxyV4( 8570): InputContextProxyV4.reset():371 reset(): un-successful, parse_code: 2, input_state_id 0
+D/GeckoSession(10692): handleMessage GeckoView:StateUpdated uri=null
+D/GeckoSession(10692): handleMessage GeckoView:StateUpdated uri=null
+E/ImeBackDispatcher(10692): Ime callback not found. Ignoring unregisterReceivedCallback. callbackId: 267799846
+D/GeckoSession(10692): handleMessage GeckoView:StateUpdated uri=null
+D/GeckoSession(10692): handleMessage GeckoView:StateUpdated uri=null
+D/GeckoSession(10692): handleMessage: GeckoView:DismissClipboardPermissionRequest
+E/webrender::device::gl(10938): Failed to load a program object with a program binary: brush_image renderer Android Emulator OpenGL ES Translator (Intel(R) UHD Graphics 770)
+E/webrender_bindings::program_cache(10938): shader-cache: Failed program_binary
+D/GeckoSession(10692): handleMessage GeckoView:StateUpdated uri=null
+D/GeckoSession(10692): handleMessage GeckoView:ProgressChanged uri=null
+D/GeckoSession(10692): handleMessage GeckoView:PageStart uri=https://search.brave.com/search?q=fgs%20global
+D/GeckoSession(10692): handleMessage GeckoView:ProgressChanged uri=null
+D/GeckoSession(10692): handleMessage GeckoView:LocationChange uri=https://search.brave.com/search?q=fgs%20global
+D/GeckoSession(10692): handleMessage GeckoView:SecurityChanged uri=null
+D/GeckoSession(10692): handleMessage GeckoView:ProgressChanged uri=null
+D/GeckoSession(10692): handleMessage GeckoView:PageStop uri=null
+E/SwipeRefreshLayout(10692): Got ACTION_MOVE event but don't have an active pointer id.
+E/SwipeRefreshLayout(10692): Got ACTION_MOVE event but don't have an active pointer id.
+D/GeckoSession(10692): handleMessage GeckoView:StateUpdated uri=null
+D/GeckoSession(10692): handleMessage GeckoView:StateUpdated uri=null
+D/GeckoSession(10692): handleMessage GeckoView:StateUpdated uri=null
+D/GeckoSession(10692): handleMessage GeckoView:StateUpdated uri=null
+D/GeckoSession(10692): handleMessage GeckoView:ProgressChanged uri=null
+D/GeckoSession(10692): handleMessage GeckoView:PageStart uri=https://search.brave.com/search?q=fgs%20global
+D/GeckoSession(10692): handleMessage GeckoView:ProgressChanged uri=null
+D/GeckoSession(10692): handleMessage GeckoView:LocationChange uri=https://search.brave.com/search?q=fgs%20global
+D/GeckoSession(10692): handleMessage GeckoView:SecurityChanged uri=null
+D/GeckoSession(10692): handleMessage GeckoView:ProgressChanged uri=null
+D/GeckoSession(10692): handleMessage GeckoView:PageStop uri=null
+D/GeckoSession(10692): handleMessage GeckoView:StateUpdated uri=null
+D/GeckoSession(10692): handleMessage GeckoView:StateUpdated uri=null
+E/OpenGLRenderer( 8245): Unable to match the desired swap behavior.
+E/OpenGLRenderer( 1125): Unable to match the desired swap behavior.
+E/OneSearchSuggestProvider( 1125): Failed to fetch suggestions from AppSearch, fallback to AGA
+E/OneSearchSuggestProvider( 1125): java.util.concurrent.CompletionException: java.util.NoSuchElementException: No value present
+E/OneSearchSuggestProvider( 1125): 	at java.util.concurrent.CompletableFuture.encodeThrowable(CompletableFuture.java:308)
+E/OneSearchSuggestProvider( 1125): 	at java.util.concurrent.CompletableFuture.completeThrowable(CompletableFuture.java:323)
+E/OneSearchSuggestProvider( 1125): 	at java.util.concurrent.CompletableFuture$UniAccept.tryFire(CompletableFuture.java:684)
+E/OneSearchSuggestProvider( 1125): 	at java.util.concurrent.CompletableFuture.postComplete(CompletableFuture.java:486)
+E/OneSearchSuggestProvider( 1125): 	at java.util.concurrent.CompletableFuture.completeExceptionally(CompletableFuture.java:2138)
+E/OneSearchSuggestProvider( 1125): 	at com.google.android.apps.nexuslauncher.allapps.H0.onResult(Unknown Source:59)
+E/OneSearchSuggestProvider( 1125): 	at android.app.appsearch.SearchSessionUtil$1.lambda$onResult$0(SearchSessionUtil.java:129)
+E/OneSearchSuggestProvider( 1125): 	at android.app.appsearch.SearchSessionUtil$1.$r8$lambda$_nlk9WiPjSfaAsqKYmp0aPvSRC0(SearchSessionUtil.java:1)
+E/OneSearchSuggestProvider( 1125): 	at android.app.appsearch.SearchSessionUtil$1$$ExternalSyntheticLambda0.run(R8$$SyntheticClass:13)
+E/OneSearchSuggestProvider( 1125): 	at android.os.Handler.handleCallback(Handler.java:958)
+E/OneSearchSuggestProvider( 1125): 	at android.os.Handler.dispatchMessage(Handler.java:99)
+E/OneSearchSuggestProvider( 1125): 	at android.os.Looper.loopOnce(Looper.java:205)
+E/OneSearchSuggestProvider( 1125): 	at android.os.Looper.loop(Looper.java:294)
+E/OneSearchSuggestProvider( 1125): 	at android.os.HandlerThread.run(HandlerThread.java:67)
+E/OneSearchSuggestProvider( 1125): Caused by: java.util.NoSuchElementException: No value present
+E/OneSearchSuggestProvider( 1125): 	at java.util.Optional.get(Optional.java:144)
+E/OneSearchSuggestProvider( 1125): 	at com.google.android.apps.nexuslauncher.allapps.H0.onResult(Unknown Source:16)
+E/OneSearchSuggestProvider( 1125): 	... 8 more
+D/GeckoSession(10692): handleMessage: GeckoView:DismissClipboardPermissionRequest
+D/GeckoSession(10692): handleMessage GeckoView:StateUpdated uri=null
+E/system_server(  524): Cannot read thread CPU times for PID 524
+E/GnssPsdsDownloader(  524): No Long-Term PSDS servers were specified in the GnssConfiguration
+E/WifiStaIfaceAidlImpl(  524): installApfPacketFilter failed with service-specific exception: android.os.ServiceSpecificException:  (code 4)
+E/d.configupdater(11319): Not starting debugger since process cannot load the jdwp agent.
+E/constellation( 8202): [api_verify_phone_operation] Exception while calling getVerifiedPhoneNumbers 
+E/constellation( 8202): jurh: INVALID_ARGUMENT: could not verify iid_token
+E/constellation( 8202): 	at bjco.r(:com.google.android.gms@261833032@26.18.33 (190800-913931251):31)
+E/constellation( 8202): 	at bjco.f(:com.google.android.gms@261833032@26.18.33 (190800-913931251):90)
+E/constellation( 8202): 	at bjun.c(:com.google.android.gms@261833032@26.18.33 (190800-913931251):661)
+E/constellation( 8202): 	at bjun.f(:com.google.android.gms@261833032@26.18.33 (190800-913931251):209)
+E/constellation( 8202): 	at cwob.fD(:com.google.android.gms@261833032@26.18.33 (190800-913931251):1)
+E/constellation( 8202): 	at cwom.run(:com.google.android.gms@261833032@26.18.33 (190800-913931251):121)
+E/constellation( 8202): 	at haxa.run(:com.google.android.gms@261833032@26.18.33 (190800-913931251):23)
+E/constellation( 8202): 	at bjjb.c(:com.google.android.gms@261833032@26.18.33 (190800-913931251):50)
+E/constellation( 8202): 	at bjjb.run(:com.google.android.gms@261833032@26.18.33 (190800-913931251):66)
+E/constellation( 8202): 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1145)
+E/constellation( 8202): 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:644)
+E/constellation( 8202): 	at bjos.run(:com.google.android.gms@261833032@26.18.33 (190800-913931251):8)
+E/constellation( 8202): 	at java.lang.Thread.run(Thread.java:1012)
+E/A       ( 8245): onError
+E/A       ( 8245): com.google.android.apps.gsa.shared.speech.a.m: errorCode: 65561, engine: 2
+E/A       ( 8245): 	at com.google.android.apps.gsa.staticplugins.dc.a.e.a(PG:3)
+E/A       ( 8245): 	at com.google.android.apps.gsa.s3.n.hh(PG:1)
+E/A       ( 8245): 	at com.google.cd.g.a.f.e(PG:2)
+E/A       ( 8245): 	at com.google.android.apps.gsa.speech.k.a.g.d(PG:22)
+E/A       ( 8245): 	at com.google.android.apps.gsa.speech.k.a.g.ks(PG:6)
+E/A       ( 8245): 	at com.google.android.apps.gsa.s3.o.e(PG:14)
+E/A       ( 8245): 	at com.google.android.apps.gsa.s3.p.run(PG:1)
+E/A       ( 8245): 	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:487)
+E/A       ( 8245): 	at java.util.concurrent.FutureTask.run(FutureTask.java:264)
+E/A       ( 8245): 	at com.google.android.apps.gsa.shared.util.c.a.e.run(PG:2)
+E/A       ( 8245): 	at com.google.android.apps.gsa.shared.util.c.a.bi.run(PG:1)
+E/A       ( 8245): 	at com.google.android.apps.gsa.shared.util.c.a.bi.run(PG:1)
+E/A       ( 8245): 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1145)
+E/A       ( 8245): 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:644)
+E/A       ( 8245): 	at java.lang.Thread.run(Thread.java:1012)
+E/A       ( 8245): 	at com.google.android.apps.gsa.shared.util.c.a.l.run(PG:5)
+E/A       ( 8245): Caused by: com.google.android.apps.gsa.shared.speech.a.o: errorCode: 65586, engine: 2
+E/A       ( 8245): 	... 15 more
+E/A       ( 8245): Caused by: com.google.android.apps.gsa.shared.speech.a.k: errorCode: 401, engine: 2
+E/A       ( 8245): 	at com.google.android.apps.gsa.assistant.shared.n.h.a(PG:5)
+E/A       ( 8245): 	at com.google.android.apps.gsa.s3.producers.j.hE(PG:2)
+E/A       ( 8245): 	at com.google.android.apps.gsa.speech.k.a.g.d(PG:16)
+E/A       ( 8245): 	... 12 more
+E/BugleRcsEngine( 8267): [139] brfg.a: DroidGuardLogger: Could not create DroidGuard token creation event
+E/WifiStaIfaceAidlImpl(  524): installApfPacketFilter failed with service-specific exception: android.os.ServiceSpecificException:  (code 4)
+E/t_app_installer(11519): Not starting debugger since process cannot load the jdwp agent.
+E/NetworkScheduler.ATC( 8198): Error finding compatible intent-filter to handle SERVICE_ACTION_EXECUTE_TASK for com.google.android.gms/.checkin.EventLogService [CONTEXT service_id=218 ]
+E/NetworkScheduler.TED( 8198): Invalid service definition provided: null [CONTEXT service_id=218 ]

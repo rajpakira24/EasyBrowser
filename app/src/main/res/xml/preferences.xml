@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen
+    xmlns:android="http://schemas.android.com/apk/res/android">
+    <ListPreference
+        android:key="search_engine_url"
+        android:title="Search Engine"
+        android:summary="%s"
+        android:defaultValue="https://www.google.com/search?q="
+        android:entries="@array/search_engine_names"
+        android:entryValues="@array/search_engine_values" />
+
+    <PreferenceCategory android:title="Downloads">
+        <ListPreference
+            android:key="download_bandwidth_limit"
+            android:title="@string/download_bandwidth_limit_title"
+            android:summary="%s"
+            android:defaultValue="0"
+            android:entries="@array/bandwidth_limit_names"
+            android:entryValues="@array/bandwidth_limit_values" />
+        <SwitchPreferenceCompat
+            android:key="download_wifi_only"
+            android:title="@string/download_wifi_only_title"
+            android:summary="@string/download_wifi_only_summary"
+            android:defaultValue="false" />
+    </PreferenceCategory>
+</PreferenceScreen>

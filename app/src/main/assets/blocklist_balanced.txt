@@ -1,0 +1,18 @@
+# Balanced ad/tracker blocklist — one hostname substring per line.
+# Lines starting with # are ignored. Reload the app to pick up changes.
+doubleclick.net
+googlesyndication.com
+googleadservices.com
+adservice.google.com
+adsystem.com
+adnxs.com
+adsrvr.org
+amazon-adsystem.com
+taboola.com
+outbrain.com
+scorecardresearch.com
+zedo.com
+moatads.com
+facebook.com/tr
+analytics.google.com
+google-analytics.com

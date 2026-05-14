@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Theme.EasyBrowser" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Primary brand color -->
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryVariant">@color/colorPrimaryVariant</item>
+        <item name="colorOnPrimary">@color/colorOnPrimary</item>
+
+        <!-- Secondary brand color -->
+        <item name="colorSecondary">@color/colorSecondary</item>
+        <item name="colorSecondaryVariant">@color/colorSecondaryVariant</item>
+        <item name="colorOnSecondary">@color/colorOnSecondary</item>
+
+        <!-- Status bar color -->
+        <item name="android:statusBarColor">@color/colorPrimary</item>
+
+        <!-- Background colors -->
+        <item name="android:windowBackground">@color/backgroundColor</item>
+<!--        <item name="colorBackground">@color/colorBackground</item>-->
+        <item name="colorOnBackground">@color/colorOnBackground</item>
+
+        <!-- Surface colors -->
+        <item name="colorSurface">@color/colorSurface</item>
+        <item name="colorOnSurface">@color/colorOnSurface</item>
+
+        <!-- Enable edge-to-edge display -->
+        <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="p">shortEdges</item>
+<!--        <item name="android:windowLightStatusBar">false</item>-->
+    </style>
+
+    <!-- Custom Toolbar Style -->
+    <style name="BrowserToolbar" parent="Widget.Material3.Toolbar">
+        <item name="android:background">@color/white</item>
+        <item name="android:elevation">4dp</item>
+        <item name="titleTextColor">@color/black</item>
+    </style>
+
+    <!-- Custom Search Bar Style -->
+    <style name="SearchBar">
+        <item name="android:background">@drawable/search_bar_background</item>
+        <item name="android:padding">8dp</item>
+        <item name="android:hint">@string/search_or_type_url</item>
+        <item name="android:textSize">16sp</item>
+    </style>
+
+    <!-- Custom Bottom Navigation Style -->
+    <style name="BottomNavigation" parent="Widget.Material3.BottomNavigationView">
+        <item name="materialThemeOverlay">@style/ThemeOverlay.App.BottomNavigationView</item>
+        <item name="android:background">@color/white</item>
+        <item name="itemIconTint">@color/tab_selector</item>
+        <item name="itemTextColor">@color/tab_selector</item>
+    </style>
+
+    <style name="ThemeOverlay.App.BottomNavigationView" parent="">
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorSurface">@color/white</item>
+    </style>
+
+    <!-- Custom Button Styles -->
+    <style name="IconButton" parent="Widget.Material3.Button.IconButton">
+        <item name="android:background">?attr/selectableItemBackgroundBorderless</item>
+        <item name="android:padding">8dp</item>
+    </style>
+
+    <!-- Tab Layout Style -->
+    <style name="TabLayout" parent="Widget.Material3.TabLayout">
+        <item name="tabTextAppearance">@style/TabTextAppearance</item>
+        <item name="tabSelectedTextColor">@color/colorPrimary</item>
+        <item name="tabIndicatorColor">@color/colorPrimary</item>
+    </style>
+
+    <style name="TabTextAppearance" parent="TextAppearance.Material3.BodyLarge">
+        <item name="android:textSize">14sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <!-- Card View Style -->
+<!--    <style name="BrowserCard" parent="Widget.Material3.CardView">-->
+<!--        <item name="cardCornerRadius">8dp</item>-->
+<!--        <item name="cardElevation">2dp</item>-->
+<!--        <item name="cardBackgroundColor">@color/white</item>-->
+<!--    </style>-->
+
+    <!-- Settings Item Style -->
+    <style name="SettingsItem">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:padding">16dp</item>
+        <item name="android:background">?attr/selectableItemBackground</item>
+    </style>
+
+    <!-- Dialog Styles -->
+    <style name="CustomDialog" parent="Theme.Material3.DayNight.Dialog">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowSoftInputMode">stateUnspecified|adjustPan</item>
+    </style>
+
+    <style name="SearchPopupAnimation">
+        <item name="android:windowEnterAnimation">@anim/search_popup_enter</item>
+        <item name="android:windowExitAnimation">@anim/search_popup_exit</item>
+    </style>
+
+<!--    &lt;!&ndash; Splash Screen Theme &ndash;&gt;-->
+<!--    <style name="Theme.EasyBrowser.Starting" parent="Theme.SplashScreen">-->
+<!--        <item name="windowSplashScreenBackground">@color/colorPrimary</item>-->
+<!--        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>-->
+<!--        <item name="windowSplashScreenAnimationDuration">300</item>-->
+<!--        <item name="postSplashScreenTheme">@style/Theme.EasyBrowser</item>-->
+<!--    </style>-->
+
+<!--    &lt;!&ndash; Material Theme Overlay for Components &ndash;&gt;-->
+<!--    <style name="ThemeOverlay.App.TextInputLayout" parent="ThemeOverlay.Material3.TextInputLayout.OutlinedBox">-->
+<!--        <item name="boxStrokeColor">@color/colorPrimary</item>-->
+<!--        <item name="boxStrokeErrorColor">@color/error</item>-->
+<!--    </style>-->
+
+<!--    <style name="ThemeOverlay.App.FloatingActionButton" parent="ThemeOverlay.Material3.FloatingActionButton">-->
+<!--        <item name="colorContainer">@color/colorPrimary</item>-->
+<!--        <item name="colorOnContainer">@color/white</item>-->
+<!--    </style>-->
+</resources>

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <group android:id="@+id/group_navigation">
+        <item
+            android:id="@+id/action_back"
+            android:icon="@drawable/ic_arrow_back"
+            android:title="@string/back"/>
+        <item
+            android:id="@+id/action_forward"
+            android:icon="@drawable/ic_arrow_forward"
+            android:title="@string/forward"/>
+        <item
+            android:id="@+id/action_reload"
+            android:icon="@drawable/ic_reload"
+            android:title="@string/reload"/>
+        <item
+            android:id="@+id/action_share"
+            android:icon="@drawable/ic_share"
+            android:title="@string/share"/>
+    </group>
+    <item
+        android:id="@+id/action_new_tab"
+        android:icon="@drawable/ic_add"
+        android:title="@string/new_tab"/>
+    <item
+        android:id="@+id/action_new_private_tab"
+        android:icon="@drawable/ic_add"
+        android:title="@string/new_private_tab"/>
+    <group android:id="@+id/group_main">
+        <item
+            android:id="@+id/action_history"
+            android:icon="@drawable/ic_history"
+            android:title="@string/history"/>
+        <item
+            android:id="@+id/action_downloads"
+            android:icon="@drawable/ic_download"
+            android:title="@string/downloads"/>
+        <item
+            android:id="@+id/action_bookmarks"
+            android:icon="@drawable/ic_bookmarks"
+            android:title="@string/bookmarks"/>
+    </group>
+    <group android:id="@+id/group_tools">
+        <item
+            android:id="@+id/action_find_in_page"
+            android:icon="@drawable/ic_search"
+            android:title="@string/find_in_page"/>
+        <item
+            android:id="@+id/action_desktop_site"
+            android:checkable="true"
+            android:icon="@drawable/ic_desktop"
+            android:title="@string/desktop_site"/>
+        <item
+            android:id="@+id/action_recent_tabs"
+            android:icon="@drawable/ic_recent"
+            android:title="@string/recent_tabs"/>
+        <item
+            android:id="@+id/action_extensions"
+            android:icon="@drawable/ic_add"
+            android:title="@string/extensions"/>
+    </group>
+    <group android:id="@+id/group_settings">
+        <item
+            android:id="@+id/action_settings"
+            android:icon="@drawable/ic_settings"
+            android:title="@string/settings"/>
+        <item
+            android:id="@+id/action_help"
+            android:icon="@drawable/ic_help"
+            android:title="@string/help_feedback"/>
+        <item
+            android:id="@+id/action_exit"
+            android:icon="@drawable/ic_exit"
+            android:title="@string/exit"/>
+    </group>
+</menu>

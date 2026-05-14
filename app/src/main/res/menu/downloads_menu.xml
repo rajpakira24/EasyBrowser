@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_clear_completed"
+        android:title="@string/clear_completed_downloads"
+        app:showAsAction="never"/>
+
+    <item
+        android:id="@+id/action_clear_all"
+        android:title="@string/clear_all_downloads"
+        app:showAsAction="never"/>
+
+    <item
+        android:id="@+id/action_sort"
+        android:title="@string/menu_sort"
+        app:showAsAction="never">
+        <menu>
+            <item
+                android:id="@+id/sort_date_newest"
+                android:title="@string/sort_by_date_newest"
+                android:checkable="true"/>
+            <item
+                android:id="@+id/sort_date_oldest"
+                android:title="@string/sort_by_date_oldest"
+                android:checkable="true"/>
+            <item
+                android:id="@+id/sort_name_asc"
+                android:title="@string/sort_by_name_asc"
+                android:checkable="true"/>
+            <item
+                android:id="@+id/sort_name_desc"
+                android:title="@string/sort_by_name_desc"
+                android:checkable="true"/>
+            <item
+                android:id="@+id/sort_size_largest"
+                android:title="@string/sort_by_size_largest"
+                android:checkable="true"/>
+            <item
+                android:id="@+id/sort_size_smallest"
+                android:title="@string/sort_by_size_smallest"
+                android:checkable="true"/>
+        </menu>
+    </item>
+</menu>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_search"
+        android:icon="@drawable/ic_search"
+        android:title="@string/menu_search"
+        app:showAsAction="ifRoom"/>
+
+    <item
+        android:id="@+id/action_clear_history"
+        android:title="@string/clear_history"
+        app:showAsAction="never"/>
+
+    <item
+        android:id="@+id/action_clear_today"
+        android:title="@string/clear_today_history"
+        app:showAsAction="never"/>
+
+    <item
+        android:id="@+id/action_clear_week"
+        android:title="@string/clear_week_history"
+        app:showAsAction="never"/>
+</menu>

@@ -1,0 +1,2096 @@
+package com.webstudio.easybrowser.ui.activity;
+
+import android.Manifest;
+import android.util.Log;
+import android.app.Dialog;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.ClipData;
+import android.content.ClipDescription;
+import android.content.ClipboardManager;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Typeface;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.net.NetworkInfo;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import androidx.preference.PreferenceManager;
+import android.text.Editable;
+import android.text.TextUtils;
+import android.text.TextWatcher;
+import android.view.Gravity;
+import android.view.GestureDetector;
+import android.view.KeyEvent;
+import android.view.MenuItem;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.Window;
+import android.view.WindowManager;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.EditText;
+import android.widget.ImageButton;
+import android.widget.ProgressBar;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.activity.OnBackPressedCallback;
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.Toolbar;
+import androidx.core.content.ContextCompat;
+import androidx.core.content.pm.ShortcutInfoCompat;
+import androidx.core.content.pm.ShortcutManagerCompat;
+import androidx.core.graphics.drawable.IconCompat;
+import androidx.lifecycle.ViewModelProvider;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
+
+import com.google.android.material.appbar.AppBarLayout;
+import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.slider.Slider;
+import com.google.android.material.snackbar.Snackbar;
+import com.webstudio.easybrowser.R;
+import com.webstudio.easybrowser.adapters.SuggestionsAdapter;
+import com.webstudio.easybrowser.managers.AppDownloadManager;
+import com.webstudio.easybrowser.managers.RuntimeManager;
+import com.webstudio.easybrowser.managers.TabManager;
+import com.webstudio.easybrowser.managers.TabThumbnailCache;
+import com.webstudio.easybrowser.models.Bookmark;
+import com.webstudio.easybrowser.models.HistoryItem;
+import com.webstudio.easybrowser.models.Tab;
+import com.webstudio.easybrowser.repository.BookmarkRepository;
+import com.webstudio.easybrowser.repository.HistoryRepository;
+import com.webstudio.easybrowser.repository.QuickAccessRepository;
+import com.webstudio.easybrowser.repository.ReadingListRepository;
+import com.webstudio.easybrowser.models.ReadingListItem;
+import com.webstudio.easybrowser.utils.SearchSuggestionProvider;
+import com.webstudio.easybrowser.utils.UrlUtils;
+
+import org.json.JSONObject;
+import org.mozilla.geckoview.GeckoResult;
+import org.mozilla.geckoview.GeckoSession;
+import org.mozilla.geckoview.GeckoSessionSettings;
+import org.mozilla.geckoview.GeckoView;
+import org.mozilla.geckoview.StorageController;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public class BrowserActivity extends AppCompatActivity {
+    static final int REQUEST_GECKO_PERMISSIONS = 1001;
+    private static final int REQUEST_INITIAL_PERMISSIONS = 1002;
+    private GeckoView geckoView;
+    GeckoSession session;
+    private BrowserViewModel browserViewModel;
+    TabManager tabManager;
+    EditText urlInput;
+    ProgressBar progressBar;
+    SwipeRefreshLayout swipeRefresh;
+    private ImageButton bookmarkButton;
+    private ImageButton pipButton;
+    ImageButton backButton;
+    private BookmarkRepository bookmarkRepository;
+    private HistoryRepository historyRepository;
+    private QuickAccessRepository quickAccessRepository;
+    String currentUrl;
+    String currentTitle;
+    private String lastRecordedUrl;
+    private boolean isCurrentPageBookmarked = false;
+    private BottomNavigationView bottomNav;
+    private boolean hadExistingTabsOnCreate;
+    private int contentScrollY = 0;
+    private AppBarLayout appBar;
+    private boolean browserChromeVisible = true;
+    private int lastChromeScrollY = 0;
+    private int accumulatedChromeScrollDelta = 0;
+    private static final int CHROME_SCROLL_THRESHOLD_PX = 48;
+    private View browserRoot;
+    private ConnectivityManager connectivityManager;
+    private ConnectivityManager.NetworkCallback connectivityCallback;
+    private BroadcastReceiver connectivityReceiver;
+    private final Handler connectivityHandler = new Handler(Looper.getMainLooper());
+    private Boolean lastOnlineState;
+
+    boolean canGoBack = false;
+    boolean canGoForward = false;
+    GeckoSession.PermissionDelegate.Callback pendingPermissionCallback;
+    GeckoSession.PromptDelegate.FilePrompt pendingFilePrompt;
+    GeckoResult<GeckoSession.PromptDelegate.PromptResponse> pendingFileResult;
+    BrowserHistoryDelegate historyDelegate;
+    private ActivityResultLauncher<Intent> filePickerLauncher;
+    private ActivityResultLauncher<Intent> tabsActivityLauncher;
+    private final SearchSuggestionProvider suggestionProvider = new SearchSuggestionProvider();
+
+    private boolean isDesktopMode = false;
+    private GestureDetector gestureDetector;
+
+    // F12 — Site info bottom sheet
+    GeckoSession.ProgressDelegate.SecurityInformation lastSecurityInfo;
+
+    // F9 — User Agent live re-apply
+    private String lastAppliedUaPreset = "";
+
+    // F11 — Reading list
+    private ReadingListRepository readingListRepository;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_browser);
+
+        initializeRepositories();
+        initializeViewModel();
+        initializeViews();
+        setupFilePicker();
+        setupTabsActivityLauncher();
+        setupUrlInput();
+        hadExistingTabsOnCreate = tabManager != null && tabManager.getTabCount() > 0;
+        setupTabManager();
+        attachTabToView(tabManager.getCurrentTab());
+        setupBackHandling();
+        setupSwipeGestures();
+        requestBrowserPermissions();
+
+        // Seed lastAppliedUaPreset so the first onResume() doesn't trigger a spurious reload
+        lastAppliedUaPreset = PreferenceManager.getDefaultSharedPreferences(this)
+                .getString("user_agent_preset", "mobile");
+
+        // Handle the incoming URL
+        handleIncomingIntent(getIntent(), hadExistingTabsOnCreate);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (session != null) {
+            session.setActive(true);
+        }
+        startConnectivityMonitoring();
+        // F9: Re-apply UA preset if it changed in settings
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        String currentPreset = prefs.getString("user_agent_preset", "mobile");
+        if (!currentPreset.equals(lastAppliedUaPreset) && session != null) {
+            lastAppliedUaPreset = currentPreset;
+            applyUaPresetToSession(session, prefs);
+            session.reload();
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        stopConnectivityMonitoring();
+        if (session != null) {
+            session.setActive(false);
+        }
+        super.onStop();
+    }
+
+    private void startConnectivityMonitoring() {
+        connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (connectivityManager == null) {
+            return;
+        }
+
+        if (lastOnlineState == null) {
+            lastOnlineState = isInternetAvailable();
+            if (!lastOnlineState) {
+                showConnectivityMessage(R.string.network_status_offline);
+            }
+        }
+
+        if (connectivityCallback == null) {
+            connectivityCallback = new ConnectivityManager.NetworkCallback() {
+                @Override
+                public void onAvailable(@NonNull Network network) {
+                    scheduleConnectivityChecks();
+                }
+
+                @Override
+                public void onLost(@NonNull Network network) {
+                    scheduleConnectivityChecks();
+                }
+
+                @Override
+                public void onUnavailable() {
+                    scheduleConnectivityChecks();
+                }
+
+                @Override
+                public void onCapabilitiesChanged(@NonNull Network network,
+                                                  @NonNull NetworkCapabilities networkCapabilities) {
+                    scheduleConnectivityChecks();
+                }
+            };
+
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    connectivityManager.registerDefaultNetworkCallback(connectivityCallback);
+                } else {
+                    android.net.NetworkRequest request = new android.net.NetworkRequest.Builder()
+                            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                            .build();
+                    connectivityManager.registerNetworkCallback(request, connectivityCallback);
+                }
+            } catch (Exception ignored) {
+                connectivityCallback = null;
+            }
+        }
+
+        if (connectivityReceiver == null) {
+            connectivityReceiver = new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context context, Intent intent) {
+                    scheduleConnectivityChecks();
+                }
+            };
+            IntentFilter filter = new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(connectivityReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+            } else {
+                registerReceiver(connectivityReceiver, filter);
+            }
+        }
+    }
+
+    private void stopConnectivityMonitoring() {
+        connectivityHandler.removeCallbacksAndMessages(null);
+        if (connectivityManager != null && connectivityCallback != null) {
+            try {
+                connectivityManager.unregisterNetworkCallback(connectivityCallback);
+            } catch (Exception ignored) {
+            } finally {
+                connectivityCallback = null;
+            }
+        }
+        if (connectivityReceiver != null) {
+            try {
+                unregisterReceiver(connectivityReceiver);
+            } catch (Exception ignored) {
+            } finally {
+                connectivityReceiver = null;
+            }
+        }
+    }
+
+    private void scheduleConnectivityChecks() {
+        runOnUiThread(() -> {
+            checkConnectivityNow();
+            connectivityHandler.postDelayed(this::checkConnectivityNow, 300);
+            connectivityHandler.postDelayed(this::checkConnectivityNow, 1200);
+        });
+    }
+
+    private void checkConnectivityNow() {
+        handleConnectivityChanged(isInternetAvailable());
+    }
+
+    private boolean isInternetAvailable() {
+        if (connectivityManager == null) {
+            connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        }
+        if (connectivityManager == null) {
+            return false;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            Network activeNetwork = connectivityManager.getActiveNetwork();
+            if (activeNetwork == null) {
+                return false;
+            }
+            NetworkCapabilities capabilities = connectivityManager.getNetworkCapabilities(activeNetwork);
+            return capabilities != null
+                    && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+        }
+        NetworkInfo activeNetworkInfo = connectivityManager.getActiveNetworkInfo();
+        return activeNetworkInfo != null && activeNetworkInfo.isConnected();
+    }
+
+    private void handleConnectivityChanged(boolean isOnline) {
+        if (lastOnlineState != null && lastOnlineState == isOnline) {
+            return;
+        }
+        lastOnlineState = isOnline;
+        showConnectivityMessage(isOnline
+                ? R.string.network_status_online
+                : R.string.network_status_offline);
+    }
+
+    private void showConnectivityMessage(int messageResId) {
+        View anchorView = browserRoot != null ? browserRoot : geckoView;
+        if (anchorView == null) {
+            return;
+        }
+        Snackbar snackbar = Snackbar.make(anchorView, messageResId, Snackbar.LENGTH_LONG);
+        if (bottomNav != null && browserChromeVisible && bottomNav.getTranslationY() == 0f) {
+            snackbar.setAnchorView(bottomNav);
+        }
+        snackbar.show();
+    }
+
+    private void initializeViewModel() {
+        browserViewModel = new ViewModelProvider(this).get(BrowserViewModel.class);
+        tabManager = browserViewModel.getTabManager();
+    }
+
+    private void requestBrowserPermissions() {
+        List<String> permissions = new ArrayList<>();
+        addPermissionIfNeeded(permissions, Manifest.permission.CAMERA);
+        addPermissionIfNeeded(permissions, Manifest.permission.RECORD_AUDIO);
+        addPermissionIfNeeded(permissions, Manifest.permission.ACCESS_FINE_LOCATION);
+        addPermissionIfNeeded(permissions, Manifest.permission.ACCESS_COARSE_LOCATION);
+        if (Build.VERSION.SDK_INT >= 33) {
+            addPermissionIfNeeded(permissions, Manifest.permission.POST_NOTIFICATIONS);
+            addPermissionIfNeeded(permissions, Manifest.permission.READ_MEDIA_IMAGES);
+            addPermissionIfNeeded(permissions, Manifest.permission.READ_MEDIA_VIDEO);
+            addPermissionIfNeeded(permissions, Manifest.permission.READ_MEDIA_AUDIO);
+        } else {
+            addPermissionIfNeeded(permissions, Manifest.permission.READ_EXTERNAL_STORAGE);
+        }
+        if (!permissions.isEmpty()) {
+            androidx.core.app.ActivityCompat.requestPermissions(
+                    this, permissions.toArray(new String[0]), REQUEST_INITIAL_PERMISSIONS);
+        }
+    }
+
+    private void addPermissionIfNeeded(List<String> permissions, String permission) {
+        if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+            permissions.add(permission);
+        }
+    }
+
+    private void setupFilePicker() {
+        filePickerLauncher = registerForActivityResult(
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    if (pendingFilePrompt == null) {
+                        return;
+                    }
+                    if (result.getResultCode() != RESULT_OK || result.getData() == null) {
+                        completeFilePrompt(pendingFilePrompt.dismiss());
+                        pendingFilePrompt = null;
+                        return;
+                    }
+
+                    Uri[] pickedUris = extractPickedUris(result.getData());
+                    Uri[] fileUris = copyPickedUrisToCache(pickedUris);
+                    if (fileUris.length == 0) {
+                        completeFilePrompt(pendingFilePrompt.dismiss());
+                    } else {
+                        completeFilePrompt(pendingFilePrompt.confirm(getApplicationContext(), fileUris));
+                    }
+                    pendingFilePrompt = null;
+                });
+    }
+
+    private void setupTabsActivityLauncher() {
+        tabsActivityLauncher = registerForActivityResult(
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    if (result.getData() != null) {
+                        handleTabsResult(result.getData());
+                    }
+                });
+    }
+
+    private void initializeRepositories() {
+        bookmarkRepository = new BookmarkRepository(this);
+        historyRepository = new HistoryRepository(this);
+        quickAccessRepository = new QuickAccessRepository(this);
+        readingListRepository = new ReadingListRepository(this);
+    }
+
+    private void initializeViews() {
+        Toolbar toolbar = findViewById(R.id.toolbar);
+        appBar = findViewById(R.id.app_bar);
+        setSupportActionBar(toolbar);
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setDisplayShowTitleEnabled(false);
+        }
+
+        geckoView = findViewById(R.id.gecko_view);
+        urlInput = findViewById(R.id.url_input);
+        progressBar = findViewById(R.id.progress_bar);
+        bookmarkButton = findViewById(R.id.btn_bookmark);
+        pipButton = findViewById(R.id.btn_pip);
+        backButton = findViewById(R.id.btn_back);
+        swipeRefresh = findViewById(R.id.swipe_refresh);
+        browserRoot = findViewById(R.id.browser_root);
+
+        swipeRefresh.setOnChildScrollUpCallback((parent, child) ->
+                contentScrollY > 0 || (geckoView != null && geckoView.canScrollVertically(-1)));
+        swipeRefresh.setOnRefreshListener(() -> {
+            if (session != null && contentScrollY <= 0) {
+                session.reload();
+            } else {
+                swipeRefresh.setRefreshing(false);
+            }
+        });
+
+        bookmarkButton.setOnClickListener(v -> toggleBookmark());
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            pipButton.setVisibility(android.view.View.VISIBLE);
+            pipButton.setOnClickListener(v -> enterPip());
+        }
+        // F12: Site info bottom sheet
+        ImageButton securityButton = findViewById(R.id.btn_security);
+        if (securityButton != null) {
+            securityButton.setOnClickListener(v -> showSiteInfoBottomSheet());
+        }
+        backButton.setOnClickListener(v -> {
+            if (session != null && canGoBack) {
+                session.goBack();
+            }
+        });
+        backButton.setOnLongClickListener(v -> {
+            showNavigationHistoryDialog();
+            return true;
+        });
+
+        bottomNav = findViewById(R.id.bottom_navigation);
+        setupBottomNavigation();
+    }
+
+    private void handleIncomingIntent(Intent intent, boolean preserveExistingTabWithoutUrl) {
+        if (intent != null) {
+            if (intent.getBooleanExtra("private_tab", false) && tabManager != null) {
+                attachTabToView(tabManager.createNewTab(true));
+                return;
+            }
+            String url = sanitizeIncomingIntentUrl(intent.getStringExtra("url"));
+            if (intent.getBooleanExtra("new_tab", false) && tabManager != null) {
+                attachTabToView(tabManager.createNewTab(false, url == null || url.isEmpty()));
+                if (url == null || url.isEmpty()) {
+                    return;
+                }
+            }
+            if (url != null && !url.isEmpty()) {
+                loadUrl(url);
+            } else if (preserveExistingTabWithoutUrl) {
+                attachTabToView(tabManager.getCurrentTab());
+            } else if (tabManager != null && tabManager.hasRestoredTabs()) {
+                attachTabToView(tabManager.getCurrentTab());
+            } else {
+                loadUrl(UrlUtils.getNewTabPageUrl(this));
+            }
+            if (intent.getBooleanExtra("show_tabs", false)) {
+                launchTabsActivity();
+            }
+        }
+    }
+
+    /**
+     * Drop intent-extra URLs whose scheme isn't http(s). Other apps can hand us a
+     * "url" extra via ACTION_VIEW; allowing javascript:/file:/data: there would let
+     * a third-party app execute script or read local files in the browser context.
+     */
+    private String sanitizeIncomingIntentUrl(String url) {
+        if (url == null || url.isEmpty()) {
+            return null;
+        }
+        String trimmed = url.trim();
+        String lower = trimmed.toLowerCase(java.util.Locale.US);
+        if (lower.startsWith("http://") || lower.startsWith("https://")) {
+            return trimmed;
+        }
+        return null;
+    }
+
+    private void setupUrlInput() {
+        urlInput.setOnClickListener(v -> showSearchPopup());
+        urlInput.setOnFocusChangeListener((v, hasFocus) -> {
+            if (hasFocus) {
+                showSearchPopup();
+            }
+        });
+        urlInput.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_GO ||
+                    actionId == EditorInfo.IME_ACTION_SEARCH ||
+                    (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER &&
+                            event.getAction() == KeyEvent.ACTION_DOWN)) {
+                handleUrlInput(urlInput.getText().toString());
+                hideKeyboard();
+                return true;
+            }
+            return false;
+        });
+    }
+
+    private void showSearchPopup() {
+        final Dialog dialog = new Dialog(this, android.R.style.Theme_Translucent_NoTitleBar);
+        dialog.setContentView(R.layout.dialog_search_popup);
+        dialog.setCanceledOnTouchOutside(true);
+
+        EditText searchInput = dialog.findViewById(R.id.search_popup_input);
+        ImageButton popupMic = dialog.findViewById(R.id.btn_search_popup_mic);
+        ImageButton popupGo = dialog.findViewById(R.id.btn_search_popup_go);
+        RecyclerView suggestionsRecycler = dialog.findViewById(R.id.suggestions_recycler);
+        popupMic.setVisibility(View.GONE);
+
+        SuggestionsAdapter suggestionsAdapter = new SuggestionsAdapter(suggestion -> {
+            handleUrlInput(suggestion);
+            dialog.dismiss();
+        });
+        suggestionsRecycler.setLayoutManager(new LinearLayoutManager(this));
+        suggestionsRecycler.setAdapter(suggestionsAdapter);
+
+        searchInput.setText(urlInput.getText());
+        searchInput.selectAll();
+        searchInput.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void afterTextChanged(Editable s) {}
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                String query = s.toString().trim();
+                if (query.isEmpty()) {
+                    suggestionsRecycler.setVisibility(View.GONE);
+                    return;
+                }
+                suggestionProvider.fetchSuggestions(query, suggestions -> runOnUiThread(() -> {
+                    if (suggestions.isEmpty()) {
+                        suggestionsRecycler.setVisibility(View.GONE);
+                    } else {
+                        suggestionsAdapter.setSuggestions(suggestions);
+                        suggestionsRecycler.setVisibility(View.VISIBLE);
+                    }
+                }));
+            }
+        });
+
+        popupGo.setOnClickListener(v -> {
+            handleUrlInput(searchInput.getText().toString());
+            dialog.dismiss();
+        });
+        searchInput.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_GO ||
+                    actionId == EditorInfo.IME_ACTION_SEARCH ||
+                    (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER &&
+                            event.getAction() == KeyEvent.ACTION_DOWN)) {
+                handleUrlInput(searchInput.getText().toString());
+                dialog.dismiss();
+                return true;
+            }
+            return false;
+        });
+
+        dialog.setOnShowListener(d -> {
+            Window window = dialog.getWindow();
+            if (window != null) {
+                window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(
+                        android.graphics.Color.TRANSPARENT));
+                window.setLayout(WindowManager.LayoutParams.MATCH_PARENT,
+                        WindowManager.LayoutParams.WRAP_CONTENT);
+                window.setGravity(Gravity.TOP);
+                WindowManager.LayoutParams attributes = window.getAttributes();
+                attributes.dimAmount = 0.28f;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    attributes.setBlurBehindRadius(32);
+                }
+                window.setAttributes(attributes);
+                window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
+                }
+                window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE
+                        | WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+                window.setWindowAnimations(R.style.SearchPopupAnimation);
+            }
+            searchInput.requestFocus();
+            InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm != null) {
+                imm.showSoftInput(searchInput, InputMethodManager.SHOW_IMPLICIT);
+            }
+        });
+        dialog.setOnDismissListener(d -> urlInput.clearFocus());
+        dialog.show();
+    }
+
+    private void hideKeyboard() {
+        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null) {
+            imm.hideSoftInputFromWindow(urlInput.getWindowToken(), 0);
+        }
+        urlInput.clearFocus();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleIncomingIntent(intent, true);
+    }
+
+    private void setupBackHandling() {
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                if (session != null && canGoBack) {
+                    session.goBack();
+                } else if (shouldCloseCurrentTabOnBack()
+                        && tabManager.closeCurrentTabAndSwitchToPrevious()) {
+                    updateTabCount();
+                } else if (tabManager != null && tabManager.switchToPreviousTab()) {
+                    updateTabCount();
+                } else {
+                    moveTaskToBack(true);
+                }
+            }
+        });
+    }
+
+    private boolean shouldCloseCurrentTabOnBack() {
+        if (tabManager == null) {
+            return false;
+        }
+        Tab currentTab = tabManager.getCurrentTab();
+        return currentTab != null && currentTab.shouldCloseOnBackToPreviousTab();
+    }
+
+    private void setupTabManager() {
+        TabManager.OnTabChangeListener listener = new TabManager.OnTabChangeListener() {
+            @Override
+            public void onTabChanged(Tab tab) {
+                attachTabToView(tab);
+            }
+
+            @Override
+            public void onTabCountChanged(int count) {
+                updateTabCount();
+            }
+        };
+
+        tabManager.setOnTabChangeListener(listener);
+        updateTabCount();
+    }
+
+    private void attachTabToView(Tab tab) {
+        if (tab == null || tab.getSession() == null || geckoView == null) {
+            return;
+        }
+        showBrowserChrome(false);
+        contentScrollY = 0;
+        lastChromeScrollY = 0;
+        accumulatedChromeScrollDelta = 0;
+        session = tab.getSession();
+        if (tab.isPrivate()) {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        } else {
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        }
+        session.getSettings().setAllowJavascript(PreferenceManager
+                .getDefaultSharedPreferences(this)
+                .getBoolean("javascript_enabled", true));
+        configureSession(session);
+        geckoView.setSession(session);
+        updateUIForTab(tab);
+        if (tab.isInitialLoadPending()) {
+            String tabUrl = tab.getUrl();
+            tab.setInitialLoadPending(false);
+            if (tabUrl != null && !tabUrl.trim().isEmpty() && !"about:blank".equals(tabUrl)) {
+                session.loadUri(tabUrl);
+            }
+        }
+    }
+
+    private void configureSession(GeckoSession targetSession) {
+        targetSession.setNavigationDelegate(new BrowserNavigationDelegate(this));
+        targetSession.setContentDelegate(new BrowserContentDelegate(this));
+        targetSession.setProgressDelegate(new BrowserProgressDelegate(this));
+        targetSession.setScrollDelegate(new GeckoSession.ScrollDelegate() {
+            @Override
+            public void onScrollChanged(@NonNull GeckoSession scrollSession,
+                                        int scrollX, int scrollY) {
+                if (scrollSession == session) {
+                    contentScrollY = Math.max(0, scrollY);
+                    handleBrowserChromeForScroll(contentScrollY);
+                }
+            }
+        });
+        targetSession.setPromptDelegate(new BrowserPromptDelegate(this));
+        targetSession.setPermissionDelegate(new BrowserPermissionDelegate(this));
+        historyDelegate = new BrowserHistoryDelegate(this);
+        targetSession.setHistoryDelegate(historyDelegate);
+    }
+
+    void onSessionStateChanged(@NonNull GeckoSession stateSession,
+                               @NonNull GeckoSession.SessionState state) {
+        if (tabManager != null) {
+            tabManager.updateTabSessionState(stateSession, state.toString());
+        }
+    }
+
+    private void toggleBookmark() {
+        if (currentUrl == null || currentUrl.trim().isEmpty() || "about:blank".equals(currentUrl)) {
+            return;
+        }
+        if (isCurrentPageBookmarked) {
+            // Remove bookmark
+            bookmarkRepository.getAllBookmarks(new BookmarkRepository.BookmarkCallback() {
+                @Override
+                public void onBookmarksLoaded(List<Bookmark> bookmarks) {
+                    for (Bookmark bookmark : bookmarks) {
+                        if (bookmark.getUrl().equals(currentUrl)) {
+                            bookmarkRepository.removeBookmark(bookmark, this);
+                            break;
+                        }
+                    }
+                }
+
+                @Override
+                public void onBookmarkAdded(Bookmark bookmark) {
+                }
+
+                @Override
+                public void onBookmarkRemoved(Bookmark bookmark) {
+                    runOnUiThread(() -> {
+                        isCurrentPageBookmarked = false;
+                        updateBookmarkIcon();
+                        Toast.makeText(BrowserActivity.this,
+                                R.string.bookmark_removed_message,
+                                Toast.LENGTH_SHORT).show();
+                    });
+                }
+            });
+        } else {
+            // Add bookmark
+            Bookmark newBookmark = new Bookmark(currentTitle, currentUrl);
+            bookmarkRepository.addBookmark(newBookmark, new BookmarkRepository.BookmarkCallback() {
+                @Override
+                public void onBookmarksLoaded(List<Bookmark> bookmarks) {
+                }
+
+                @Override
+                public void onBookmarkAdded(Bookmark bookmark) {
+                    runOnUiThread(() -> {
+                        isCurrentPageBookmarked = true;
+                        updateBookmarkIcon();
+                        Toast.makeText(BrowserActivity.this,
+                                R.string.bookmark_added_message,
+                                Toast.LENGTH_SHORT).show();
+                    });
+                }
+
+                @Override
+                public void onBookmarkRemoved(Bookmark bookmark) {
+                }
+            });
+        }
+    }
+
+    void updateBookmarkStatus() {
+        // Add null check for currentUrl
+        if (currentUrl == null) {
+            return;
+        }
+
+        bookmarkRepository.getAllBookmarks(new BookmarkRepository.BookmarkCallback() {
+            @Override
+            public void onBookmarksLoaded(List<Bookmark> bookmarks) {
+                isCurrentPageBookmarked = false;
+                for (Bookmark bookmark : bookmarks) {
+                    if (bookmark.getUrl() != null && bookmark.getUrl().equals(currentUrl)) {
+                        isCurrentPageBookmarked = true;
+                        break;
+                    }
+                }
+                runOnUiThread(() -> updateBookmarkIcon());
+            }
+
+            @Override
+            public void onBookmarkAdded(Bookmark bookmark) {
+            }
+
+            @Override
+            public void onBookmarkRemoved(Bookmark bookmark) {
+            }
+        });
+    }
+
+    private void handleUrlInput(String input) {
+        if (input == null || input.trim().isEmpty()) {
+            return;
+        }
+
+        input = input.trim();
+
+        if (tabManager.getCurrentTab() == null) {
+            tabManager.createNewTab(false);
+        }
+
+        loadUrl(UrlUtils.getUrlOrSearchUrl(this, input));
+    }
+
+    void loadUrl(String url) {
+        if (tabManager == null) {
+            return;
+        }
+        if (tabManager.getCurrentTab() == null) {
+            attachTabToView(tabManager.createNewTab(false));
+        }
+        Tab currentTab = tabManager.getCurrentTab();
+        if (currentTab != null && currentTab.getSession() != null) {
+            url = UrlUtils.sanitizeUrl(url);
+            urlInput.setText(url);
+            currentUrl = url;
+            currentTab.setInitialLoadPending(false);
+            tabManager.updateTabUrl(currentTab, url);
+            attachTabToView(currentTab);
+            currentTab.getSession().loadUri(url);
+        }
+    }
+
+    private void updateUIForTab(Tab tab) {
+        if (tab != null) {
+            urlInput.setText(tab.getUrl());
+            currentUrl = tab.getUrl();
+            currentTitle = tab.getTitle();
+            canGoBack = tab.canGoBack();
+            canGoForward = tab.canGoForward();
+            if (backButton != null) {
+                backButton.setVisibility(canGoBack ? View.VISIBLE : View.GONE);
+            }
+            invalidateOptionsMenu();
+
+            // Update favicon if available
+            if (tab.getFavicon() != null) {
+                ImageButton securityButton = findViewById(R.id.btn_security);
+                securityButton.setImageBitmap(tab.getFavicon());
+            }
+
+            updateBookmarkStatus();
+        }
+    }
+
+    private void updateTabCount() {
+        if (bottomNav == null) {
+            return;
+        }
+        MenuItem tabsItem = bottomNav.getMenu().findItem(R.id.nav_tabs);
+        if (tabsItem != null) {
+            if (tabManager != null) {
+                int count = tabManager.getTabCount();
+                bottomNav.removeBadge(R.id.nav_tabs);
+                tabsItem.setIcon(createTabCountIcon(count));
+                bottomNav.post(() -> tabsItem.setIcon(createTabCountIcon(tabManager.getTabCount())));
+            }
+        }
+    }
+
+    private void launchTabsActivity() {
+        if (tabManager == null || tabsActivityLauncher == null) {
+            return;
+        }
+        captureCurrentTabThumbnail();
+        ArrayList<String> ids = new ArrayList<>();
+        ArrayList<String> titles = new ArrayList<>();
+        ArrayList<String> urls = new ArrayList<>();
+        ArrayList<String> groups = new ArrayList<>();
+        ArrayList<String> parentIds = new ArrayList<>();
+        boolean[] privateStates = new boolean[tabManager.getTabCount()];
+        List<Tab> tabs = tabManager.getTabs();
+        for (int i = 0; i < tabs.size(); i++) {
+            Tab tab = tabs.get(i);
+            ids.add(tab.getId());
+            titles.add(tab.getTitle());
+            urls.add(tab.getUrl());
+            groups.add(tab.getGroupName() != null ? tab.getGroupName() : "");
+            parentIds.add(tab.getParentTabId() != null ? tab.getParentTabId() : "");
+            privateStates[i] = tab.isPrivate();
+        }
+        String currentTabId = tabManager.getCurrentTab() != null
+                ? tabManager.getCurrentTab().getId()
+                : null;
+        ArrayList<String> closedTitles = new ArrayList<>();
+        ArrayList<String> closedUrls = new ArrayList<>();
+        for (TabManager.ClosedTab ct : tabManager.getRecentlyClosed()) {
+            closedTitles.add(ct.title != null ? ct.title : "");
+            closedUrls.add(ct.url);
+        }
+        Intent intent = new Intent(this, TabsActivity.class)
+                .putStringArrayListExtra(TabsActivity.EXTRA_TAB_IDS, ids)
+                .putStringArrayListExtra(TabsActivity.EXTRA_TAB_TITLES, titles)
+                .putStringArrayListExtra(TabsActivity.EXTRA_TAB_URLS, urls)
+                .putExtra(TabsActivity.EXTRA_TAB_PRIVATE_STATES, privateStates)
+                .putExtra(TabsActivity.EXTRA_CURRENT_TAB_ID, currentTabId)
+                .putStringArrayListExtra(TabsActivity.EXTRA_CLOSED_TAB_TITLES, closedTitles)
+                .putStringArrayListExtra(TabsActivity.EXTRA_CLOSED_TAB_URLS, closedUrls)
+                .putStringArrayListExtra(TabsActivity.EXTRA_TAB_GROUPS, groups)
+                .putStringArrayListExtra(TabsActivity.EXTRA_TAB_PARENT_IDS, parentIds);
+        tabsActivityLauncher.launch(intent);
+    }
+
+    private void captureCurrentTabThumbnail() {
+        if (tabManager == null || geckoView == null) return;
+        Tab cur = tabManager.getCurrentTab();
+        if (cur == null || cur.getSession() == null || cur.isPrivate()) return;
+        String tabId = cur.getId();
+        try {
+            geckoView.capturePixels().then(bitmap -> {
+                if (bitmap != null) {
+                    TabThumbnailCache.put(tabId, bitmap);
+                }
+                return GeckoResult.fromValue(null);
+            }, error -> GeckoResult.fromValue(null));
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void handleTabsResult(Intent data) {
+        if (tabManager == null) {
+            return;
+        }
+        ArrayList<String> closedIds = data.getStringArrayListExtra(TabsActivity.RESULT_CLOSED_TAB_IDS);
+        if (closedIds != null) {
+            for (String closedId : closedIds) {
+                closeTabById(closedId);
+            }
+        }
+        if (data.hasExtra(TabsActivity.RESULT_CREATE_PRIVATE_TAB)) {
+            createNewTab(data.getBooleanExtra(TabsActivity.RESULT_CREATE_PRIVATE_TAB, false));
+            return;
+        }
+        String restoreUrl = data.getStringExtra(TabsActivity.RESULT_RESTORE_URL);
+        if (restoreUrl != null) {
+            openUrlInNewTab(restoreUrl, false);
+            updateTabCount();
+            return;
+        }
+        applyTabGroupResults(data);
+        String selectedTabId = data.getStringExtra(TabsActivity.RESULT_SELECTED_TAB_ID);
+        if (selectedTabId != null) {
+            switchToTabById(selectedTabId);
+        } else {
+            attachTabToView(tabManager.getCurrentTab());
+        }
+        updateTabCount();
+    }
+
+    private void applyTabGroupResults(Intent data) {
+        ArrayList<String> groupIds = data.getStringArrayListExtra(TabsActivity.RESULT_TAB_GROUP_IDS);
+        ArrayList<String> groupNames = data.getStringArrayListExtra(TabsActivity.RESULT_TAB_GROUP_NAMES);
+        if (groupIds == null || groupNames == null) {
+            return;
+        }
+        int count = Math.min(groupIds.size(), groupNames.size());
+        boolean changed = false;
+        for (Tab tab : tabManager.getTabs()) {
+            for (int i = 0; i < count; i++) {
+                if (tab.getId().equals(groupIds.get(i))) {
+                    String groupName = groupNames.get(i);
+                    tab.setGroupName(groupName == null || groupName.trim().isEmpty()
+                            ? null
+                            : groupName);
+                    changed = true;
+                    break;
+                }
+            }
+        }
+        if (changed) {
+            tabManager.persistCurrentTabGroup();
+        }
+    }
+
+    private void closeTabById(String tabId) {
+        for (Tab tab : tabManager.getTabs()) {
+            if (tab.getId().equals(tabId)) {
+                tabManager.closeTab(tab);
+                return;
+            }
+        }
+    }
+
+    private void switchToTabById(String tabId) {
+        for (Tab tab : tabManager.getTabs()) {
+            if (tab.getId().equals(tabId)) {
+                tabManager.switchToTab(tab);
+                return;
+            }
+        }
+    }
+
+    private Drawable createTabCountIcon(int count) {
+        int size = dp(28);
+        int strokeWidth = dp(2);
+        Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        int iconColor = ContextCompat.getColor(this, R.color.black);
+
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(strokeWidth);
+        paint.setColor(iconColor);
+        float inset = strokeWidth / 2f + dp(3);
+        canvas.drawRoundRect(inset, inset, size - inset, size - inset, dp(4), dp(4), paint);
+
+        String label = count > 99 ? "99+" : String.valueOf(count);
+        paint.setStyle(Paint.Style.FILL);
+        paint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
+        paint.setTextAlign(Paint.Align.CENTER);
+        paint.setTextSize(count > 99 ? dp(8) : dp(11));
+        Paint.FontMetrics metrics = paint.getFontMetrics();
+        float y = size / 2f - (metrics.ascent + metrics.descent) / 2f;
+        canvas.drawText(label, size / 2f, y, paint);
+
+        return new BitmapDrawable(getResources(), bitmap);
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private void updateBookmarkIcon() {
+        if (isCurrentPageBookmarked) {
+            bookmarkButton.setImageResource(R.drawable.ic_bookmarks);
+        } else {
+            bookmarkButton.setImageResource(R.drawable.ic_bookmark_border);
+        }
+    }
+
+    private void setupBottomNavigation() {
+        bottomNav.setOnItemSelectedListener(item -> {
+            int itemId = item.getItemId();
+            if (itemId == R.id.nav_home) {
+                loadUrl(UrlUtils.getNewTabPageUrl(this));
+                return true;
+            } else if (itemId == R.id.nav_bookmarks) {
+                startActivity(new Intent(this, BookmarksActivity.class));
+                return true;
+            } else if (itemId == R.id.nav_search) {
+                showSearchPopup();
+                return true;
+            } else if (itemId == R.id.nav_tabs) {
+                launchTabsActivity();
+                return true;
+            } else if (itemId == R.id.nav_settings) {
+                showMoreMenu();
+                return true;
+            }
+            return false;
+        });
+
+        // Update initial tab count
+        updateTabCount();
+    }
+
+    private void handleBrowserChromeForScroll(int scrollY) {
+        if (appBar == null || bottomNav == null) {
+            return;
+        }
+        if (scrollY <= dp(12)) {
+            showBrowserChrome(true);
+            lastChromeScrollY = scrollY;
+            accumulatedChromeScrollDelta = 0;
+            return;
+        }
+
+        int delta = scrollY - lastChromeScrollY;
+        lastChromeScrollY = scrollY;
+        if (Math.abs(delta) < 2) {
+            return;
+        }
+
+        if (delta > 0) {
+            accumulatedChromeScrollDelta = Math.max(0, accumulatedChromeScrollDelta) + delta;
+            if (accumulatedChromeScrollDelta > dp(CHROME_SCROLL_THRESHOLD_PX)) {
+                hideBrowserChrome();
+                accumulatedChromeScrollDelta = 0;
+            }
+        } else {
+            accumulatedChromeScrollDelta = Math.min(0, accumulatedChromeScrollDelta) + delta;
+            if (Math.abs(accumulatedChromeScrollDelta) > dp(CHROME_SCROLL_THRESHOLD_PX / 2)) {
+                showBrowserChrome(true);
+                accumulatedChromeScrollDelta = 0;
+            }
+        }
+    }
+
+    private void hideBrowserChrome() {
+        if (!browserChromeVisible || appBar == null || bottomNav == null) {
+            return;
+        }
+        browserChromeVisible = false;
+        appBar.setExpanded(false, true);
+        bottomNav.animate()
+                .translationY(bottomNav.getHeight())
+                .setDuration(180)
+                .start();
+    }
+
+    private void showBrowserChrome(boolean animated) {
+        if (browserChromeVisible && appBar != null && bottomNav != null) {
+            return;
+        }
+        browserChromeVisible = true;
+        if (appBar != null) {
+            appBar.setExpanded(true, animated);
+        }
+        if (bottomNav != null) {
+            bottomNav.animate()
+                    .translationY(0f)
+                    .setDuration(animated ? 180 : 0)
+                    .start();
+        }
+    }
+
+    private void showMoreMenu() {
+        View anchor = bottomNav.findViewById(R.id.nav_settings);
+        List<MoreMenuPopup.Action> navigationActions = new ArrayList<>();
+        navigationActions.add(new MoreMenuPopup.Action(R.drawable.ic_arrow_back, R.string.back,
+                canGoBack, () -> {
+            if (session != null && canGoBack) {
+                session.goBack();
+            }
+        }));
+        navigationActions.add(new MoreMenuPopup.Action(R.drawable.ic_arrow_forward, R.string.forward,
+                canGoForward, () -> {
+            if (session != null && canGoForward) {
+                session.goForward();
+            }
+        }));
+        navigationActions.add(new MoreMenuPopup.Action(R.drawable.ic_reload, R.string.reload,
+                session != null, () -> {
+            if (session != null) {
+                session.reload();
+            }
+        }));
+        navigationActions.add(new MoreMenuPopup.Action(R.drawable.ic_share, R.string.share,
+                currentUrl != null && !currentUrl.trim().isEmpty(), this::shareCurrentPage));
+
+        List<MoreMenuPopup.Action> menuActions = new ArrayList<>();
+        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_add, R.string.new_tab,
+                true, () -> createNewTab(false)));
+        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_add, R.string.new_private_tab,
+                true, () -> createNewTab(true)));
+        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_history, R.string.history,
+                true, () -> startActivity(new Intent(this, HistoryActivity.class))));
+        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_download, R.string.downloads,
+                true, () -> startActivity(new Intent(this, DownloadsActivity.class))));
+        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_bookmarks, R.string.bookmarks,
+                true, () -> startActivity(new Intent(this, BookmarksActivity.class))));
+        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_search, R.string.find_in_page,
+                session != null, this::showFindInPageDialog));
+        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_desktop, R.string.desktop_site,
+                session != null, this::toggleDesktopSite));
+        boolean isReaderMode = currentUrl != null && currentUrl.startsWith("about:reader");
+        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_recent,
+                isReaderMode ? R.string.reader_mode_on : R.string.reader_mode,
+                session != null && currentUrl != null,
+                this::toggleReaderMode));
+        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_add, R.string.add_to_quick_access,
+                currentUrl != null && !currentUrl.trim().isEmpty(),
+                this::addCurrentPageToQuickAccess));
+        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_search, R.string.zoom_for_site,
+                currentUrl != null && !currentUrl.trim().isEmpty()
+                        && !"about:blank".equals(currentUrl),
+                this::showSiteZoomDialog));
+        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_download, R.string.save_page,
+                session != null, this::savePageAsPdf));
+        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_add, R.string.add_to_home_screen,
+                currentUrl != null && !currentUrl.trim().isEmpty() && !"about:blank".equals(currentUrl),
+                this::addToHomeScreen));
+        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_history, R.string.reading_list,
+                true, () -> startActivity(new Intent(this, ReadingListActivity.class))));
+        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_download, R.string.save_to_reading_list,
+                session != null && currentUrl != null && !currentUrl.trim().isEmpty(),
+                this::saveToReadingList));
+        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_add, R.string.extensions,
+                true, () -> startActivity(new Intent(this, ExtensionsActivity.class))));
+        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_settings, R.string.settings,
+                true, () -> startActivity(new Intent(this, SettingsActivity.class))));
+        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_exit, R.string.exit,
+                true, this::exitApp));
+
+        MoreMenuPopup.show(this, anchor, navigationActions, menuActions);
+    }
+
+    private void createNewTab(boolean isPrivate) {
+        if (tabManager != null) {
+            Tab newTab = tabManager.createNewTab(isPrivate);
+            attachTabToView(newTab);
+            if (!isPrivate) {
+                urlInput.setText(newTab.getUrl());
+            } else {
+                urlInput.setText("");
+                Toast.makeText(this, R.string.private_tab_started, Toast.LENGTH_SHORT).show();
+            }
+            updateTabCount();
+        }
+    }
+
+    void recordHistory() {
+        if (currentUrl == null || currentUrl.isEmpty() || "about:blank".equals(currentUrl)) {
+            return;
+        }
+        if (!PreferenceManager.getDefaultSharedPreferences(this).getBoolean("save_history", true)) {
+            return;
+        }
+        if (currentUrl.equals(lastRecordedUrl)) {
+            return;
+        }
+        Tab currentTab = tabManager != null ? tabManager.getCurrentTab() : null;
+        if (currentTab != null && currentTab.isPrivate()) {
+            return;
+        }
+        String title = currentTitle != null && !currentTitle.isEmpty() ? currentTitle : currentUrl;
+        lastRecordedUrl = currentUrl;
+        String adBlockLevel = PreferenceManager.getDefaultSharedPreferences(this)
+                .getString("ad_blocking_level", "balanced");
+        boolean isProtected = !"off".equals(adBlockLevel);
+        incrementPrivacyStats(isProtected ? 1 : 0, estimateBlockedItems());
+        if (!UrlUtils.isSearchResultsUrl(this, currentUrl)) {
+            String quickAccessUrl = UrlUtils.getSiteOrigin(currentUrl);
+            String quickAccessTitle = UrlUtils.getDisplayHost(currentUrl);
+            quickAccessRepository.updateQuickAccessItem(
+                    new com.webstudio.easybrowser.models.QuickAccessItem(
+                            quickAccessTitle != null ? quickAccessTitle : title,
+                            quickAccessUrl != null ? quickAccessUrl : currentUrl));
+        }
+        historyRepository.addHistoryItem(new HistoryItem(title, currentUrl), new HistoryRepository.HistoryCallback() {
+            @Override
+            public void onHistoryLoaded(List<HistoryItem> historyItems) {}
+
+            @Override
+            public void onHistoryItemAdded(HistoryItem item) {}
+
+            @Override
+            public void onHistoryCleared() {}
+        });
+    }
+
+    private int estimateBlockedItems() {
+        String level = PreferenceManager.getDefaultSharedPreferences(this)
+                .getString("ad_blocking_level", "balanced");
+        if ("off".equals(level)) {
+            return 0;
+        }
+        if ("aggressive".equals(level)) {
+            return 4;
+        }
+        return 2;
+    }
+
+    void incrementPrivacyStats(int protectedPages, int blockedItems) {
+        if (protectedPages == 0 && blockedItems == 0) {
+            return;
+        }
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        prefs.edit()
+                .putInt("privacy_pages_protected",
+                        prefs.getInt("privacy_pages_protected", 0) + protectedPages)
+                .putInt("privacy_items_blocked",
+                        prefs.getInt("privacy_items_blocked", 0) + blockedItems)
+                .putInt("privacy_time_saved_seconds",
+                        prefs.getInt("privacy_time_saved_seconds", 0) + blockedItems)
+                .apply();
+    }
+
+    private void enterPip() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            enterPictureInPictureMode(new android.app.PictureInPictureParams.Builder().build());
+        }
+    }
+
+    private void toggleDesktopSite() {
+        if (session == null) {
+            return;
+        }
+        isDesktopMode = !isDesktopMode;
+        session.getSettings().setUserAgentMode(isDesktopMode
+                ? GeckoSessionSettings.USER_AGENT_MODE_DESKTOP
+                : GeckoSessionSettings.USER_AGENT_MODE_MOBILE);
+        session.getSettings().setViewportMode(isDesktopMode
+                ? GeckoSessionSettings.VIEWPORT_MODE_DESKTOP
+                : GeckoSessionSettings.VIEWPORT_MODE_MOBILE);
+        session.reload();
+    }
+
+    private void showFindInPageDialog() {
+        if (session == null) {
+            return;
+        }
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_find_in_page, null);
+        EditText input = dialogView.findViewById(R.id.find_input);
+        ImageButton prev = dialogView.findViewById(R.id.find_prev);
+        ImageButton next = dialogView.findViewById(R.id.find_next);
+        ImageButton close = dialogView.findViewById(R.id.find_close);
+
+        session.getFinder().setDisplayFlags(
+                GeckoSession.FINDER_DISPLAY_HIGHLIGHT_ALL |
+                        GeckoSession.FINDER_DISPLAY_DIM_PAGE);
+
+        Dialog dialog = new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.find_in_page)
+                .setView(dialogView)
+                .setOnDismissListener(d -> {
+                    if (session != null) {
+                        session.getFinder().clear();
+                    }
+                })
+                .create();
+
+        Runnable findForward = () -> {
+            String query = input.getText().toString().trim();
+            if (!query.isEmpty()) {
+                session.getFinder().find(query, GeckoSession.FINDER_FIND_FORWARD);
+            }
+        };
+        Runnable findBackward = () -> {
+            String query = input.getText().toString().trim();
+            if (!query.isEmpty()) {
+                session.getFinder().find(query, GeckoSession.FINDER_FIND_BACKWARDS);
+            }
+        };
+
+        input.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void afterTextChanged(Editable s) {}
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                String query = s.toString().trim();
+                if (query.isEmpty()) {
+                    session.getFinder().clear();
+                } else {
+                    session.getFinder().find(query, GeckoSession.FINDER_FIND_FORWARD);
+                }
+            }
+        });
+        input.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_SEARCH || actionId == EditorInfo.IME_ACTION_GO ||
+                    (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER &&
+                            event.getAction() == KeyEvent.ACTION_DOWN)) {
+                findForward.run();
+                return true;
+            }
+            return false;
+        });
+        next.setOnClickListener(v -> findForward.run());
+        prev.setOnClickListener(v -> findBackward.run());
+        close.setOnClickListener(v -> dialog.dismiss());
+
+        dialog.show();
+        input.requestFocus();
+    }
+
+    private void showHelpAndFeedback() {
+        Intent intent = new Intent(Intent.ACTION_SEND);
+        intent.setType("text/plain");
+        intent.putExtra(Intent.EXTRA_SUBJECT, getString(R.string.feedback_subject));
+        intent.putExtra(Intent.EXTRA_TEXT, getString(R.string.feedback_body));
+        startActivity(Intent.createChooser(intent, getString(R.string.help_feedback)));
+    }
+
+    void showPageContextMenu(GeckoSession.ContentDelegate.ContextElement element) {
+        List<String> labels = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        String link = element.linkUri;
+        String media = element.srcUri;
+
+        if (!TextUtils.isEmpty(link)) {
+            labels.add(getString(R.string.context_menu_open_new_tab));
+            actions.add(() -> openUrlInNewTab(link, false));
+            labels.add(getString(R.string.context_menu_open_private_tab));
+            actions.add(() -> openUrlInNewTab(link, true));
+            labels.add(getString(R.string.context_menu_copy_link));
+            actions.add(() -> copyToClipboard(link));
+            labels.add(getString(R.string.context_menu_share_link));
+            actions.add(() -> shareText(link));
+            labels.add(getString(R.string.context_menu_download_link));
+            actions.add(() -> startDownload(link, null, null));
+        }
+
+        if (!TextUtils.isEmpty(media)) {
+            if (element.type == GeckoSession.ContentDelegate.ContextElement.TYPE_IMAGE) {
+                labels.add(getString(R.string.context_menu_open_image));
+                actions.add(() -> loadUrl(media));
+                labels.add(getString(R.string.context_menu_save_image));
+                actions.add(() -> startDownload(media, null, "image/*"));
+                labels.add(getString(R.string.context_menu_share_image));
+                actions.add(() -> shareText(media));
+            } else {
+                labels.add(getString(R.string.download));
+                actions.add(() -> startDownload(media, null, null));
+            }
+        }
+
+        if (labels.isEmpty() && !TextUtils.isEmpty(element.textContent)) {
+            labels.add(getString(R.string.context_menu_copy_text));
+            actions.add(() -> copyToClipboard(element.textContent));
+        }
+
+        if (labels.isEmpty()) {
+            return;
+        }
+
+        new MaterialAlertDialogBuilder(this)
+                .setItems(labels.toArray(new String[0]), (dialog, which) -> actions.get(which).run())
+                .show();
+    }
+
+    void openUrlInNewTab(String url, boolean isPrivate) {
+        openUrlInNewTab(url, isPrivate, false);
+    }
+
+    void openUrlInNewTab(String url, boolean isPrivate, boolean closeOnBackToPreviousTab) {
+        if (tabManager == null) {
+            return;
+        }
+        String parentId = (!isPrivate && tabManager.getCurrentTab() != null)
+                ? tabManager.getCurrentTab().getId() : null;
+        Tab tab = tabManager.createNewTab(isPrivate, false, parentId);
+        tab.setCloseOnBackToPreviousTab(closeOnBackToPreviousTab);
+        attachTabToView(tab);
+        loadUrl(url);
+        updateTabCount();
+    }
+
+    private void copyToClipboard(String value) {
+        if (value == null) {
+            return;
+        }
+        // Refuse to copy from a private tab — the clipboard is readable by every
+        // foreground app on API < 31 and the URL would defeat the user's reason
+        // for using private mode in the first place.
+        Tab current = tabManager != null ? tabManager.getCurrentTab() : null;
+        if (current != null && current.isPrivate()) {
+            Toast.makeText(this, R.string.private_copy_blocked, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard != null) {
+            ClipData clip = ClipData.newPlainText(getString(R.string.copy_link), value);
+            // Mark the clip as sensitive so API 33+ launchers don't show a preview
+            // toast/snackbar with the contents.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                android.os.PersistableBundle extras = new android.os.PersistableBundle();
+                extras.putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true);
+                clip.getDescription().setExtras(extras);
+            }
+            clipboard.setPrimaryClip(clip);
+            Toast.makeText(this, R.string.link_copied, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void shareText(String value) {
+        Intent intent = new Intent(Intent.ACTION_SEND);
+        intent.setType("text/plain");
+        intent.putExtra(Intent.EXTRA_TEXT, value);
+        startActivity(Intent.createChooser(intent, getString(R.string.share_via)));
+    }
+
+    void startDownload(String url, String filename, String mimeType) {
+        if (TextUtils.isEmpty(url)) {
+            return;
+        }
+        try {
+            AppDownloadManager.getInstance().startDownload(this, url, filename, mimeType);
+        } catch (Exception e) {
+            Toast.makeText(this, R.string.download_failed, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    void launchFilePicker(GeckoSession.PromptDelegate.FilePrompt prompt) {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType(getFilePickerMimeType(prompt.mimeTypes));
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,
+                prompt.type == GeckoSession.PromptDelegate.FilePrompt.Type.MULTIPLE);
+        try {
+            filePickerLauncher.launch(Intent.createChooser(intent, getString(R.string.choose_file)));
+        } catch (Exception e) {
+            completeFilePrompt(prompt.dismiss());
+            pendingFilePrompt = null;
+        }
+    }
+
+    private String getFilePickerMimeType(String[] mimeTypes) {
+        if (mimeTypes == null || mimeTypes.length == 0) {
+            return "*/*";
+        }
+        for (String mimeType : mimeTypes) {
+            if (!TextUtils.isEmpty(mimeType) && mimeType.contains("/")) {
+                return mimeType;
+            }
+        }
+        return "*/*";
+    }
+
+    private Uri[] extractPickedUris(Intent data) {
+        List<Uri> uris = new ArrayList<>();
+        ClipData clipData = data.getClipData();
+        if (clipData != null) {
+            for (int i = 0; i < clipData.getItemCount(); i++) {
+                Uri uri = clipData.getItemAt(i).getUri();
+                if (uri != null) {
+                    uris.add(uri);
+                }
+            }
+        } else if (data.getData() != null) {
+            uris.add(data.getData());
+        }
+        return uris.toArray(new Uri[0]);
+    }
+
+    private Uri[] copyPickedUrisToCache(Uri[] pickedUris) {
+        List<Uri> fileUris = new ArrayList<>();
+        File uploadDir = new File(getCacheDir(), "uploads");
+        if (!uploadDir.exists() && !uploadDir.mkdirs()) {
+            return new Uri[0];
+        }
+
+        // Clean stale upload files older than 1 hour
+        File[] existing = uploadDir.listFiles();
+        if (existing != null) {
+            long cutoff = System.currentTimeMillis() - 60 * 60 * 1000L;
+            for (File f : existing) {
+                if (f.lastModified() < cutoff) f.delete();
+            }
+        }
+
+        for (Uri uri : pickedUris) {
+            try (InputStream input = getContentResolver().openInputStream(uri)) {
+                if (input == null) {
+                    continue;
+                }
+                String name = "upload_" + System.currentTimeMillis();
+                File outFile = new File(uploadDir, name);
+                try (FileOutputStream output = new FileOutputStream(outFile)) {
+                    byte[] buffer = new byte[8192];
+                    int read;
+                    while ((read = input.read(buffer)) != -1) {
+                        output.write(buffer, 0, read);
+                    }
+                }
+                fileUris.add(Uri.fromFile(outFile));
+            } catch (Exception ignored) {
+            }
+        }
+        return fileUris.toArray(new Uri[0]);
+    }
+
+    private void completeFilePrompt(GeckoSession.PromptDelegate.PromptResponse response) {
+        if (pendingFileResult != null) {
+            pendingFileResult.complete(response);
+            pendingFileResult = null;
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQUEST_GECKO_PERMISSIONS || pendingPermissionCallback == null) {
+            return;
+        }
+        GeckoSession.PermissionDelegate.Callback callback = pendingPermissionCallback;
+        pendingPermissionCallback = null;
+        // Empty grantResults indicates the request was cancelled (e.g. activity recreated
+        // or user dismissed the system dialog). Treat as denial — never grant by default.
+        boolean granted = grantResults.length > 0;
+        for (int result : grantResults) {
+            if (result != PackageManager.PERMISSION_GRANTED) {
+                granted = false;
+                break;
+            }
+        }
+        if (granted) {
+            callback.grant();
+        } else {
+            callback.reject();
+        }
+    }
+
+    private void shareCurrentPage() {
+        if (currentUrl == null || currentUrl.trim().isEmpty()) {
+            return;
+        }
+        Intent intent = new Intent(Intent.ACTION_SEND);
+        intent.setType("text/plain");
+        intent.putExtra(Intent.EXTRA_TEXT, currentUrl);
+        startActivity(Intent.createChooser(intent, getString(R.string.share_link)));
+    }
+
+    private void toggleReaderMode() {
+        if (session == null || currentUrl == null) return;
+        if (currentUrl.startsWith("about:reader")) {
+            String orig = Uri.parse(currentUrl).getQueryParameter("url");
+            if (orig != null) loadUrl(orig);
+        } else {
+            loadUrl("about:reader?url=" + Uri.encode(currentUrl));
+        }
+    }
+
+    private void translatePage() {
+        if (currentUrl == null || currentUrl.trim().isEmpty()) return;
+        loadUrl("https://translate.google.com/translate?u=" + Uri.encode(currentUrl));
+    }
+
+    private void showNavigationHistoryDialog() {
+        if (session == null) return;
+        GeckoSession.HistoryDelegate.HistoryList history =
+                historyDelegate != null ? historyDelegate.lastHistory : null;
+        if (history == null || history.size() == 0) {
+            Toast.makeText(this, R.string.no_tab_history, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        int currentIndex = history.getCurrentIndex();
+        int size = history.size();
+        String[] entries = new String[size];
+        for (int i = 0; i < size; i++) {
+            GeckoSession.HistoryDelegate.HistoryItem item = history.get(i);
+            String title = item != null ? item.getTitle() : null;
+            String uri = item != null ? item.getUri() : "";
+            String label = (title != null && !title.isEmpty()) ? title : uri;
+            entries[i] = (i == currentIndex ? "▸  " : "    ") + label;
+        }
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.tab_history)
+                .setSingleChoiceItems(entries, currentIndex, (dialog, which) -> {
+                    if (which != currentIndex && session != null) {
+                        session.gotoHistoryIndex(which);
+                    }
+                    dialog.dismiss();
+                })
+                .show();
+    }
+
+    private void showSiteZoomDialog() {
+        if (currentUrl == null || currentUrl.trim().isEmpty()) return;
+        String host = UrlUtils.getDisplayHost(currentUrl);
+        if (host == null) return;
+
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        float defaultFactor = prefs.getInt("text_size_percent", 100) / 100f;
+        float currentFactor = prefs.getFloat("zoom_" + host, defaultFactor);
+        int currentPercent = Math.round(currentFactor * 100f);
+
+        int padding = dp(16);
+        android.widget.LinearLayout container = new android.widget.LinearLayout(this);
+        container.setOrientation(android.widget.LinearLayout.VERTICAL);
+        container.setPadding(padding, padding, padding, 0);
+
+        TextView label = new TextView(this);
+        label.setText(getString(R.string.zoom_for_site_title,
+                getString(R.string.zoom_percent, currentPercent)));
+        label.setTextSize(16);
+        container.addView(label);
+
+        Slider slider = new Slider(this);
+        slider.setValueFrom(50f);
+        slider.setValueTo(200f);
+        slider.setStepSize(25f);
+        slider.setValue(clampZoomPercent(currentPercent));
+        slider.addOnChangeListener((s, value, fromUser) -> label.setText(
+                getString(R.string.zoom_for_site_title,
+                        getString(R.string.zoom_percent, Math.round(value)))));
+        android.widget.LinearLayout.LayoutParams sliderParams =
+                new android.widget.LinearLayout.LayoutParams(
+                        android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+        sliderParams.topMargin = dp(8);
+        container.addView(slider, sliderParams);
+
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.zoom_for_site)
+                .setView(container)
+                .setPositiveButton(R.string.save, (dialog, which) -> {
+                    float factor = slider.getValue() / 100f;
+                    prefs.edit().putFloat("zoom_" + host, factor).apply();
+                    RuntimeManager.getRuntime(this).getSettings().setFontSizeFactor(factor);
+                })
+                .setNeutralButton(R.string.zoom_reset, (dialog, which) -> {
+                    prefs.edit().remove("zoom_" + host).apply();
+                    RuntimeManager.getRuntime(this).getSettings().setFontSizeFactor(defaultFactor);
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    private float clampZoomPercent(int percent) {
+        if (percent < 50) return 50f;
+        if (percent > 200) return 200f;
+        return percent;
+    }
+
+    private void addCurrentPageToQuickAccess() {
+        if (currentUrl == null || currentUrl.trim().isEmpty()) return;
+        String title = currentTitle != null && !currentTitle.isEmpty() ? currentTitle : currentUrl;
+        quickAccessRepository.updateQuickAccessItem(
+                new com.webstudio.easybrowser.models.QuickAccessItem(title, currentUrl));
+        Toast.makeText(this, R.string.added_to_quick_access, Toast.LENGTH_SHORT).show();
+    }
+
+    private void savePageAsPdf() {
+        if (session == null) return;
+        // MediaStore.Downloads-based save is only available on API 29+.
+        // Below that we'd need legacy WRITE_EXTERNAL_STORAGE which we've stopped
+        // requesting on modern devices, so tell the user instead of silently failing.
+        if (Build.VERSION.SDK_INT < 29) {
+            Toast.makeText(this, R.string.save_page_failed, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Toast.makeText(this, R.string.preparing_print, Toast.LENGTH_SHORT).show();
+        session.saveAsPdf().then(inputStream -> {
+            if (inputStream == null) {
+                runOnUiThread(() -> Toast.makeText(this,
+                        R.string.save_page_failed, Toast.LENGTH_SHORT).show());
+                return GeckoResult.fromValue(null);
+            }
+            String filename = (currentTitle != null && !currentTitle.isEmpty()
+                    ? currentTitle : "page") + ".pdf";
+            filename = filename.replaceAll("[^a-zA-Z0-9._\\- ]", "_");
+            writePdfToDownloads(inputStream, filename);
+            return GeckoResult.fromValue(null);
+        }, e -> {
+            runOnUiThread(() -> Toast.makeText(this,
+                    R.string.save_page_failed, Toast.LENGTH_SHORT).show());
+            return GeckoResult.fromValue(null);
+        });
+    }
+
+    @androidx.annotation.RequiresApi(29)
+    private void writePdfToDownloads(java.io.InputStream inputStream, String filename) {
+        new Thread(() -> {
+            try {
+                android.content.ContentValues values = new android.content.ContentValues();
+                values.put(android.provider.MediaStore.Downloads.DISPLAY_NAME, filename);
+                values.put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/pdf");
+                values.put(android.provider.MediaStore.Downloads.RELATIVE_PATH,
+                        android.os.Environment.DIRECTORY_DOWNLOADS);
+                android.net.Uri uri = getContentResolver()
+                        .insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+                if (uri == null) throw new Exception("MediaStore insert failed");
+                try (java.io.OutputStream out = getContentResolver().openOutputStream(uri)) {
+                    byte[] buf = new byte[8192];
+                    int read;
+                    while ((read = inputStream.read(buf)) != -1) out.write(buf, 0, read);
+                } finally {
+                    inputStream.close();
+                }
+                runOnUiThread(() -> Toast.makeText(this,
+                        R.string.page_saved, Toast.LENGTH_SHORT).show());
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this,
+                        R.string.save_page_failed, Toast.LENGTH_SHORT).show());
+            }
+        }).start();
+    }
+
+    private void printPage() {
+        if (session == null) return;
+        Toast.makeText(this, R.string.preparing_print, Toast.LENGTH_SHORT).show();
+        session.saveAsPdf().then(inputStream -> {
+            if (inputStream == null) {
+                runOnUiThread(() -> Toast.makeText(this,
+                        R.string.print_failed, Toast.LENGTH_SHORT).show());
+                return GeckoResult.fromValue(null);
+            }
+            try {
+                File pdfFile = File.createTempFile("print_", ".pdf", getCacheDir());
+                try (FileOutputStream fos = new FileOutputStream(pdfFile)) {
+                    byte[] buf = new byte[8192];
+                    int read;
+                    while ((read = inputStream.read(buf)) != -1) fos.write(buf, 0, read);
+                } finally {
+                    inputStream.close();
+                }
+                runOnUiThread(() -> startPrintJob(pdfFile));
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this,
+                        R.string.print_failed, Toast.LENGTH_SHORT).show());
+            }
+            return GeckoResult.fromValue(null);
+        }, e -> {
+            runOnUiThread(() -> Toast.makeText(this,
+                    R.string.print_failed, Toast.LENGTH_SHORT).show());
+            return GeckoResult.fromValue(null);
+        });
+    }
+
+    private void startPrintJob(File pdfFile) {
+        android.print.PrintManager pm =
+                (android.print.PrintManager) getSystemService(PRINT_SERVICE);
+        if (pm == null) return;
+        String jobName = currentTitle != null && !currentTitle.isEmpty() ? currentTitle : "Page";
+        pm.print(jobName, new android.print.PrintDocumentAdapter() {
+            @Override
+            public void onLayout(android.print.PrintAttributes oldAttr,
+                    android.print.PrintAttributes newAttr,
+                    android.os.CancellationSignal cancel,
+                    LayoutResultCallback callback,
+                    android.os.Bundle extras) {
+                android.print.PrintDocumentInfo info =
+                        new android.print.PrintDocumentInfo.Builder(jobName + ".pdf")
+                        .setContentType(android.print.PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
+                        .build();
+                callback.onLayoutFinished(info, true);
+            }
+
+            @Override
+            public void onWrite(android.print.PageRange[] pages,
+                    android.os.ParcelFileDescriptor dest,
+                    android.os.CancellationSignal cancel,
+                    WriteResultCallback callback) {
+                try (java.io.InputStream in = new java.io.FileInputStream(pdfFile);
+                     java.io.OutputStream out =
+                             new java.io.FileOutputStream(dest.getFileDescriptor())) {
+                    byte[] buf = new byte[8192];
+                    int r;
+                    while ((r = in.read(buf)) != -1) out.write(buf, 0, r);
+                    callback.onWriteFinished(new android.print.PageRange[]{
+                            android.print.PageRange.ALL_PAGES});
+                } catch (Exception e) {
+                    callback.onWriteFailed(e.getMessage());
+                }
+            }
+        }, null);
+    }
+
+    // F9 — Apply UA preset to a GeckoSession
+    private void applyUaPresetToSession(GeckoSession targetSession, SharedPreferences prefs) {
+        String preset = prefs.getString("user_agent_preset", "mobile");
+        GeckoSessionSettings settings = targetSession.getSettings();
+        switch (preset) {
+            case "desktop":
+                settings.setUserAgentMode(GeckoSessionSettings.USER_AGENT_MODE_DESKTOP);
+                settings.setViewportMode(GeckoSessionSettings.VIEWPORT_MODE_DESKTOP);
+                break;
+            case "iphone":
+                settings.setUserAgentMode(GeckoSessionSettings.USER_AGENT_MODE_MOBILE);
+                settings.setViewportMode(GeckoSessionSettings.VIEWPORT_MODE_MOBILE);
+                settings.setUserAgentOverride("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1");
+                break;
+            case "ipad":
+                settings.setUserAgentMode(GeckoSessionSettings.USER_AGENT_MODE_MOBILE);
+                settings.setViewportMode(GeckoSessionSettings.VIEWPORT_MODE_MOBILE);
+                settings.setUserAgentOverride("Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1");
+                break;
+            case "custom":
+                String customUa = prefs.getString("user_agent_custom_string", "");
+                if (!customUa.isEmpty()) {
+                    settings.setUserAgentMode(GeckoSessionSettings.USER_AGENT_MODE_MOBILE);
+                    settings.setUserAgentOverride(customUa);
+                }
+                break;
+            default: // "mobile"
+                settings.setUserAgentMode(GeckoSessionSettings.USER_AGENT_MODE_MOBILE);
+                settings.setViewportMode(GeckoSessionSettings.VIEWPORT_MODE_MOBILE);
+                settings.setUserAgentOverride("");
+                break;
+        }
+    }
+
+    // F10 — Add to Home Screen
+    private void addToHomeScreen() {
+        if (currentUrl == null || currentUrl.trim().isEmpty()) return;
+        String id = "easybrowser_" + currentUrl.hashCode();
+        String label = (currentTitle != null && !currentTitle.isEmpty()) ? currentTitle : currentUrl;
+        if (label.length() > 25) label = label.substring(0, 25);
+
+        Intent launchIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(currentUrl));
+        launchIntent.setClass(this, MainActivity.class);
+        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+        IconCompat icon;
+        Tab tab = tabManager != null ? tabManager.getCurrentTab() : null;
+        Bitmap favicon = (tab != null) ? tab.getFavicon() : null;
+        if (favicon != null) {
+            icon = IconCompat.createWithBitmap(favicon);
+        } else {
+            icon = IconCompat.createWithResource(this, R.mipmap.ic_launcher);
+        }
+
+        ShortcutInfoCompat shortcut = new ShortcutInfoCompat.Builder(this, id)
+                .setShortLabel(label)
+                .setIcon(icon)
+                .setIntent(launchIntent)
+                .build();
+        ShortcutManagerCompat.requestPinShortcut(this, shortcut, null);
+        Toast.makeText(this, R.string.shortcut_added, Toast.LENGTH_SHORT).show();
+    }
+
+    // F11 — Save to Reading List
+    private void saveToReadingList() {
+        if (session == null || currentUrl == null) return;
+        String title = currentTitle != null ? currentTitle : currentUrl;
+        String itemId = UUID.randomUUID().toString();
+        Toast.makeText(this, R.string.saving_to_reading_list, Toast.LENGTH_SHORT).show();
+        session.saveAsPdf().then(inputStream -> {
+            if (inputStream == null) {
+                runOnUiThread(() -> Toast.makeText(this,
+                        R.string.save_page_failed, Toast.LENGTH_SHORT).show());
+                return GeckoResult.fromValue(null);
+            }
+            File dir = new File(getFilesDir(), "reading_list");
+            dir.mkdirs();
+            File pdfFile = new File(dir, itemId + ".pdf");
+            boolean written = false;
+            try (java.io.OutputStream out = new FileOutputStream(pdfFile)) {
+                byte[] buf = new byte[8192];
+                int r;
+                while ((r = inputStream.read(buf)) != -1) out.write(buf, 0, r);
+                written = true;
+            } catch (Exception e) {
+                pdfFile.delete();
+            }
+            final String contentPath = written ? pdfFile.getAbsolutePath() : null;
+            ReadingListItem item = new ReadingListItem(itemId, title, currentUrl,
+                    System.currentTimeMillis(), contentPath);
+            readingListRepository.save(item, new ReadingListRepository.ReadingListCallback() {
+                @Override public void onItemsLoaded(java.util.List<ReadingListItem> items) {}
+                @Override public void onItemSaved() {
+                    runOnUiThread(() -> Toast.makeText(BrowserActivity.this,
+                            R.string.saved_to_reading_list, Toast.LENGTH_SHORT).show());
+                }
+                @Override public void onItemDeleted() {}
+            });
+            return GeckoResult.fromValue(null);
+        }, e -> {
+            runOnUiThread(() -> Toast.makeText(this,
+                    R.string.save_page_failed, Toast.LENGTH_SHORT).show());
+            return GeckoResult.fromValue(null);
+        });
+    }
+
+    // F12 — Site info bottom sheet
+    private void showSiteInfoBottomSheet() {
+        if (currentUrl == null) return;
+        boolean isSecure = lastSecurityInfo != null && lastSecurityInfo.isSecure;
+        String host = UrlUtils.getDisplayHost(currentUrl);
+        SiteInfoBottomSheet sheet = SiteInfoBottomSheet.newInstance(
+                currentUrl, isSecure, host != null ? host : currentUrl);
+        sheet.show(getSupportFragmentManager(), "site_info");
+    }
+
+    // F13 — Exit with optional auto-clear
+    private void exitApp() {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        if (!prefs.getBoolean("auto_clear_on_exit", false)) {
+            finish();
+            return;
+        }
+        boolean clearCookies = prefs.getBoolean("auto_clear_cookies", true);
+        boolean clearCache = prefs.getBoolean("auto_clear_cache", true);
+        boolean clearHistory = prefs.getBoolean("auto_clear_history", true);
+
+        long flags = 0;
+        if (clearCookies) flags |= StorageController.ClearFlags.COOKIES
+                | StorageController.ClearFlags.AUTH_SESSIONS
+                | StorageController.ClearFlags.DOM_STORAGES;
+        if (clearCache) flags |= StorageController.ClearFlags.ALL_CACHES;
+
+        AtomicInteger pending = new AtomicInteger(0);
+        if (flags != 0) pending.incrementAndGet();
+        if (clearHistory) pending.incrementAndGet();
+        if (pending.get() == 0) { finish(); return; }
+
+        Runnable checkDone = () -> { if (pending.decrementAndGet() == 0) runOnUiThread(this::finish); };
+
+        if (flags != 0) {
+            RuntimeManager.getRuntime(this)
+                    .getStorageController()
+                    .clearData(flags)
+                    .accept(v -> checkDone.run(), e -> checkDone.run());
+        }
+        if (clearHistory) {
+            historyRepository.clearHistory(new HistoryRepository.HistoryCallback() {
+                @Override public void onHistoryLoaded(java.util.List<HistoryItem> items) {}
+                @Override public void onHistoryItemAdded(HistoryItem item) {}
+                @Override public void onHistoryCleared() { checkDone.run(); }
+            });
+        }
+    }
+
+    // F14 — Inject user CSS style for current host
+    void injectUserStyleIfNeeded(GeckoSession targetSession, String url) {
+        if (url == null || targetSession == null) return;
+        String host = UrlUtils.getDisplayHost(url);
+        if (host == null) return;
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        String json = prefs.getString("userstyle_" + host, null);
+        if (json == null) return;
+        try {
+            JSONObject obj = new JSONObject(json);
+            if (!obj.optBoolean("enabled", true)) return;
+            String css = obj.optString("css", "");
+            if (css.isEmpty()) return;
+            // Carry the CSS as base64 and decode at runtime. Hand-escaping CSS into a
+            // JS single-quoted string left at least four breakouts (U+2028, U+2029,
+            // </script> in CSS comments, lone CR). Base64 is alphanumeric + '/+='
+            // which cannot break out of a JS string literal.
+            String encoded = android.util.Base64.encodeToString(
+                    css.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                    android.util.Base64.NO_WRAP);
+            String js = "(function(){try{var s=document.createElement('style');"
+                    + "s.textContent=decodeURIComponent(escape(atob('" + encoded + "')));"
+                    + "(document.head||document.documentElement).appendChild(s);}catch(e){}})();";
+            runOnUiThread(() -> {
+                try {
+                    targetSession.loadUri("javascript:" + js);
+                } catch (Exception e) {
+                    Log.e("BrowserActivity", "Failed to inject user style for " + host, e);
+                }
+            });
+        } catch (Exception ignored) {}
+    }
+
+    private void setupSwipeGestures() {
+        gestureDetector = new GestureDetector(this,
+                new GestureDetector.SimpleOnGestureListener() {
+                    private static final int SWIPE_MIN_DISTANCE = 120;
+                    private static final int SWIPE_MIN_VELOCITY = 200;
+
+                    @Override
+                    public boolean onFling(MotionEvent e1, MotionEvent e2,
+                            float velocityX, float velocityY) {
+                        if (e1 == null || e2 == null) return false;
+                        float dx = e2.getX() - e1.getX();
+                        float dy = e2.getY() - e1.getY();
+                        if (Math.abs(dy) > Math.abs(dx)) return false;
+                        if (Math.abs(dx) < SWIPE_MIN_DISTANCE
+                                || Math.abs(velocityX) < SWIPE_MIN_VELOCITY) return false;
+                        if (dx > 0 && canGoBack && session != null) {
+                            session.goBack();
+                            return true;
+                        } else if (dx < 0 && canGoForward && session != null) {
+                            session.goForward();
+                            return true;
+                        }
+                        return false;
+                    }
+                });
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+        if (gestureDetector != null) gestureDetector.onTouchEvent(ev);
+        return super.dispatchTouchEvent(ev);
+    }
+
+}
