@@ -87,4 +87,4 @@ Lint is clean; `./gradlew lintDebug` reports zero errors.
 
 ## License
 
-Not yet specified — add a `LICENSE` file before publishing.
+[MIT](LICENSE) © 2026 Riju Pakira
