@@ -19,6 +19,7 @@ import com.google.android.material.switchmaterial.SwitchMaterial;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 import com.webstudio.easybrowser.R;
+import com.webstudio.easybrowser.managers.AnalyticsManager;
 import com.webstudio.easybrowser.managers.RuntimeManager;
 import com.webstudio.easybrowser.repository.BookmarkRepository;
 import com.webstudio.easybrowser.repository.HistoryRepository;
@@ -28,6 +29,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.mozilla.geckoview.ContentBlocking;
+import org.mozilla.geckoview.GeckoRuntime;
 import org.mozilla.geckoview.StorageController;
 
 import java.util.ArrayList;
@@ -183,40 +185,66 @@ public class SettingsActivity extends AppCompatActivity {
 
         switchDoNotTrack.setOnCheckedChangeListener((buttonView, isChecked) -> {
             prefs.edit().putBoolean("do_not_track", isChecked).apply();
-            RuntimeManager.getRuntime(this).getSettings().setGlobalPrivacyControl(isChecked);
+            GeckoRuntime runtime = RuntimeManager.getExistingRuntime();
+            if (runtime != null) {
+                runtime.getSettings().setGlobalPrivacyControl(isChecked);
+            }
+            AnalyticsManager.logSettingChanged(this, "global_privacy_control", isChecked);
         });
 
         switchJavascript.setOnCheckedChangeListener((buttonView, isChecked) -> {
             prefs.edit().putBoolean("javascript_enabled", isChecked).apply();
-            RuntimeManager.getRuntime(this).getSettings().setJavaScriptEnabled(isChecked);
+            GeckoRuntime runtime = RuntimeManager.getExistingRuntime();
+            if (runtime != null) {
+                runtime.getSettings().setJavaScriptEnabled(isChecked);
+            }
+            AnalyticsManager.logSettingChanged(this, "javascript", isChecked);
         });
 
         switchRemoteDebugging.setOnCheckedChangeListener((buttonView, isChecked) -> {
             prefs.edit().putBoolean("remote_debugging_enabled", isChecked).apply();
-            RuntimeManager.getRuntime(this).getSettings().setRemoteDebuggingEnabled(isChecked);
+            GeckoRuntime runtime = RuntimeManager.getExistingRuntime();
+            if (runtime != null) {
+                runtime.getSettings().setRemoteDebuggingEnabled(isChecked);
+            }
+            AnalyticsManager.logSettingChanged(this, "remote_debugging", isChecked);
         });
 
         switchSaveHistory.setOnCheckedChangeListener((buttonView, isChecked) ->
-                prefs.edit().putBoolean("save_history", isChecked).apply());
+                {
+                    prefs.edit().putBoolean("save_history", isChecked).apply();
+                    AnalyticsManager.logSettingChanged(this, "save_history", isChecked);
+                });
 
         switchBlockPopups.setOnCheckedChangeListener((buttonView, isChecked) ->
-                prefs.edit().putBoolean("block_popups", isChecked).apply());
+                {
+                    prefs.edit().putBoolean("block_popups", isChecked).apply();
+                    AnalyticsManager.logSettingChanged(this, "block_popups", isChecked);
+                });
 
         switchOpenLinksNewTab.setOnCheckedChangeListener((buttonView, isChecked) ->
-                prefs.edit().putBoolean("open_links_new_tab", isChecked).apply());
+                {
+                    prefs.edit().putBoolean("open_links_new_tab", isChecked).apply();
+                    AnalyticsManager.logSettingChanged(this, "open_links_new_tab", isChecked);
+                });
 
         switchCookieBanners.setOnCheckedChangeListener((buttonView, isChecked) -> {
             prefs.edit().putBoolean("block_cookie_banners", isChecked).apply();
             applyContentBlockingSettings();
+            AnalyticsManager.logSettingChanged(this, "block_cookie_banners", isChecked);
         });
 
         switchStripTrackingParams.setOnCheckedChangeListener((buttonView, isChecked) -> {
             prefs.edit().putBoolean("strip_tracking_params", isChecked).apply();
             applyContentBlockingSettings();
+            AnalyticsManager.logSettingChanged(this, "strip_tracking_params", isChecked);
         });
 
         switchHttpsOnly.setOnCheckedChangeListener((buttonView, isChecked) ->
-                prefs.edit().putBoolean("https_only", isChecked).apply());
+                {
+                    prefs.edit().putBoolean("https_only", isChecked).apply();
+                    AnalyticsManager.logSettingChanged(this, "https_only", isChecked);
+                });
 
         switchHomePrivacyStats.setOnCheckedChangeListener((buttonView, isChecked) ->
                 prefs.edit().putBoolean("show_privacy_stats", isChecked).apply());
@@ -268,7 +296,7 @@ public class SettingsActivity extends AppCompatActivity {
         updateAdBlockingValue();
 
         // Load switches
-        switchDoNotTrack.setChecked(prefs.getBoolean("do_not_track", false));
+        switchDoNotTrack.setChecked(prefs.getBoolean("do_not_track", true));
         switchJavascript.setChecked(prefs.getBoolean("javascript_enabled", true));
         switchRemoteDebugging.setChecked(prefs.getBoolean("remote_debugging_enabled", false));
         switchSaveHistory.setChecked(prefs.getBoolean("save_history", true));
@@ -276,7 +304,7 @@ public class SettingsActivity extends AppCompatActivity {
         switchOpenLinksNewTab.setChecked(prefs.getBoolean("open_links_new_tab", false));
         switchCookieBanners.setChecked(prefs.getBoolean("block_cookie_banners", true));
         switchStripTrackingParams.setChecked(prefs.getBoolean("strip_tracking_params", true));
-        switchHttpsOnly.setChecked(prefs.getBoolean("https_only", false));
+        switchHttpsOnly.setChecked(prefs.getBoolean("https_only", true));
         switchHomePrivacyStats.setChecked(prefs.getBoolean("show_privacy_stats", true));
         switchHomeQuickAccess.setChecked(prefs.getBoolean("show_quick_access", true));
 
@@ -533,9 +561,11 @@ public class SettingsActivity extends AppCompatActivity {
             etpLevel = ContentBlocking.EtpLevel.DEFAULT;
         }
 
-        ContentBlocking.Settings settings = RuntimeManager.getRuntime(this)
-                .getSettings()
-                .getContentBlocking();
+        GeckoRuntime runtime = RuntimeManager.getExistingRuntime();
+        if (runtime == null) {
+            return;
+        }
+        ContentBlocking.Settings settings = runtime.getSettings().getContentBlocking();
         settings.setAntiTracking(antiTracking)
                 .setEnhancedTrackingProtectionLevel(etpLevel)
                 .setSafeBrowsing(ContentBlocking.SafeBrowsing.DEFAULT)
@@ -840,7 +870,7 @@ public class SettingsActivity extends AppCompatActivity {
                     if (!"off".equals(modeValues[which])) {
                         showDohProviderDialog();
                     } else {
-                        RuntimeManager.getRuntime(this);
+                        applyRuntimePreferencesIfRunning();
                         updateDohValue();
                     }
                 })
@@ -865,7 +895,7 @@ public class SettingsActivity extends AppCompatActivity {
                     if ("custom".equals(providerValues[which])) {
                         showDohCustomUriDialog();
                     } else {
-                        RuntimeManager.getRuntime(this);
+                        applyRuntimePreferencesIfRunning();
                         updateDohValue();
                     }
                 })
@@ -885,7 +915,7 @@ public class SettingsActivity extends AppCompatActivity {
                 .setView(input)
                 .setPositiveButton(R.string.save, (d, w) -> {
                     prefs.edit().putString("doh_uri", input.getText().toString().trim()).apply();
-                    RuntimeManager.getRuntime(this);
+                    applyRuntimePreferencesIfRunning();
                     updateDohValue();
                 })
                 .setNegativeButton(R.string.cancel, null)
@@ -908,6 +938,40 @@ public class SettingsActivity extends AppCompatActivity {
             default:        providerLabel = "Cloudflare"; break;
         }
         dohValue.setText(modeLabel + " · " + providerLabel);
+    }
+
+    private void applyRuntimePreferencesIfRunning() {
+        GeckoRuntime runtime = RuntimeManager.getExistingRuntime();
+        if (runtime == null) {
+            return;
+        }
+        runtime.getSettings()
+                .setTrustedRecursiveResolverMode(getDohMode())
+                .setTrustedRecursiveResolverUri(getDohUri());
+    }
+
+    private int getDohMode() {
+        String mode = prefs.getString("doh_mode", "off");
+        if ("opportunistic".equals(mode)) {
+            return org.mozilla.geckoview.GeckoRuntimeSettings.TRR_MODE_FIRST;
+        }
+        if ("strict".equals(mode)) {
+            return org.mozilla.geckoview.GeckoRuntimeSettings.TRR_MODE_ONLY;
+        }
+        return org.mozilla.geckoview.GeckoRuntimeSettings.TRR_MODE_OFF;
+    }
+
+    private String getDohUri() {
+        if ("off".equals(prefs.getString("doh_mode", "off"))) {
+            return "";
+        }
+        String provider = prefs.getString("doh_provider", "cloudflare");
+        switch (provider) {
+            case "google":  return "https://dns.google/dns-query";
+            case "nextdns": return "https://dns.nextdns.io/dns-query";
+            case "custom":  return prefs.getString("doh_uri", "");
+            default:        return "https://cloudflare-dns.com/dns-query";
+        }
     }
 
     private Dialog progressDialog;

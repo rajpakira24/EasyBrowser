@@ -48,6 +48,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.Call;
+import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -56,6 +57,7 @@ import okhttp3.ResponseBody;
 public class AppDownloadManager {
     private static final String DOWNLOAD_CHANNEL_ID = "downloads";
     private static final int BUFFER_SIZE = 16 * 1024;
+    private static final int MAX_REDIRECTS = 5;
     private static final long PROGRESS_UPDATE_INTERVAL_MS = 500;
     private static final long STALE_DOWNLOAD_AGE_MS = 60 * 60 * 1000;
     private static volatile AppDownloadManager instance;
@@ -64,10 +66,10 @@ public class AppDownloadManager {
     private final OkHttpClient client = new OkHttpClient.Builder()
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
-            // Follow redirects only when they stay on HTTPS — refuse HTTP-downgrade
-            // redirects to keep MITM-flipped downloads from succeeding silently.
-            .followSslRedirects(true)
-            .followRedirects(true)
+            // Redirects are handled manually so HTTPS downloads cannot silently
+            // downgrade to HTTP.
+            .followSslRedirects(false)
+            .followRedirects(false)
             .build();
     private final ConcurrentHashMap<String, Call> activeCalls = new ConcurrentHashMap<>();
     private final Set<String> pausedDownloads = Collections.newSetFromMap(new ConcurrentHashMap<>());
@@ -87,7 +89,8 @@ public class AppDownloadManager {
     }
 
     public void startDownload(Context context, String url, String fileName, String mimeType) {
-        if (TextUtils.isEmpty(url)) {
+        if (!isHttpDownloadUrl(url)) {
+            Toast.makeText(context, R.string.download_failed, Toast.LENGTH_SHORT).show();
             return;
         }
         Context appContext = context.getApplicationContext();
@@ -124,6 +127,9 @@ public class AppDownloadManager {
     }
 
     public void startExistingDownload(Context context, DownloadItem item) {
+        if (item == null || !isHttpDownloadUrl(item.getUrl())) {
+            return;
+        }
         pausedDownloads.remove(item.getId());
         cancelledDownloads.remove(item.getId());
         executor.execute(() -> download(context.getApplicationContext(), item));
@@ -164,17 +170,15 @@ public class AppDownloadManager {
         item.setDownloadedBytes(existingBytes);
         repository.saveDownload(item, null);
 
-        Request.Builder requestBuilder = new Request.Builder()
-                .url(item.getUrl())
-                .header("User-Agent", "Mozilla/5.0 (Android) EasyBrowser");
-        if (resume) {
-            requestBuilder.header("Range", "bytes=" + existingBytes + "-");
-        }
+        try {
+            Request.Builder requestBuilder = new Request.Builder()
+                    .url(item.getUrl())
+                    .header("User-Agent", "Mozilla/5.0 (Android) EasyBrowser");
+            if (resume) {
+                requestBuilder.header("Range", "bytes=" + existingBytes + "-");
+            }
 
-        Call call = client.newCall(requestBuilder.build());
-        activeCalls.put(item.getId(), call);
-
-        try (Response response = call.execute()) {
+            try (Response response = executeDownloadRequest(item.getId(), requestBuilder.build())) {
             if (!response.isSuccessful() && response.code() != 206) {
                 throw new IOException("HTTP " + response.code());
             }
@@ -282,7 +286,9 @@ public class AppDownloadManager {
                 item.setStatus(DownloadItem.Status.COMPLETED);
                 item.setErrorMessage(null);
                 repository.saveDownload(item, null);
+                AnalyticsManager.logDownloadCompleted(context, item.getMimeType());
                 showCompletedNotification(context, item);
+            }
             }
         } catch (IOException e) {
             if (pausedDownloads.contains(item.getId())) {
@@ -299,6 +305,50 @@ public class AppDownloadManager {
         } finally {
             activeCalls.remove(item.getId());
         }
+    }
+
+    private Response executeDownloadRequest(String downloadId, Request request) throws IOException {
+        Request currentRequest = request;
+        for (int redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
+            Call call = client.newCall(currentRequest);
+            activeCalls.put(downloadId, call);
+            Response response = call.execute();
+            if (!isRedirect(response.code())) {
+                return response;
+            }
+
+            String location = response.header("Location");
+            HttpUrl currentUrl = response.request().url();
+            HttpUrl nextUrl = !TextUtils.isEmpty(location) ? currentUrl.resolve(location) : null;
+            response.close();
+
+            if (nextUrl == null || !isHttpScheme(nextUrl.scheme())) {
+                throw new IOException("Unsafe redirect");
+            }
+            if ("https".equalsIgnoreCase(currentUrl.scheme())
+                    && "http".equalsIgnoreCase(nextUrl.scheme())) {
+                throw new IOException("Blocked HTTPS downgrade redirect");
+            }
+            currentRequest = currentRequest.newBuilder().url(nextUrl).build();
+        }
+        throw new IOException("Too many redirects");
+    }
+
+    private boolean isRedirect(int code) {
+        return code == 300 || code == 301 || code == 302 || code == 303
+                || code == 307 || code == 308;
+    }
+
+    private boolean isHttpDownloadUrl(String url) {
+        if (TextUtils.isEmpty(url)) {
+            return false;
+        }
+        HttpUrl parsed = HttpUrl.parse(url);
+        return parsed != null && isHttpScheme(parsed.scheme());
+    }
+
+    private boolean isHttpScheme(String scheme) {
+        return "https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme);
     }
 
     private void markPaused(Context context, DownloadRepository repository, DownloadItem item, long downloadedBytes) {

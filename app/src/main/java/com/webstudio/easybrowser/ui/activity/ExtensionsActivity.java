@@ -27,6 +27,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.webstudio.easybrowser.R;
+import com.webstudio.easybrowser.managers.AnalyticsManager;
 import com.webstudio.easybrowser.managers.RuntimeManager;
 
 import org.mozilla.geckoview.GeckoResult;
@@ -570,15 +571,28 @@ public class ExtensionsActivity extends AppCompatActivity {
         Toast.makeText(this, R.string.extension_installing, Toast.LENGTH_SHORT).show();
         extensionController.install(url, WebExtensionController.INSTALLATION_METHOD_MANAGER)
                 .accept(extension -> runOnUiThread(() -> {
+                            AnalyticsManager.logExtensionInstall(this, getInstallSource(url), true);
                             Toast.makeText(this, R.string.extension_installed, Toast.LENGTH_SHORT).show();
                             if (extensionUrlInput != null) {
                                 extensionUrlInput.setText("");
                             }
                             loadExtensions();
                         }),
-                        exception -> runOnUiThread(() ->
-                                Toast.makeText(this, R.string.extension_install_failed,
-                                        Toast.LENGTH_LONG).show()));
+                        exception -> runOnUiThread(() -> {
+                            AnalyticsManager.logExtensionInstall(this, getInstallSource(url), false);
+                            Toast.makeText(this, R.string.extension_install_failed,
+                                    Toast.LENGTH_LONG).show();
+                        }));
+    }
+
+    private String getInstallSource(String url) {
+        if (TextUtils.isEmpty(url)) {
+            return "unknown";
+        }
+        if (url.contains("addons.mozilla.org")) {
+            return "mozilla_addons";
+        }
+        return "manual";
     }
 
     private void loadExtensions() {

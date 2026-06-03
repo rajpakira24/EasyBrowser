@@ -22,22 +22,22 @@
 
 # Add project specific ProGuard rules here.
 
-# Keep GeckoView classes
--keep class org.mozilla.geckoview.** { *; }
--keep class org.mozilla.gecko.annotation.WrapForJNI
--keep class org.mozilla.gecko.annotation.RobocopTarget
--keep @org.mozilla.gecko.annotation.WrapForJNI class *
--keep @org.mozilla.gecko.annotation.RobocopTarget class *
--keepclasseswithmembers class * {
-    @org.mozilla.gecko.annotation.WrapForJNI *;
-}
--keepclasseswithmembers class * {
-    @org.mozilla.gecko.annotation.RobocopTarget *;
-}
+# GeckoView ships its own consumer ProGuard rules. Keep only local warnings here.
+
+# GeckoView pulls SnakeYAML, whose JavaBean reflection path references java.beans.
+# Android does not provide java.beans; this optional path is not used by the app.
+-dontwarn java.beans.BeanInfo
+-dontwarn java.beans.FeatureDescriptor
+-dontwarn java.beans.IntrospectionException
+-dontwarn java.beans.Introspector
+-dontwarn java.beans.PropertyDescriptor
 
 # Keep Room database
 -keep class androidx.room.** { *; }
 -keep class com.webstudio.easybrowser.database.entity.** { *; }
+-keep class com.webstudio.easybrowser.database.AppDatabase_Impl { *; }
+-keep class com.webstudio.easybrowser.database.**_Impl { *; }
+-keep class * extends androidx.room.RoomDatabase { *; }
 
 # Keep model classes
 -keep class com.webstudio.easybrowser.models.** { *; }
@@ -54,6 +54,9 @@
 # Keep Firebase Crashlytics
 -keepattributes SourceFile,LineNumberTable
 -keep public class * extends java.lang.Exception
+-keep interface com.google.firebase.components.ComponentRegistrar { *; }
+-keep class * implements com.google.firebase.components.ComponentRegistrar { *; }
+-keep class com.google.firebase.**Registrar { *; }
 
 # General Android rules
 -keepattributes *Annotation*

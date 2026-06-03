@@ -11,7 +11,7 @@ build/
 .idea/
 .DS_Store
 
-# Local config — never commit
+# Local config - never commit
 local.properties
 keystore.properties
 *.jks
@@ -22,3 +22,4 @@ google-services.json
 .claude/
 .graphify_python
 graphify-out/
+*.logcat

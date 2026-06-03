@@ -15,6 +15,10 @@ import org.mozilla.geckoview.ContentBlocking;
 public class RuntimeManager {
     private static volatile GeckoRuntime runtime;
 
+    public static GeckoRuntime getExistingRuntime() {
+        return runtime;
+    }
+
     public static GeckoRuntime getRuntime(Context context) {
         UrlUtils.initialize(context);
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
@@ -26,7 +30,7 @@ public class RuntimeManager {
                             .contentBlocking(contentBlockingSettings)
                             .javaScriptEnabled(prefs.getBoolean("javascript_enabled", true))
                             .remoteDebuggingEnabled(prefs.getBoolean("remote_debugging_enabled", false))
-                            .globalPrivacyControlEnabled(prefs.getBoolean("do_not_track", false))
+                            .globalPrivacyControlEnabled(prefs.getBoolean("do_not_track", true))
                             .fontSizeFactor(prefs.getInt("text_size_percent", 100) / 100f)
                             .trustedRecursiveResolverMode(getDohMode(prefs))
                             .trustedRecursiveResolverUri(getDohUri(prefs))
@@ -44,7 +48,7 @@ public class RuntimeManager {
             runtime.getSettings()
                     .setJavaScriptEnabled(prefs.getBoolean("javascript_enabled", true))
                     .setRemoteDebuggingEnabled(prefs.getBoolean("remote_debugging_enabled", false))
-                    .setGlobalPrivacyControl(prefs.getBoolean("do_not_track", false))
+                    .setGlobalPrivacyControl(prefs.getBoolean("do_not_track", true))
                     .setFontSizeFactor(prefs.getInt("text_size_percent", 100) / 100f)
                     .setTrustedRecursiveResolverMode(getDohMode(prefs))
                     .setTrustedRecursiveResolverUri(getDohUri(prefs));

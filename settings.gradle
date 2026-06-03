@@ -8,8 +8,8 @@ pluginManagement {
             }
         }
         mavenCentral()
-        maven { url "https://jitpack.io"}
-        maven { url "https://maven.mozilla.org/maven2/"}
+        maven { url = "https://jitpack.io" }
+        maven { url = "https://maven.mozilla.org/maven2/" }
         gradlePluginPortal()
     }
 }
@@ -17,8 +17,8 @@ dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
-        maven { url "https://jitpack.io"}
-        maven { url "https://maven.mozilla.org/maven2/"}
+        maven { url = "https://jitpack.io" }
+        maven { url = "https://maven.mozilla.org/maven2/" }
         mavenCentral()
     }
 }

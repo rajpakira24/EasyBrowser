@@ -1,6 +1,5 @@
 package com.webstudio.easybrowser.ui.activity;
 
-import android.Manifest;
 import android.util.Log;
 import android.app.Dialog;
 import android.content.BroadcastReceiver;
@@ -69,6 +68,7 @@ import com.google.android.material.slider.Slider;
 import com.google.android.material.snackbar.Snackbar;
 import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.adapters.SuggestionsAdapter;
+import com.webstudio.easybrowser.managers.AnalyticsManager;
 import com.webstudio.easybrowser.managers.AppDownloadManager;
 import com.webstudio.easybrowser.managers.RuntimeManager;
 import com.webstudio.easybrowser.managers.TabManager;
@@ -101,7 +101,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class BrowserActivity extends AppCompatActivity {
     static final int REQUEST_GECKO_PERMISSIONS = 1001;
-    private static final int REQUEST_INITIAL_PERMISSIONS = 1002;
     private GeckoView geckoView;
     GeckoSession session;
     private BrowserViewModel browserViewModel;
@@ -172,8 +171,6 @@ public class BrowserActivity extends AppCompatActivity {
         attachTabToView(tabManager.getCurrentTab());
         setupBackHandling();
         setupSwipeGestures();
-        requestBrowserPermissions();
-
         // Seed lastAppliedUaPreset so the first onResume() doesn't trigger a spurious reload
         lastAppliedUaPreset = PreferenceManager.getDefaultSharedPreferences(this)
                 .getString("user_agent_preset", "mobile");
@@ -353,32 +350,6 @@ public class BrowserActivity extends AppCompatActivity {
     private void initializeViewModel() {
         browserViewModel = new ViewModelProvider(this).get(BrowserViewModel.class);
         tabManager = browserViewModel.getTabManager();
-    }
-
-    private void requestBrowserPermissions() {
-        List<String> permissions = new ArrayList<>();
-        addPermissionIfNeeded(permissions, Manifest.permission.CAMERA);
-        addPermissionIfNeeded(permissions, Manifest.permission.RECORD_AUDIO);
-        addPermissionIfNeeded(permissions, Manifest.permission.ACCESS_FINE_LOCATION);
-        addPermissionIfNeeded(permissions, Manifest.permission.ACCESS_COARSE_LOCATION);
-        if (Build.VERSION.SDK_INT >= 33) {
-            addPermissionIfNeeded(permissions, Manifest.permission.POST_NOTIFICATIONS);
-            addPermissionIfNeeded(permissions, Manifest.permission.READ_MEDIA_IMAGES);
-            addPermissionIfNeeded(permissions, Manifest.permission.READ_MEDIA_VIDEO);
-            addPermissionIfNeeded(permissions, Manifest.permission.READ_MEDIA_AUDIO);
-        } else {
-            addPermissionIfNeeded(permissions, Manifest.permission.READ_EXTERNAL_STORAGE);
-        }
-        if (!permissions.isEmpty()) {
-            androidx.core.app.ActivityCompat.requestPermissions(
-                    this, permissions.toArray(new String[0]), REQUEST_INITIAL_PERMISSIONS);
-        }
-    }
-
-    private void addPermissionIfNeeded(List<String> permissions, String permission) {
-        if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-            permissions.add(permission);
-        }
     }
 
     private void setupFilePicker() {
@@ -839,6 +810,8 @@ public class BrowserActivity extends AppCompatActivity {
             tabManager.createNewTab(false);
         }
 
+        Tab tab = tabManager.getCurrentTab();
+        AnalyticsManager.logNavigationSubmitted(this, input, tab != null && tab.isPrivate());
         loadUrl(UrlUtils.getUrlOrSearchUrl(this, input));
     }
 
@@ -857,6 +830,7 @@ public class BrowserActivity extends AppCompatActivity {
             currentTab.setInitialLoadPending(false);
             tabManager.updateTabUrl(currentTab, url);
             attachTabToView(currentTab);
+            AnalyticsManager.logPageLoadRequested(this, url, currentTab.isPrivate());
             currentTab.getSession().loadUri(url);
         }
     }
@@ -1504,6 +1478,7 @@ public class BrowserActivity extends AppCompatActivity {
             return;
         }
         try {
+            AnalyticsManager.logDownloadStarted(this, mimeType);
             AppDownloadManager.getInstance().startDownload(this, url, filename, mimeType);
         } catch (Exception e) {
             Toast.makeText(this, R.string.download_failed, Toast.LENGTH_SHORT).show();

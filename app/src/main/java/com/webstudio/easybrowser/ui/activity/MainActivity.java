@@ -40,6 +40,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.textfield.TextInputEditText;
 import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.adapters.QuickAccessAdapter;
+import com.webstudio.easybrowser.managers.AnalyticsManager;
 import com.webstudio.easybrowser.models.QuickAccessItem;
 import com.webstudio.easybrowser.repository.QuickAccessRepository;
 import com.webstudio.easybrowser.utils.SearchSuggestionProvider;
@@ -139,6 +140,7 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
             return;
         }
 
+        AnalyticsManager.logNavigationSubmitted(this, input, false);
         Intent intent = new Intent(this, BrowserActivity.class);
         intent.putExtra("url", UrlUtils.getUrlOrSearchUrl(this, input));
         startActivity(intent);

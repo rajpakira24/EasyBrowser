@@ -101,7 +101,7 @@ class BrowserNavigationDelegate implements GeckoSession.NavigationDelegate {
             return GeckoResult.deny();
         }
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(activity);
-        if (prefs.getBoolean("https_only", false)
+        if (prefs.getBoolean("https_only", true)
                 && request.uri != null
                 && request.uri.startsWith("http://")
                 && !isLocalUri(request.uri)) {
@@ -112,7 +112,7 @@ class BrowserNavigationDelegate implements GeckoSession.NavigationDelegate {
         // Block top-level navigation to data:/javascript: URIs while HTTPS-only is on —
         // they can escape the policy by carrying their own content. Exempt the in-app
         // new-tab page which is the only data: URI we generate.
-        if (prefs.getBoolean("https_only", false)
+        if (prefs.getBoolean("https_only", true)
                 && request.uri != null
                 && isTopLevelNavigation(request)
                 && (request.uri.startsWith("data:") || request.uri.startsWith("javascript:"))
