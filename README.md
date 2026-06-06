@@ -1,96 +1,107 @@
 # Easy Browser
 
-A privacy-focused Android browser built on **Mozilla GeckoView** — not WebView. Native tabs, ad/tracker blocking, HTTPS-only mode, private browsing, downloads with pause/resume, bookmarks, history, and per-site user styles.
+Easy Browser is a privacy-focused Android browser built on Mozilla GeckoView, not the system WebView. It includes native tab management, tab groups, persistent browser state, ad and tracker blocking, HTTPS-only mode, private browsing, downloads with pause/resume, bookmarks, history, reading list, site permissions, and per-site user styles.
 
 ## Screenshots
 
-| Home | Search | Page loaded |
-|:---:|:---:|:---:|
-| ![Home screen with privacy stats and quick access](test_screens/01_main.png) | ![Search popup overlay](test_screens/02_search_popup.png) | ![Brave search results loaded](test_screens/03_page_loaded.png) |
+| Home | Search overlay |
+|:---:|:---:|
+| ![Easy Browser home screen with privacy stats and photo background](test_screens/01_main.png) | ![Search overlay with focused address field](test_screens/02_search_popup.png) |
+| **Page loaded** | **Tab manager** |
+| ![Example Domain loaded in Easy Browser](test_screens/03_page_loaded.png) | ![Tab manager showing an open tab](test_screens/04_tab_manager.png) |
 
 ## Why GeckoView
 
-Most "alternative" Android browsers wrap the system WebView, which means they inherit whatever the OEM ships. Easy Browser embeds Gecko (the same engine that powers Firefox), giving consistent rendering and modern security features across all Android 5.0+ devices.
+Most alternative Android browsers wrap the system WebView, which means they inherit whatever the device vendor ships. Easy Browser embeds Gecko, the same engine that powers Firefox, giving consistent rendering and modern browser security features across Android 5.0+ devices.
 
 ## Features
 
-- **Tabs** — full lifecycle management, persistence across app restarts, private tabs that never touch disk
-- **Privacy** — three blocking levels (off / balanced / aggressive), GeckoView Enhanced Tracking Protection, cookie-banner rejection, tracking-parameter stripping, Do-Not-Track, HTTPS-only mode
-- **Downloads** — OkHttp-backed, Range-resume support, MediaStore publishing on API 29+, Wi-Fi-only queuing, bandwidth throttling
-- **Search** — DuckDuckGo by default, configurable engines (Google, Bing, Brave, Ecosia, Yahoo), in-page autocomplete suggestions
-- **Per-site features** — user CSS injection, custom zoom per host, granular site permissions
-- **Reading list** — save pages for offline reading
-- **Quick access** — most-visited grid on the home screen
+- **Tabs and groups** - persistent normal tabs, private tabs that stay off disk, tab search, grouped tabs, inactive tabs, pinned tab metadata, thumbnails, and quick tab switching
+- **Privacy** - three blocking levels, GeckoView Enhanced Tracking Protection, cookie-banner rejection, tracking-parameter stripping, Do Not Track, HTTPS-only mode, popup blocking, and optional screenshot protection
+- **Downloads** - OkHttp-backed downloads with Range resume, MediaStore publishing on API 29+, Wi-Fi-only queuing, speed tracking, and pause/resume handling
+- **Search** - DuckDuckGo by default, with configurable engines such as Brave Search, Google, Bing, Ecosia, Yahoo, and custom providers
+- **Home screen** - privacy stats, quick access, photo-backed background, and bottom navigation for repeated browser workflows
+- **Per-site controls** - user CSS injection, custom zoom, permissions, cookies, and storage controls
+- **Reading list** - save pages for later reading
+- **Extensions** - GeckoView web extension support hooks and extension-management UI
 
-## Tech stack
+## Tech Stack
 
 | | |
 |---|---|
-| Language | Java |
+| Language | Java 11 |
 | Min SDK | 21 (Android 5.0) |
-| Target SDK | 36 |
+| Target SDK | 37 |
 | Engine | Mozilla GeckoView 143 |
-| Database | Room 2.6.1 (`browser.db`, v3) |
+| Database | Room 2.6.1 (`browser.db`, v7) |
 | Network | OkHttp 5.3.2 |
-| DI | None — singletons + `AndroidViewModel` |
+| Image loading | Glide 5.0.7 |
+| DI | None - singletons plus Android `ViewModel` / `AndroidViewModel` classes |
 
 ## Build
 
-```bash
-# Debug APK
-./gradlew assembleDebug
+Use the Gradle wrapper from the repository root.
 
-# Release APK (requires keystore.properties — see keystore.properties.example)
-./gradlew assembleRelease
+```powershell
+# Debug APK
+.\gradlew.bat assembleDebug
 
 # Unit tests
-./gradlew test
+.\gradlew.bat testDebugUnitTest
 
-# Instrumented tests (needs a connected device/emulator)
-./gradlew connectedAndroidTest
+# Instrumented tests (requires a connected device or emulator)
+.\gradlew.bat connectedDebugAndroidTest
 
 # Lint
-./gradlew lintDebug
+.\gradlew.bat lintDebug
+
+# Clean generated build output
+.\gradlew.bat clean
 ```
 
-GeckoView is fetched from Mozilla's Maven (`https://maven.mozilla.org/maven2/`) — first build needs internet.
+Release builds read signing values from `keystore.properties` at the project root. Copy `keystore.properties.example`, fill in real values locally, and keep the real file out of Git.
+
+GeckoView is fetched from Mozilla's Maven repository, so the first build needs internet access.
 
 ## Architecture
 
+```text
+MainActivity
+  -> BrowserActivity
+        -> BrowserViewModel
+              -> TabManager
+                    -> Tab / TabGroup
+                          -> GeckoSession
+                                -> singleton GeckoRuntime
+
+Room database
+  -> DAO
+        -> Repository
+              -> Activity / ViewModel
 ```
-BrowserActivity        ← single-instance core browser UI
-  └── BrowserViewModel
-        └── TabManager
-              └── Tab (id, title, url, isPrivate)
-                    └── GeckoSession  ← one per tab, opened against the singleton GeckoRuntime
-```
 
-- **Delegates** (Navigation/Content/Progress/Permission/Prompt/History) are wired exclusively from `BrowserActivity.configureSession()`. `TabManager` does not touch delegates.
-- **Persistence** — non-private tabs serialize to `SharedPreferences` as JSON (capped at 256 KB). Private tabs are dropped on process death by design.
-- **Data layer** — entity → DAO → Repository → Activity, all on a shared executor from `AppDatabase.getDatabaseExecutor()`.
-- **Two blocking paths run in parallel**: GeckoView's ContentBlocking and a hostname blocklist in `UrlUtils.isBlockedByAdBlock()` evaluated in `onLoadRequest`.
+- Browser delegates for navigation, content, progress, permissions, prompts, and history are configured from `BrowserActivity`.
+- Normal tab and group metadata is persisted through Room entities and repository classes; private tab state is kept out of durable storage.
+- `BrowserStateStore` keeps lightweight browser state in preferences, while `TabRepository` handles persisted tabs and groups.
+- Repository background work uses the shared executor from `AppDatabase.getDatabaseExecutor()`.
+- Blocking runs through GeckoView content blocking plus URL and host checks in `UrlUtils`.
 
-See [CLAUDE.md](CLAUDE.md) for a deeper architecture/preferences reference.
+See [CLAUDE.md](CLAUDE.md) for deeper architecture and preference notes.
 
-## Security posture
+## Security Posture
 
-Recent hardening pass covers:
+Recent hardening covers:
+
 - `allowBackup="false"` and restrictive data-extraction rules
-- FileProvider paths scoped to `cache/downloads/` only
-- Intent-extra and `intent.getData()` validated to `http(s)` only
-- Strict JS escaping on the new-tab data: page; user-CSS injection via base64 (no string interpolation)
-- Path-traversal + bidi-control sanitization on Content-Disposition and URL-decoded filenames
-- HTTP 200 to a Range request truncates the partial file (no append-onto-stale-data corruption)
-- `FLAG_IMMUTABLE` unconditional on all PendingIntents
-- `FLAG_SECURE` on Tabs/History to keep titles out of screenshots and recent-apps thumbnails
-- HTTPS-only mode also blocks top-level `data:`/`javascript:` navigation (except the in-app new-tab page)
-
-Lint is clean; `./gradlew lintDebug` reports zero errors.
-
-## Release signing
-
-`app/build.gradle` reads from `keystore.properties` at the project root. Copy `keystore.properties.example` and fill in real values. The file is in `.gitignore` and must never be committed.
+- FileProvider paths scoped to app-controlled download cache paths
+- Intent extras and incoming URLs validated before navigation
+- JavaScript and CSS injection paths escaped or encoded before use
+- Path-traversal and bidi-control sanitization for downloaded filenames
+- Range-download safeguards when a server returns HTTP 200 to a resumed request
+- Immutable `PendingIntent` usage
+- Optional `FLAG_SECURE` screenshot protection across activities
+- HTTPS-only enforcement for top-level navigation
 
 ## License
 
-[MIT](LICENSE) © 2026 Riju Pakira
+[MIT](LICENSE) (c) 2026 Riju Pakira
