@@ -159,6 +159,24 @@ public class SitePermissionsActivity extends AppCompatActivity {
         Toast.makeText(this, R.string.permission_revoked, Toast.LENGTH_SHORT).show();
     }
 
+    public static boolean hasPermission(SharedPreferences prefs, String host, String type) {
+        if (prefs == null || host == null || type == null) {
+            return false;
+        }
+        String json = prefs.getString(PREF_GRANTED_PERMISSIONS, "[]");
+        try {
+            JSONArray arr = new JSONArray(json);
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject obj = arr.getJSONObject(i);
+                if (host.equals(obj.optString("host")) && type.equals(obj.optString("type"))) {
+                    return true;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return false;
+    }
+
     public static void recordPermission(SharedPreferences prefs, String host, String type) {
         String json = prefs.getString(PREF_GRANTED_PERMISSIONS, "[]");
         try {

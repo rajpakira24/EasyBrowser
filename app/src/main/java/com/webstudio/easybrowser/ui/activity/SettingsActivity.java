@@ -3,8 +3,12 @@ package com.webstudio.easybrowser.ui.activity;
 import android.app.Dialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.drawable.Drawable;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import androidx.preference.PreferenceManager;
+import android.provider.Settings;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -13,16 +17,22 @@ import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
+import androidx.core.content.ContextCompat;
+import androidx.core.graphics.drawable.DrawableCompat;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.switchmaterial.SwitchMaterial;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
+import com.webstudio.easybrowser.BuildConfig;
 import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.managers.AnalyticsManager;
 import com.webstudio.easybrowser.managers.RuntimeManager;
 import com.webstudio.easybrowser.repository.BookmarkRepository;
 import com.webstudio.easybrowser.repository.HistoryRepository;
+import com.webstudio.easybrowser.utils.ScreenshotProtection;
+import com.webstudio.easybrowser.utils.SettingsKeys;
+import com.webstudio.easybrowser.utils.SystemBarUtils;
 import com.webstudio.easybrowser.utils.UrlUtils;
 
 import org.json.JSONArray;
@@ -40,8 +50,8 @@ public class SettingsActivity extends AppCompatActivity {
     private TextView searchEngineValue;
     private TextView homepageValue;
     private TextView textSizeValue;
-    private TextView accountValue;
     private TextView adBlockingValue;
+    private TextView downloadBandwidthLimitValue;
     private SwitchMaterial switchDoNotTrack;
     private SwitchMaterial switchJavascript;
     private SwitchMaterial switchRemoteDebugging;
@@ -51,16 +61,18 @@ public class SettingsActivity extends AppCompatActivity {
     private SwitchMaterial switchCookieBanners;
     private SwitchMaterial switchStripTrackingParams;
     private SwitchMaterial switchHttpsOnly;
+    private SwitchMaterial switchPreventScreenshots;
     private SwitchMaterial switchHomePrivacyStats;
     private SwitchMaterial switchHomeQuickAccess;
+    private SwitchMaterial switchDownloadWifiOnly;
 
     private LinearLayout settingSearchEngine;
     private LinearLayout settingHomepage;
     private LinearLayout settingTextSize;
-    private LinearLayout settingAccount;
     private LinearLayout settingAdBlocking;
     private LinearLayout settingClearData;
     private LinearLayout settingDownloadsFolder;
+    private LinearLayout settingDownloadBandwidthLimit;
     private TextView textDownloadsFolder;
 
     // F9 — User Agent
@@ -88,6 +100,7 @@ public class SettingsActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
+        applySystemBars();
 
         setupToolbar();
         initializeViews();
@@ -96,12 +109,33 @@ public class SettingsActivity extends AppCompatActivity {
         loadSettings();
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (prefs != null) {
+            loadSettings();
+        }
+    }
+
+    private void applySystemBars() {
+        SystemBarUtils.apply(this,
+                ContextCompat.getColor(this, R.color.app_bar_background),
+                ContextCompat.getColor(this, R.color.browser_chrome_background));
+    }
+
     private void setupToolbar() {
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
         if (getSupportActionBar() != null) {
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
             getSupportActionBar().setTitle(R.string.settings);
+        }
+        Drawable navigationIcon = toolbar.getNavigationIcon();
+        if (navigationIcon != null) {
+            navigationIcon = DrawableCompat.wrap(navigationIcon.mutate());
+            DrawableCompat.setTint(navigationIcon,
+                    ContextCompat.getColor(this, R.color.app_bar_foreground));
+            toolbar.setNavigationIcon(navigationIcon);
         }
     }
 
@@ -113,8 +147,8 @@ public class SettingsActivity extends AppCompatActivity {
         searchEngineValue = findViewById(R.id.search_engine_value);
         homepageValue = findViewById(R.id.homepage_value);
         textSizeValue = findViewById(R.id.text_size_value);
-        accountValue = findViewById(R.id.account_value);
         adBlockingValue = findViewById(R.id.ad_blocking_value);
+        downloadBandwidthLimitValue = findViewById(R.id.download_bandwidth_limit_value);
         switchDoNotTrack = findViewById(R.id.switch_do_not_track);
         switchJavascript = findViewById(R.id.switch_javascript);
         switchRemoteDebugging = findViewById(R.id.switch_remote_debugging);
@@ -124,16 +158,18 @@ public class SettingsActivity extends AppCompatActivity {
         switchCookieBanners = findViewById(R.id.switch_cookie_banners);
         switchStripTrackingParams = findViewById(R.id.switch_strip_tracking_params);
         switchHttpsOnly = findViewById(R.id.switch_https_only);
+        switchPreventScreenshots = findViewById(R.id.switch_prevent_screenshots);
         switchHomePrivacyStats = findViewById(R.id.switch_home_privacy_stats);
         switchHomeQuickAccess = findViewById(R.id.switch_home_quick_access);
+        switchDownloadWifiOnly = findViewById(R.id.switch_download_wifi_only);
 
         settingSearchEngine = findViewById(R.id.setting_search_engine);
         settingHomepage = findViewById(R.id.setting_homepage);
         settingTextSize = findViewById(R.id.setting_text_size);
-        settingAccount = findViewById(R.id.setting_account);
         settingAdBlocking = findViewById(R.id.setting_ad_blocking);
         settingClearData = findViewById(R.id.setting_clear_data);
         settingDownloadsFolder = findViewById(R.id.setting_downloads_folder);
+        settingDownloadBandwidthLimit = findViewById(R.id.setting_download_bandwidth_limit);
         textDownloadsFolder = findViewById(R.id.text_downloads_folder);
 
         settingUserAgent = findViewById(R.id.setting_user_agent);
@@ -159,17 +195,45 @@ public class SettingsActivity extends AppCompatActivity {
         settingSearchEngine.setOnClickListener(v -> showSearchEngineDialog());
         settingHomepage.setOnClickListener(v -> showHomepageDialog());
         settingTextSize.setOnClickListener(v -> showTextSizeDialog());
-        settingAccount.setOnClickListener(v -> showAccountDialog());
-        settingAdBlocking.setOnClickListener(v -> showAdBlockingDialog());
+        settingAdBlocking.setOnClickListener(v ->
+                openSubpage(SettingsSubpageActivity.PAGE_SHIELDS));
         settingUserStyles.setOnClickListener(v -> startActivity(new Intent(this, UserStylesActivity.class)));
         settingClearData.setOnClickListener(v -> showClearDataDialog());
-        settingDownloadsFolder.setOnClickListener(v -> showDownloadsFolderDialog());
+        settingDownloadsFolder.setOnClickListener(v ->
+                openSubpage(SettingsSubpageActivity.PAGE_DOWNLOADS));
+        settingDownloadBandwidthLimit.setOnClickListener(v ->
+                openSubpage(SettingsSubpageActivity.PAGE_DOWNLOADS));
         settingUserAgent.setOnClickListener(v -> showUserAgentDialog());
         settingDoh.setOnClickListener(v -> showDohDialog());
+        findViewById(R.id.setting_notifications).setOnClickListener(v ->
+                openSubpage(SettingsSubpageActivity.PAGE_NOTIFICATIONS));
+        findViewById(R.id.setting_external_links).setOnClickListener(v -> showExternalLinksDialog());
+        findViewById(R.id.setting_tabs_and_groups).setOnClickListener(v ->
+                openSubpage(SettingsSubpageActivity.PAGE_TABS));
+        findViewById(R.id.setting_media).setOnClickListener(v ->
+                openSubpage(SettingsSubpageActivity.PAGE_MEDIA));
+        findViewById(R.id.setting_appearance).setOnClickListener(v ->
+                openSubpage(SettingsSubpageActivity.PAGE_APPEARANCE));
+        findViewById(R.id.setting_new_tab_page).setOnClickListener(v ->
+                openSubpage(SettingsSubpageActivity.PAGE_NEW_TAB));
+        findViewById(R.id.setting_accessibility_subpage).setOnClickListener(v ->
+                openSubpage(SettingsSubpageActivity.PAGE_ACCESSIBILITY));
+        findViewById(R.id.setting_languages).setOnClickListener(v ->
+                openSubpage(SettingsSubpageActivity.PAGE_LANGUAGES));
+        findViewById(R.id.setting_terms_of_use).setOnClickListener(v ->
+                openSubpage(SettingsSubpageActivity.PAGE_TERMS_OF_USE));
+        findViewById(R.id.setting_privacy_policy).setOnClickListener(v ->
+                openSubpage(SettingsSubpageActivity.PAGE_PRIVACY_POLICY));
+        findViewById(R.id.setting_ip_infringement).setOnClickListener(v ->
+                openSubpage(SettingsSubpageActivity.PAGE_IP_INFRINGEMENT));
+        findViewById(R.id.setting_data_compliance).setOnClickListener(v ->
+                openSubpage(SettingsSubpageActivity.PAGE_DATA_COMPLIANCE));
+        findViewById(R.id.setting_help_feedback).setOnClickListener(v -> showHelpAndFeedback());
+        findViewById(R.id.setting_about).setOnClickListener(v -> showAboutDialog());
         findViewById(R.id.setting_cookie_manager).setOnClickListener(v ->
                 startActivity(new android.content.Intent(this, CookieManagerActivity.class)));
         findViewById(R.id.setting_site_permissions).setOnClickListener(v ->
-                startActivity(new android.content.Intent(this, SitePermissionsActivity.class)));
+                openSubpage(SettingsSubpageActivity.PAGE_SITE_SETTINGS));
 
         bindSwitchRow(R.id.setting_do_not_track, switchDoNotTrack);
         bindSwitchRow(R.id.setting_javascript, switchJavascript);
@@ -180,8 +244,10 @@ public class SettingsActivity extends AppCompatActivity {
         bindSwitchRow(R.id.setting_cookie_banners, switchCookieBanners);
         bindSwitchRow(R.id.setting_strip_tracking_params, switchStripTrackingParams);
         bindSwitchRow(R.id.setting_https_only, switchHttpsOnly);
+        bindSwitchRow(R.id.setting_prevent_screenshots, switchPreventScreenshots);
         bindSwitchRow(R.id.setting_home_privacy_stats, switchHomePrivacyStats);
         bindSwitchRow(R.id.setting_home_quick_access, switchHomeQuickAccess);
+        bindSwitchRow(R.id.setting_download_wifi_only, switchDownloadWifiOnly);
 
         switchDoNotTrack.setOnCheckedChangeListener((buttonView, isChecked) -> {
             prefs.edit().putBoolean("do_not_track", isChecked).apply();
@@ -246,11 +312,22 @@ public class SettingsActivity extends AppCompatActivity {
                     AnalyticsManager.logSettingChanged(this, "https_only", isChecked);
                 });
 
+        switchPreventScreenshots.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            prefs.edit().putBoolean(ScreenshotProtection.PREF_PREVENT_SCREENSHOTS, isChecked).apply();
+            ScreenshotProtection.apply(this, isChecked);
+            AnalyticsManager.logSettingChanged(this, "prevent_screenshots", isChecked);
+        });
+
         switchHomePrivacyStats.setOnCheckedChangeListener((buttonView, isChecked) ->
                 prefs.edit().putBoolean("show_privacy_stats", isChecked).apply());
 
         switchHomeQuickAccess.setOnCheckedChangeListener((buttonView, isChecked) ->
                 prefs.edit().putBoolean("show_quick_access", isChecked).apply());
+
+        switchDownloadWifiOnly.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            prefs.edit().putBoolean(SettingsKeys.PREF_DOWNLOAD_WIFI_ONLY, isChecked).apply();
+            AnalyticsManager.logSettingChanged(this, "download_wifi_only", isChecked);
+        });
 
         bindSwitchRow(R.id.setting_auto_clear_on_exit, switchAutoClearOnExit);
         bindSwitchRow(R.id.setting_auto_clear_cookies, switchAutoClearCookies);
@@ -292,8 +369,8 @@ public class SettingsActivity extends AppCompatActivity {
 
         int textSize = prefs.getInt("text_size_percent", 100);
         textSizeValue.setText(getString(R.string.text_size_percent, textSize));
-        updateAccountValue();
         updateAdBlockingValue();
+        updateDownloadBandwidthLimitValue();
 
         // Load switches
         switchDoNotTrack.setChecked(prefs.getBoolean("do_not_track", true));
@@ -305,11 +382,14 @@ public class SettingsActivity extends AppCompatActivity {
         switchCookieBanners.setChecked(prefs.getBoolean("block_cookie_banners", true));
         switchStripTrackingParams.setChecked(prefs.getBoolean("strip_tracking_params", true));
         switchHttpsOnly.setChecked(prefs.getBoolean("https_only", true));
+        switchPreventScreenshots.setChecked(ScreenshotProtection.isEnabled(this));
         switchHomePrivacyStats.setChecked(prefs.getBoolean("show_privacy_stats", true));
         switchHomeQuickAccess.setChecked(prefs.getBoolean("show_quick_access", true));
+        switchDownloadWifiOnly.setChecked(prefs.getBoolean(
+                SettingsKeys.PREF_DOWNLOAD_WIFI_ONLY, false));
 
         // Load downloads folder
-        String folder = prefs.getString("downloads_folder_custom", "");
+        String folder = prefs.getString(SettingsKeys.PREF_DOWNLOADS_FOLDER_CUSTOM, "");
         textDownloadsFolder.setText(folder.isEmpty()
                 ? getString(R.string.downloads_folder_default) : folder);
 
@@ -413,33 +493,6 @@ public class SettingsActivity extends AppCompatActivity {
         } catch (JSONException ignored) {}
     }
 
-    private void showDownloadsFolderDialog() {
-        android.widget.EditText editText = new android.widget.EditText(this);
-        editText.setHint(R.string.downloads_folder_hint);
-        String current = prefs.getString("downloads_folder_custom", "");
-        editText.setText(current);
-        editText.setSingleLine(true);
-        int pad = (int) (16 * getResources().getDisplayMetrics().density);
-        editText.setPadding(pad, pad, pad, pad);
-
-        new MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.downloads_folder)
-                .setView(editText)
-                .setPositiveButton(R.string.save, (dialog, which) -> {
-                    String folder = editText.getText().toString().trim();
-                    prefs.edit().putString("downloads_folder_custom", folder).apply();
-                    textDownloadsFolder.setText(folder.isEmpty()
-                            ? getString(R.string.downloads_folder_default) : folder);
-                    Toast.makeText(this, R.string.downloads_folder_updated, Toast.LENGTH_SHORT).show();
-                })
-                .setNeutralButton(R.string.downloads_folder_default, (dialog, which) -> {
-                    prefs.edit().putString("downloads_folder_custom", "").apply();
-                    textDownloadsFolder.setText(R.string.downloads_folder_default);
-                })
-                .setNegativeButton(R.string.cancel, null)
-                .show();
-    }
-
     private void showHomepageDialog() {
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_homepage, null);
         TextInputLayout inputLayout = dialogView.findViewById(R.id.homepage_input_layout);
@@ -487,14 +540,6 @@ public class SettingsActivity extends AppCompatActivity {
                 .show();
     }
 
-    private void showAccountDialog() {
-        new MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.browser_profile)
-                .setMessage(R.string.profile_unavailable_message)
-                .setPositiveButton(android.R.string.ok, null)
-                .show();
-    }
-
     private void clearLegacyProfilePreferences() {
         if (prefs.contains("profile_signed_in")
                 || prefs.contains("profile_name")
@@ -507,34 +552,6 @@ public class SettingsActivity extends AppCompatActivity {
         }
     }
 
-    private void showAdBlockingDialog() {
-        String[] labels = getResources().getStringArray(R.array.ad_blocking_names);
-        String[] values = getResources().getStringArray(R.array.ad_blocking_values);
-        String current = prefs.getString("ad_blocking_level", "balanced");
-        int checkedItem = 1;
-        for (int i = 0; i < values.length; i++) {
-            if (values[i].equals(current)) {
-                checkedItem = i;
-                break;
-            }
-        }
-
-        new MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.ad_blocking)
-                .setSingleChoiceItems(labels, checkedItem, (dialog, which) -> {
-                    prefs.edit().putString("ad_blocking_level", values[which]).apply();
-                    updateAdBlockingValue();
-                    applyContentBlockingSettings();
-                    dialog.dismiss();
-                })
-                .setNegativeButton(R.string.cancel, null)
-                .show();
-    }
-
-    private void updateAccountValue() {
-        accountValue.setText(R.string.not_signed_in);
-    }
-
     private void updateAdBlockingValue() {
         String level = prefs.getString("ad_blocking_level", "balanced");
         if ("off".equals(level)) {
@@ -544,6 +561,19 @@ public class SettingsActivity extends AppCompatActivity {
         } else {
             adBlockingValue.setText(R.string.ad_blocking_balanced);
         }
+    }
+
+    private void updateDownloadBandwidthLimitValue() {
+        String current = prefs.getString(SettingsKeys.PREF_DOWNLOAD_BANDWIDTH_LIMIT, "0");
+        String[] labels = getResources().getStringArray(R.array.bandwidth_limit_names);
+        String[] values = getResources().getStringArray(R.array.bandwidth_limit_values);
+        for (int i = 0; i < values.length; i++) {
+            if (values[i].equals(current)) {
+                downloadBandwidthLimitValue.setText(labels[i]);
+                return;
+            }
+        }
+        downloadBandwidthLimitValue.setText(labels[0]);
     }
 
     private void applyContentBlockingSettings() {
@@ -971,6 +1001,59 @@ public class SettingsActivity extends AppCompatActivity {
             case "nextdns": return "https://dns.nextdns.io/dns-query";
             case "custom":  return prefs.getString("doh_uri", "");
             default:        return "https://cloudflare-dns.com/dns-query";
+        }
+    }
+
+    private void openSubpage(String page) {
+        Intent intent = new Intent(this, SettingsSubpageActivity.class);
+        intent.putExtra(SettingsSubpageActivity.EXTRA_PAGE, page);
+        startActivity(intent);
+    }
+
+    private void showExternalLinksDialog() {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.open_external_links)
+                .setMessage(R.string.open_external_links_message)
+                .setPositiveButton(R.string.open_default_apps_settings,
+                        (dialog, which) -> openDefaultAppsSettings())
+                .setNegativeButton(android.R.string.ok, null)
+                .show();
+    }
+
+    private void openDefaultAppsSettings() {
+        Intent intent = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
+                ? new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
+                : getAppDetailsSettingsIntent();
+        startActivitySafely(intent);
+    }
+
+    private Intent getAppDetailsSettingsIntent() {
+        return new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", getPackageName(), null));
+    }
+
+    private void showHelpAndFeedback() {
+        Intent intent = new Intent(Intent.ACTION_SEND);
+        intent.setType("text/plain");
+        intent.putExtra(Intent.EXTRA_SUBJECT, getString(R.string.feedback_subject));
+        intent.putExtra(Intent.EXTRA_TEXT, getString(R.string.feedback_body));
+        startActivitySafely(Intent.createChooser(intent, getString(R.string.help_feedback)));
+    }
+
+    private void showAboutDialog() {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.about_easy_browser)
+                .setMessage(getString(R.string.about_easy_browser_message,
+                        BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE))
+                .setPositiveButton(android.R.string.ok, null)
+                .show();
+    }
+
+    private void startActivitySafely(Intent intent) {
+        try {
+            startActivity(intent);
+        } catch (RuntimeException e) {
+            showToast(R.string.error_generic);
         }
     }
 

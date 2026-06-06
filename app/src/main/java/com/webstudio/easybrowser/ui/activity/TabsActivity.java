@@ -26,6 +26,7 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.adapters.TabsAdapter;
 import com.webstudio.easybrowser.models.Tab;
+import com.webstudio.easybrowser.utils.ScreenshotProtection;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -42,10 +43,19 @@ public class TabsActivity extends AppCompatActivity implements TabsAdapter.OnTab
     public static final String RESULT_CLOSED_TAB_IDS = "closed_tab_ids";
     public static final String RESULT_CREATE_PRIVATE_TAB = "create_private_tab";
     public static final String RESULT_RESTORE_URL = "restore_url";
+    public static final String RESULT_RESTORE_PRIVATE = "restore_private";
     public static final String EXTRA_CLOSED_TAB_TITLES = "closed_tab_titles";
     public static final String EXTRA_CLOSED_TAB_URLS = "closed_tab_urls";
     public static final String EXTRA_TAB_GROUPS = "tab_groups";
+    public static final String EXTRA_TAB_GROUP_IDS = "tab_group_ids_extra";
+    public static final String EXTRA_TAB_GROUP_COLORS = "tab_group_colors";
+    public static final String EXTRA_TAB_THUMBNAILS = "tab_thumbnail_paths";
+    public static final String EXTRA_TAB_FAVICONS = "tab_favicon_uris";
+    public static final String EXTRA_TAB_POSITIONS = "tab_positions";
     public static final String EXTRA_TAB_PARENT_IDS = "tab_parent_ids";
+    public static final String EXTRA_TAB_CREATED_AT = "tab_created_at";
+    public static final String EXTRA_TAB_LAST_ACCESSED = "tab_last_accessed";
+    public static final String EXTRA_TAB_PINNED_STATES = "tab_pinned_states";
     public static final String RESULT_TAB_GROUP_IDS = "tab_group_ids";
     public static final String RESULT_TAB_GROUP_NAMES = "tab_group_names";
 
@@ -68,11 +78,7 @@ public class TabsActivity extends AppCompatActivity implements TabsAdapter.OnTab
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // Prevent the tab list (which shows private-tab URLs and titles) from
-        // leaking into the recent-apps thumbnail or screenshot apps.
-        getWindow().setFlags(
-                android.view.WindowManager.LayoutParams.FLAG_SECURE,
-                android.view.WindowManager.LayoutParams.FLAG_SECURE);
+        ScreenshotProtection.apply(this);
         setContentView(R.layout.activity_tabs);
 
         restoreTabsFromIntent(getIntent());
@@ -102,6 +108,7 @@ public class TabsActivity extends AppCompatActivity implements TabsAdapter.OnTab
         ArrayList<String> groups = intent.getStringArrayListExtra(EXTRA_TAB_GROUPS);
         ArrayList<String> parentIds = intent.getStringArrayListExtra(EXTRA_TAB_PARENT_IDS);
         boolean[] privateStates = intent.getBooleanArrayExtra(EXTRA_TAB_PRIVATE_STATES);
+        boolean[] pinnedStates = intent.getBooleanArrayExtra(EXTRA_TAB_PINNED_STATES);
         currentTabId = intent.getStringExtra(EXTRA_CURRENT_TAB_ID);
         if (ids == null || titles == null || urls == null || privateStates == null) {
             return;
@@ -115,6 +122,7 @@ public class TabsActivity extends AppCompatActivity implements TabsAdapter.OnTab
             if (parentIds != null && i < parentIds.size() && !parentIds.get(i).isEmpty()) {
                 tab.setParentTabId(parentIds.get(i));
             }
+            tab.setPinned(pinnedStates != null && i < pinnedStates.length && pinnedStates[i]);
             tabs.add(tab);
         }
     }

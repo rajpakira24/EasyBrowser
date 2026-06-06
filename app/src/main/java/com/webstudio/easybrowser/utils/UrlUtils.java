@@ -2,16 +2,24 @@ package com.webstudio.easybrowser.utils;
 
 import android.content.Context;
 import android.net.Uri;
+import androidx.core.content.ContextCompat;
 import androidx.preference.PreferenceManager;
 import android.util.Patterns;
 import com.webstudio.easybrowser.R;
+import com.webstudio.easybrowser.managers.PrivacyStatsManager;
+import com.webstudio.easybrowser.models.QuickAccessItem;
+import com.webstudio.easybrowser.repository.QuickAccessRepository;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class UrlUtils {
     public static final String DEFAULT_HOMEPAGE = "https://duckduckgo.com";
@@ -37,6 +45,18 @@ public class UrlUtils {
     // Data: URIs above this size are dropped to avoid hitting GeckoView's
     // ERROR_DATA_URI_TOO_LONG limit and to keep the new-tab payload bounded.
     private static final int MAX_NEW_TAB_HTML_BYTES = 1_000_000;
+    private static final String[] COMMON_SITE_PREFIXES = {
+            "www", "m", "mobile", "amp", "touch", "lite"
+    };
+    private static final String[] LANGUAGE_HOST_LABELS = {
+            "af", "am", "ar", "az", "be", "bg", "bn", "bs", "ca", "cs",
+            "da", "de", "el", "en", "es", "et", "eu", "fa", "fi", "fr",
+            "ga", "gl", "gu", "he", "hi", "hr", "hu", "hy", "id", "is",
+            "it", "ja", "ka", "kk", "kn", "ko", "lt", "lv", "mk", "ml",
+            "mr", "ms", "nl", "no", "pa", "pl", "pt", "ro", "ru", "sk",
+            "sl", "sq", "sr", "sv", "sw", "ta", "te", "th", "tr", "uk",
+            "ur", "vi", "zh"
+    };
 
     /**
      * Must be called once at startup (e.g. from RuntimeManager.getRuntime).
@@ -128,43 +148,127 @@ public class UrlUtils {
     }
 
     public static String getNewTabPageUrl(Context context) {
+        boolean showQuickAccess = PreferenceManager.getDefaultSharedPreferences(context)
+                .getBoolean("show_quick_access", true);
         String appName = escapeHtml(context.getString(R.string.app_name));
         String subtitle = escapeHtml(context.getString(R.string.home_chrome_style_subtitle));
         String hint = escapeHtml(context.getString(R.string.search_or_type_url));
         String quickAccess = escapeHtml(context.getString(R.string.quick_access));
         String quickAccessSummary = escapeHtml(context.getString(R.string.quick_access_home_summary));
+        String privacyStatsTitle = escapeHtml(context.getString(R.string.privacy_stats));
+        String pagesProtected = escapeHtml(context.getString(R.string.pages_protected));
+        String itemsBlocked = escapeHtml(context.getString(R.string.items_blocked));
+        String timeSaved = escapeHtml(context.getString(R.string.time_saved));
         String searchEngine = sanitizeSearchEngineForScript(getSearchUrl(context, ""));
+        PrivacyStatsManager.Stats stats = PrivacyStatsManager.getStats(context);
+        HomeBackgroundProvider.Photo backgroundPhoto = HomeBackgroundProvider.nextPhoto();
+        List<QuickAccessItem> quickAccessItems = showQuickAccess
+                ? new QuickAccessRepository(context).getMostVisitedItemsSnapshot(8, 260)
+                : new ArrayList<>();
+        String background = cssColor(context, R.color.home_background);
+        String surface = cssColor(context, R.color.home_panel_background);
+        String accent = cssColor(context, R.color.home_accent_blue);
+        String mint = cssColor(context, R.color.home_accent_mint);
+        String warm = cssColor(context, R.color.home_accent_warm);
+        String border = cssColor(context, R.color.home_search_stroke);
+        String panelBorder = cssColor(context, R.color.home_panel_border);
+        String edgeSearchBackground = cssColor(context, R.color.edge_search_background);
+        String edgeSearchIconBackground = cssColor(context, R.color.edge_search_icon_background);
+        String edgeSearchForeground = cssColor(context, R.color.edge_search_foreground);
+        String edgeSearchHint = cssColor(context, R.color.edge_search_hint);
+        String onImageText = cssColor(context, R.color.home_on_image_text);
+        String onImageMuted = cssColor(context, R.color.home_on_image_muted);
+        String glassBackground = cssColorWithAlpha(context, R.color.home_glass_background_strong, 0.68f);
+        String statsGlassStart = cssColorWithAlpha(context, R.color.home_glass_background_strong, 0.88f);
+        String statsGlassEnd = cssColorWithAlpha(context, R.color.home_glass_background_strong, 0.72f);
+        String glassBorder = cssColor(context, R.color.home_glass_border);
+        String shadow = cssColorWithAlpha(context, R.color.home_accent_ink, 0.08f);
+        String searchShadow = cssColorWithAlpha(context, R.color.home_accent_ink, 0.18f);
+        String backgroundImage = backgroundPhoto.getImageUrl();
+        String backgroundImageAttribute = escapeHtml(backgroundImage);
+        String photoCredit = escapeHtml(backgroundPhoto.getCreditText());
+        String photoSource = escapeHtml(backgroundPhoto.getSourceUrl());
+        String quickAccessTiles = showQuickAccess
+                ? buildQuickAccessTilesHtml(quickAccessItems, quickAccessSummary)
+                : "";
 
         String html = "<!doctype html><html><head><meta charset='utf-8'>"
                 + "<meta name='viewport' content='width=device-width,initial-scale=1'>"
                 + "<title>" + appName + "</title>"
+                + "<link rel='preconnect' href='https://images.unsplash.com' crossorigin>"
+                + "<link rel='dns-prefetch' href='https://images.unsplash.com'>"
+                + "<link rel='preload' as='image' href='" + backgroundImageAttribute + "' fetchpriority='high'>"
                 + "<style>"
-                + "body{margin:0;font-family:Roboto,Arial,sans-serif;background:#f8fafd;color:#202124;}"
-                + ".wrap{box-sizing:border-box;min-height:100vh;padding:52px 18px 32px;}"
-                + ".logo{text-align:center;font-size:34px;font-weight:700;color:#1a73e8;}"
-                + ".sub{text-align:center;margin-top:4px;color:#757575;font-size:13px;}"
-                + "form{display:flex;align-items:center;height:56px;margin:26px auto 0;max-width:720px;"
-                + "background:#fff;border:1px solid #dadce0;border-radius:28px;box-shadow:0 2px 7px #0001;}"
-                + ".searchIcon{width:52px;text-align:center;color:#757575;font-size:20px;}"
-                + "input{flex:1;border:0;outline:0;background:transparent;font-size:16px;min-width:0;}"
-                + "button{border:0;background:transparent;color:#1a73e8;font-size:24px;width:52px;height:52px;}"
-                + "#suggestions{display:none;max-width:720px;margin:8px auto 0;background:#fff;border:1px solid #dadce0;"
-                + "border-radius:18px;box-shadow:0 2px 7px #0001;overflow:hidden;}"
-                + ".suggestion{padding:12px 18px;font-size:15px;border-bottom:1px solid #f1f3f4;}"
+                + "*{box-sizing:border-box}html,body{min-height:100%;overflow-x:hidden;}body{margin:0;font-family:Roboto,Arial,sans-serif;background:" + background + ";color:" + onImageText + ";}"
+                + "body:before{content:'';position:fixed;inset:0;background-image:url('" + backgroundImage + "');background-position:center;background-size:cover;background-repeat:no-repeat;z-index:-2;will-change:transform;transform:translateZ(0);}"
+                + "body:after{content:'';position:fixed;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.36) 0%,rgba(0,0,0,.16) 34%,rgba(0,0,0,.36) 64%,rgba(0,0,0,.72) 100%);z-index:-1;}"
+                + ".wrap{position:relative;z-index:1;min-height:100vh;padding:34px 18px 228px;}"
+                + ".shell{max-width:760px;margin:0 auto;}"
+                + ".brand{display:flex;align-items:center;gap:12px;margin-top:8px;}"
+                + ".mark{display:flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:14px;"
+                + "background:" + glassBackground + ";color:" + mint + ";font-size:24px;font-weight:700;}"
+                + ".logo{font-size:28px;font-weight:700;line-height:1.1;color:" + onImageText + ";opacity:.96;text-shadow:0 1px 2px rgba(0,0,0,.26);}"
+                + ".sub{margin-top:3px;color:" + onImageMuted + ";font-size:13px;opacity:.92;text-shadow:0 1px 2px rgba(0,0,0,.22);}"
+                + ".searchPanel{position:fixed;left:18px;right:18px;bottom:116px;bottom:calc(116px + env(safe-area-inset-bottom));z-index:10;max-width:760px;margin:0 auto;}"
+                + "form{display:flex;align-items:center;height:54px;background:" + edgeSearchBackground + ";border:0;"
+                + "border-radius:27px;padding:0 6px 0 7px;box-shadow:0 12px 28px " + searchShadow + ";}"
+                + "form:focus-within{background:" + edgeSearchBackground + ";outline:1px solid " + border + ";}"
+                + ".urlMark{display:flex;align-items:center;justify-content:center;width:42px;height:42px;flex:0 0 42px;"
+                + "border-radius:20px;background:" + edgeSearchIconBackground + ";color:" + edgeSearchForeground + ";font-size:20px;font-weight:700;}"
+                + "input{flex:1;border:0;outline:0;background:transparent;color:" + edgeSearchForeground + ";"
+                + "caret-color:" + edgeSearchForeground + ";font-size:15px;min-width:0;text-align:center;padding:0 8px;}"
+                + "input:focus,input:not(:placeholder-shown){text-align:left;}"
+                + "input::placeholder{color:" + edgeSearchHint + ";opacity:.95;}"
+                + "button{border:0;background:transparent;color:" + edgeSearchForeground + ";font-size:23px;width:42px;height:42px;border-radius:21px;}"
+                + "button:active{background:" + edgeSearchIconBackground + ";}"
+                + "#suggestions{display:none;margin:8px 0 0;background:" + surface + ";border:1px solid " + border + ";"
+                + "border-radius:18px;box-shadow:0 2px 7px " + shadow + ";overflow:hidden;}"
+                + ".suggestion{padding:12px 18px;font-size:15px;border-bottom:1px solid " + panelBorder + ";}"
                 + ".suggestion:last-child{border-bottom:0;}"
-                + ".section{max-width:720px;margin:28px auto 0;}"
-                + ".title{font-size:17px;font-weight:700;margin-bottom:8px;}"
-                + ".summary{color:#757575;font-size:14px;line-height:1.45;}"
-                + "</style></head><body><main class='wrap'>"
+                + ".stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;margin-top:18px;"
+                + "background:linear-gradient(135deg," + statsGlassStart + "," + statsGlassEnd + ");border:1px solid " + glassBorder + ";border-radius:14px;overflow:hidden;"
+                + "-webkit-backdrop-filter:blur(18px) saturate(120%);backdrop-filter:blur(18px) saturate(120%);box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 12px 30px rgba(0,0,0,.16);}"
+                + ".stat{padding:13px 8px;text-align:center;min-width:0;}"
+                + ".stat strong{display:block;font-size:22px;line-height:1.2;font-weight:700;}"
+                + ".stat span{display:block;margin-top:5px;color:" + onImageMuted + ";font-size:12px;line-height:1.25;opacity:.92;}"
+                + ".qa{margin-top:28px;}"
+                + ".title{font-size:17px;font-weight:700;color:" + onImageText + ";opacity:.96;text-shadow:0 1px 2px rgba(0,0,0,.28);}"
+                + ".summary,.empty{color:" + onImageMuted + ";font-size:14px;line-height:1.45;opacity:.92;}"
+                + ".empty{margin-top:12px;padding:14px;background:" + glassBackground + ";border:1px solid " + glassBorder + ";border-radius:14px;}"
+                + ".tiles{display:flex;flex-wrap:nowrap;gap:16px;margin:16px -4px 0;padding:0 4px 8px;overflow-x:auto;"
+                + "overscroll-behavior-x:contain;scrollbar-width:none;}"
+                + ".tiles::-webkit-scrollbar{display:none;}"
+                + ".tile{display:block;flex:0 0 74px;min-width:0;text-align:center;text-decoration:none;color:" + onImageText + ";}"
+                + ".tileIcon{display:flex;align-items:center;justify-content:center;width:56px;height:56px;margin:0 auto 8px;"
+                + "border-radius:28px;background:rgba(255,255,255,.88);overflow:hidden;}"
+                + ".tileIcon img{width:34px;height:34px;object-fit:contain;}"
+                + ".fallback{align-items:center;justify-content:center;width:100%;height:100%;font-size:20px;font-weight:700;color:" + accent + ";}"
+                + ".tileTitle{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:" + onImageText + ";font-size:13px;line-height:1.2;text-shadow:0 1px 2px rgba(0,0,0,.38);}"
+                + ".credit{position:fixed;left:18px;bottom:184px;bottom:calc(184px + env(safe-area-inset-bottom));z-index:9;display:inline-flex;max-width:calc(100% - 36px);"
+                + "padding:6px 10px;border-radius:14px;background:" + glassBackground + ";border:1px solid " + glassBorder + ";color:" + onImageText + ";font-size:12px;text-decoration:none;text-shadow:0 1px 3px rgba(0,0,0,.55);"
+                + "-webkit-backdrop-filter:blur(14px) saturate(115%);backdrop-filter:blur(14px) saturate(115%);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}"
+                + "@media(max-width:360px){.wrap{padding-left:14px;padding-right:14px}.searchPanel{left:14px;right:14px;bottom:110px;bottom:calc(110px + env(safe-area-inset-bottom));}.credit{left:14px;bottom:176px;bottom:calc(176px + env(safe-area-inset-bottom));max-width:calc(100% - 28px);}.logo{font-size:26px}.tile{flex-basis:68px}.tileIcon{width:50px;height:50px;border-radius:16px}.tiles{gap:13px}.tileTitle{font-size:12px}}"
+                + "</style></head><body><main class='wrap'><div class='shell'>"
+                + "<section class='brand'><div class='mark' aria-hidden='true'>&#10003;</div><div>"
                 + "<div class='logo'>" + appName + "</div>"
-                + "<div class='sub'>" + subtitle + "</div>"
+                + "<div class='sub'>" + subtitle + "</div></div></section>"
+                + "<section class='searchPanel'>"
                 + "<form onsubmit=\"var q=document.getElementById('q').value.trim();"
                 + "if(q){location.href='" + escapeJs(searchEngine) + "'+encodeURIComponent(q);}return false;\">"
-                + "<div class='searchIcon'>&#128269;</div>"
-                + "<input id='q' autocomplete='off' autofocus placeholder='" + hint + "'>"
-                + "<button type='submit' aria-label='Search'>&#8250;</button>"
+                + "<div class='urlMark' aria-hidden='true'>&#8981;</div>"
+                + "<input id='q' autocomplete='off' placeholder='" + hint + "'>"
+                + "<button type='submit' aria-label='Search'>&#8594;</button>"
                 + "</form>"
-                + "<div id='suggestions'></div>"
+                + "<div id='suggestions'></div></section>"
+                + "<section class='stats' aria-label='" + privacyStatsTitle + "'>"
+                + "<div class='stat'><strong style='color:" + mint + "'>" + stats.pagesProtected + "</strong><span>" + pagesProtected + "</span></div>"
+                + "<div class='stat'><strong style='color:" + warm + "'>" + stats.itemsBlocked + "</strong><span>" + itemsBlocked + "</span></div>"
+                + "<div class='stat'><strong style='color:" + accent + "'>" + formatTimeSavedForPage(stats.timeSavedSeconds) + "</strong><span>" + timeSaved + "</span></div>"
+                + "</section>"
+                + (showQuickAccess
+                ? "<section class='qa'><div class='title'>" + quickAccess + "</div>" + quickAccessTiles + "</section>"
+                : "")
+                + "<a class='credit' href='" + photoSource + "'>" + photoCredit + "</a>"
                 + "<script>"
                 + "var q=document.getElementById('q'),box=document.getElementById('suggestions'),timer=0;"
                 + "function search(v){v=(v||'').trim();if(v){location.href='" + escapeJs(searchEngine) + "'+encodeURIComponent(v);}}"
@@ -177,13 +281,98 @@ public class UrlUtils {
                 + ".then(function(r){return r.json();}).then(function(j){var items=j&&j[1]?j[1]:[];show(items.length?items:fallback(v));})"
                 + ".catch(function(){show(fallback(v));});},180);});"
                 + "</script>"
-                + "<section class='section'><div class='title'>" + quickAccess + "</div>"
-                + "<div class='summary'>" + quickAccessSummary + "</div></section>"
-                + "</main></body></html>";
+                + "</div></main></body></html>";
         if (html.length() > MAX_NEW_TAB_HTML_BYTES) {
             return DEFAULT_HOMEPAGE;
         }
         return "data:text/html;charset=utf-8," + Uri.encode(html);
+    }
+
+    private static String buildQuickAccessTilesHtml(List<QuickAccessItem> items, String emptySummary) {
+        if (items == null || items.isEmpty()) {
+            return "<div class='empty'>" + emptySummary + "</div>";
+        }
+
+        StringBuilder html = new StringBuilder("<div class='tiles'>");
+        int rendered = 0;
+        for (QuickAccessItem item : items) {
+            if (item == null || isBlank(item.getUrl())) {
+                continue;
+            }
+            String url = item.getUrl();
+            String title = !isBlank(item.getTitle()) ? item.getTitle() : getQuickAccessTitle(url);
+            if (isBlank(title)) {
+                title = getDisplayHost(url);
+            }
+            if (isBlank(title)) {
+                title = url;
+            }
+            String faviconUrl = !isBlank(item.getFaviconUrl())
+                    ? item.getFaviconUrl()
+                    : getFaviconUrl(url);
+            String initial = getFallbackInitial(title);
+
+            html.append("<a class='tile' href='")
+                    .append(escapeHtml(url))
+                    .append("'><span class='tileIcon'>");
+            if (!isBlank(faviconUrl)) {
+                html.append("<img src='")
+                        .append(escapeHtml(faviconUrl))
+                        .append("' alt='' loading='lazy' onerror=\"this.style.display='none';this.nextElementSibling.style.display='flex';\">")
+                        .append("<span class='fallback' style='display:none'>")
+                        .append(initial)
+                        .append("</span>");
+            } else {
+                html.append("<span class='fallback' style='display:flex'>")
+                        .append(initial)
+                        .append("</span>");
+            }
+            html.append("</span><span class='tileTitle'>")
+                    .append(escapeHtml(title))
+                    .append("</span></a>");
+            rendered++;
+        }
+        html.append("</div>");
+
+        return rendered > 0 ? html.toString() : "<div class='empty'>" + emptySummary + "</div>";
+    }
+
+    private static String getFallbackInitial(String value) {
+        if (isBlank(value)) {
+            return "?";
+        }
+        int codePoint = value.trim().codePointAt(0);
+        String initial = new String(Character.toChars(codePoint)).toUpperCase(Locale.US);
+        return escapeHtml(initial);
+    }
+
+    private static String formatTimeSavedForPage(int seconds) {
+        if (seconds < 60) {
+            return seconds + "s";
+        }
+        int minutes = seconds / 60;
+        if (minutes < 60) {
+            return minutes + "m";
+        }
+        return (minutes / 60) + "h";
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
+    private static String cssColor(Context context, int colorRes) {
+        int color = ContextCompat.getColor(context, colorRes);
+        return String.format("#%06X", 0xFFFFFF & color);
+    }
+
+    private static String cssColorWithAlpha(Context context, int colorRes, float alpha) {
+        int color = ContextCompat.getColor(context, colorRes);
+        float clampedAlpha = Math.max(0f, Math.min(1f, alpha));
+        return "rgba(" + android.graphics.Color.red(color)
+                + "," + android.graphics.Color.green(color)
+                + "," + android.graphics.Color.blue(color)
+                + "," + clampedAlpha + ")";
     }
 
     /**
@@ -278,6 +467,40 @@ public class UrlUtils {
         return host.toLowerCase().startsWith("www.") ? host.substring(4) : host;
     }
 
+    public static String getQuickAccessUrl(String url) {
+        ParsedWebUrl parsedUrl = parseWebUrl(url);
+        if (parsedUrl == null) {
+            return null;
+        }
+        String host = getCanonicalSiteHost(parsedUrl.host);
+        if (host == null) {
+            return null;
+        }
+        return parsedUrl.scheme + "://" + host + parsedUrl.portSuffix;
+    }
+
+    public static String getQuickAccessTitle(String url) {
+        ParsedWebUrl parsedUrl = parseWebUrl(url);
+        if (parsedUrl == null) {
+            return null;
+        }
+        return getCanonicalSiteHost(parsedUrl.host);
+    }
+
+    public static String getFaviconUrl(String url) {
+        String quickAccessUrl = getQuickAccessUrl(url);
+        if (quickAccessUrl == null) {
+            return null;
+        }
+        return "https://www.google.com/s2/favicons?sz=128&domain_url="
+                + encodeQueryParam(quickAccessUrl);
+    }
+
+    public static String getDirectFaviconUrl(String url) {
+        String quickAccessUrl = getQuickAccessUrl(url);
+        return quickAccessUrl != null ? quickAccessUrl + "/favicon.ico" : null;
+    }
+
     public static boolean isBlockedByAdBlock(String level, String url) {
         if (url == null || url.trim().isEmpty() || "off".equals(level)) {
             return false;
@@ -332,8 +555,132 @@ public class UrlUtils {
         return s.isEmpty() ? null : s;
     }
 
+    private static ParsedWebUrl parseWebUrl(String url) {
+        if (url == null || url.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            URI uri = new URI(url.trim());
+            String scheme = uri.getScheme();
+            String host = uri.getHost();
+            if (scheme == null || host == null) {
+                return null;
+            }
+            scheme = scheme.toLowerCase(Locale.US);
+            if (!"http".equals(scheme) && !"https".equals(scheme)) {
+                return null;
+            }
+            int port = uri.getPort();
+            String portSuffix = port >= 0 ? ":" + port : "";
+            return new ParsedWebUrl(scheme, host, portSuffix);
+        } catch (URISyntaxException e) {
+            return null;
+        }
+    }
+
+    private static String getCanonicalSiteHost(String rawHost) {
+        if (rawHost == null || rawHost.trim().isEmpty()) {
+            return null;
+        }
+        String host = rawHost.trim().toLowerCase(Locale.US);
+        while (host.endsWith(".")) {
+            host = host.substring(0, host.length() - 1);
+        }
+        if (host.isEmpty() || host.indexOf(':') >= 0) {
+            return host.isEmpty() ? null : host;
+        }
+
+        host = decodeTranslateHost(host);
+        boolean changed;
+        do {
+            changed = false;
+            String withoutPrefix = stripCommonSitePrefix(host);
+            if (!host.equals(withoutPrefix)) {
+                host = withoutPrefix;
+                changed = true;
+            }
+
+            String firstLabel = firstLabel(host);
+            if (labelCount(host) >= 3 && isLanguageHostLabel(firstLabel)) {
+                host = host.substring(firstLabel.length() + 1);
+                changed = true;
+            }
+        } while (changed);
+        return host.isEmpty() ? null : host;
+    }
+
+    private static String decodeTranslateHost(String host) {
+        final String suffix = ".translate.goog";
+        if (!host.endsWith(suffix)) {
+            return host;
+        }
+        String encoded = host.substring(0, host.length() - suffix.length());
+        if (encoded.isEmpty()) {
+            return host;
+        }
+        String decoded = encoded
+                .replace("--", "{hyphen}")
+                .replace('-', '.')
+                .replace("{hyphen}", "-");
+        return decoded.contains(".") ? decoded : host;
+    }
+
+    private static String stripCommonSitePrefix(String host) {
+        for (String prefix : COMMON_SITE_PREFIXES) {
+            String dottedPrefix = prefix + ".";
+            if (host.startsWith(dottedPrefix) && host.length() > dottedPrefix.length()) {
+                return host.substring(dottedPrefix.length());
+            }
+        }
+        return host;
+    }
+
+    private static String firstLabel(String host) {
+        int dot = host.indexOf('.');
+        return dot >= 0 ? host.substring(0, dot) : host;
+    }
+
+    private static int labelCount(String host) {
+        int count = 1;
+        for (int i = 0; i < host.length(); i++) {
+            if (host.charAt(i) == '.') {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static boolean isLanguageHostLabel(String label) {
+        if (label == null || label.isEmpty()) {
+            return false;
+        }
+        String language = label.toLowerCase(Locale.US);
+        int regionSeparator = language.indexOf('-');
+        if (regionSeparator > 0) {
+            language = language.substring(0, regionSeparator);
+        }
+        for (String languageLabel : LANGUAGE_HOST_LABELS) {
+            if (languageLabel.equals(language)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String encodeQueryParam(String value) {
+        try {
+            return URLEncoder.encode(value, "UTF-8").replace("+", "%20");
+        } catch (java.io.UnsupportedEncodingException e) {
+            return value;
+        }
+    }
+
     public static boolean isInternalPageUrl(String url) {
-        return url != null && url.startsWith("data:text/html");
+        if (url == null) {
+            return false;
+        }
+        String value = url.trim();
+        return value.regionMatches(true, 0, "data:text/html", 0, "data:text/html".length());
     }
 
     public static boolean isSearchQuery(String input) {
@@ -409,5 +756,17 @@ public class UrlUtils {
             }
         }
         return out.toString();
+    }
+
+    private static final class ParsedWebUrl {
+        final String scheme;
+        final String host;
+        final String portSuffix;
+
+        ParsedWebUrl(String scheme, String host, String portSuffix) {
+            this.scheme = scheme;
+            this.host = host;
+            this.portSuffix = portSuffix;
+        }
     }
 }

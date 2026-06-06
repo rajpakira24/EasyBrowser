@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.widget.Toast;
 
+import androidx.core.content.ContextCompat;
 import androidx.preference.PreferenceManager;
 
 import com.webstudio.easybrowser.R;
@@ -33,9 +34,7 @@ class BrowserNavigationDelegate implements GeckoSession.NavigationDelegate {
                                  Boolean hasUserGesture) {
         activity.runOnUiThread(() -> {
             if (url != null && !url.equals("about:blank")) {
-                if (activity.urlInput != null) {
-                    activity.urlInput.setText(url);
-                }
+                activity.updateUrlInputForUrl(url);
                 activity.currentUrl = url;
                 activity.updateBookmarkStatus();
                 applyPerSiteZoom(url);
@@ -121,7 +120,7 @@ class BrowserNavigationDelegate implements GeckoSession.NavigationDelegate {
         }
         if (UrlUtils.isBlockedByAdBlock(
                 prefs.getString("ad_blocking_level", "balanced"), request.uri)) {
-            activity.incrementPrivacyStats(0, 1);
+            activity.recordBlockedPrivacyItem();
             if (isTopLevelNavigation(request)) {
                 loadErrorPage(session, request.uri,
                         new ErrorPage("Website Blocked",
@@ -132,7 +131,7 @@ class BrowserNavigationDelegate implements GeckoSession.NavigationDelegate {
         }
         boolean isNewWindow = request.target == GeckoSession.NavigationDelegate.TARGET_WINDOW_NEW;
         if (isNewWindow && prefs.getBoolean("block_popups", true) && !request.hasUserGesture) {
-            activity.incrementPrivacyStats(0, 1);
+            activity.recordBlockedPrivacyItem();
             activity.runOnUiThread(() ->
                     Toast.makeText(activity, R.string.popup_blocked, Toast.LENGTH_SHORT).show());
             return GeckoResult.deny();
@@ -168,9 +167,18 @@ class BrowserNavigationDelegate implements GeckoSession.NavigationDelegate {
 
     private String buildErrorPageHtml(String uri, ErrorPage errorPage) {
         String safeUri = uri != null ? android.text.TextUtils.htmlEncode(uri) : "";
+        String background = cssColor(R.color.backgroundColor);
+        String surface = cssColor(R.color.colorSurface);
+        String primary = cssColor(R.color.colorPrimary);
+        String primaryText = cssColor(R.color.colorOnPrimary);
+        String text = cssColor(R.color.colorOnBackground);
+        String muted = cssColor(R.color.gray);
+        String iconBackground = cssColor(R.color.search_bar_background);
+        String iconText = cssColor(R.color.error);
+        String shadow = cssColorWithAlpha(R.color.colorOnBackground, 0.12f);
         String retryLink = errorPage.showRetry && !safeUri.isEmpty()
                 ? "<a href=\"" + safeUri + "\" style=\"display:inline-block;margin-top:20px;"
-                  + "padding:10px 28px;background:#1a73e8;color:#fff;border-radius:4px;"
+                  + "padding:10px 28px;background:" + primary + ";color:" + primaryText + ";border-radius:4px;"
                   + "text-decoration:none;font-size:15px;font-weight:500\">Retry</a>"
                 : "";
         String safeTitle = android.text.TextUtils.htmlEncode(errorPage.title);
@@ -179,17 +187,17 @@ class BrowserNavigationDelegate implements GeckoSession.NavigationDelegate {
         String html = "<!DOCTYPE html><html><head>"
                 + "<meta name='viewport' content='width=device-width,initial-scale=1'>"
                 + "<style>"
-                + "body{font-family:sans-serif;margin:0;background:#f1f3f4;"
+                + "body{font-family:sans-serif;margin:0;background:" + background + ";"
                 + "display:flex;align-items:center;justify-content:center;min-height:100vh}"
-                + ".card{background:#fff;border-radius:12px;padding:36px 28px;"
+                + ".card{background:" + surface + ";border-radius:12px;padding:36px 28px;"
                 + "max-width:440px;width:90%;text-align:center;"
-                + "box-shadow:0 1px 6px rgba(0,0,0,.12)}"
+                + "box-shadow:0 1px 6px " + shadow + "}"
                 + ".icon{display:inline-flex;align-items:center;justify-content:center;"
-                + "width:56px;height:56px;border-radius:50%;background:#fce8e6;"
-                + "color:#c5221f;font-size:0;font-weight:700;margin-bottom:4px}"
+                + "width:56px;height:56px;border-radius:50%;background:" + iconBackground + ";"
+                + "color:" + iconText + ";font-size:0;font-weight:700;margin-bottom:4px}"
                 + ".icon:before{content:'!';font-size:28px}"
-                + "h2{margin:12px 0 8px;color:#202124;font-size:20px;font-weight:600}"
-                + "p{color:#5f6368;font-size:14px;line-height:1.5;margin:0}"
+                + "h2{margin:12px 0 8px;color:" + text + ";font-size:20px;font-weight:600}"
+                + "p{color:" + muted + ";font-size:14px;line-height:1.5;margin:0}"
                 + "</style></head>"
                 + "<body><div class='card'>"
                 + "<div class='icon'>⚠️</div>"
@@ -198,6 +206,20 @@ class BrowserNavigationDelegate implements GeckoSession.NavigationDelegate {
                 + retryLink
                 + "</div></body></html>";
         return html;
+    }
+
+    private String cssColor(int colorRes) {
+        int color = ContextCompat.getColor(activity, colorRes);
+        return String.format("#%06X", 0xFFFFFF & color);
+    }
+
+    private String cssColorWithAlpha(int colorRes, float alpha) {
+        int color = ContextCompat.getColor(activity, colorRes);
+        float clampedAlpha = Math.max(0f, Math.min(1f, alpha));
+        return "rgba(" + android.graphics.Color.red(color)
+                + "," + android.graphics.Color.green(color)
+                + "," + android.graphics.Color.blue(color)
+                + "," + clampedAlpha + ")";
     }
 
     private ErrorPage createErrorPage(WebRequestError error) {

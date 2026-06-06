@@ -1,5 +1,6 @@
 package com.webstudio.easybrowser.ui.activity;
 
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.text.TextUtils;
 
@@ -9,6 +10,7 @@ import androidx.preference.PreferenceManager;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.webstudio.easybrowser.R;
+import com.webstudio.easybrowser.utils.SettingsKeys;
 
 import org.mozilla.geckoview.GeckoResult;
 import org.mozilla.geckoview.GeckoSession;
@@ -43,11 +45,40 @@ class BrowserPermissionDelegate implements GeckoSession.PermissionDelegate {
     @Override
     public GeckoResult<Integer> onContentPermissionRequest(@NonNull GeckoSession session,
                                                            @NonNull ContentPermission perm) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(activity);
         if (perm.permission == GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_INAUDIBLE) {
+            String autoplay = prefs.getString(SettingsKeys.PREF_SITE_AUTOPLAY,
+                    SettingsKeys.VALUE_DENY);
+            if (SettingsKeys.VALUE_ALLOW.equals(autoplay)
+                    || SettingsKeys.VALUE_DENY.equals(autoplay)
+                    || SettingsKeys.VALUE_ASK.equals(autoplay)) {
+                return GeckoResult.fromValue(ContentPermission.VALUE_ALLOW);
+            }
             return GeckoResult.fromValue(ContentPermission.VALUE_ALLOW);
         }
         if (perm.permission == GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_AUDIBLE) {
+            String autoplay = prefs.getString(SettingsKeys.PREF_SITE_AUTOPLAY,
+                    SettingsKeys.VALUE_DENY);
+            if (SettingsKeys.VALUE_ALLOW.equals(autoplay)) {
+                return GeckoResult.fromValue(ContentPermission.VALUE_ALLOW);
+            }
+            if (SettingsKeys.VALUE_DENY.equals(autoplay)) {
+                return GeckoResult.fromValue(ContentPermission.VALUE_DENY);
+            }
+        }
+        String origin = getDisplayOrigin(perm.uri);
+        String permissionLabel = getPermissionLabel(perm.permission);
+        String setting = getContentPermissionSetting(prefs, perm.permission);
+        if (SettingsKeys.VALUE_ALLOW.equals(setting)) {
+            SitePermissionsActivity.recordPermission(
+                    prefs, origin, permissionLabel);
+            return GeckoResult.fromValue(ContentPermission.VALUE_ALLOW);
+        }
+        if (SettingsKeys.VALUE_DENY.equals(setting)) {
             return GeckoResult.fromValue(ContentPermission.VALUE_DENY);
+        }
+        if (SitePermissionsActivity.hasPermission(prefs, origin, permissionLabel)) {
+            return GeckoResult.fromValue(ContentPermission.VALUE_ALLOW);
         }
         GeckoResult<Integer> result = new GeckoResult<>();
         activity.runOnUiThread(() -> showContentPermissionPrompt(perm, result));
@@ -62,6 +93,33 @@ class BrowserPermissionDelegate implements GeckoSession.PermissionDelegate {
         MediaSource videoSource = video != null && video.length > 0 ? video[0] : null;
         MediaSource audioSource = audio != null && audio.length > 0 ? audio[0] : null;
         if (videoSource != null || audioSource != null) {
+            SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(activity);
+            String cameraSetting = prefs.getString(SettingsKeys.PREF_SITE_CAMERA,
+                    SettingsKeys.VALUE_ASK);
+            String microphoneSetting = prefs.getString(SettingsKeys.PREF_SITE_MICROPHONE,
+                    SettingsKeys.VALUE_ASK);
+            if ((videoSource != null && SettingsKeys.VALUE_DENY.equals(cameraSetting))
+                    || (audioSource != null && SettingsKeys.VALUE_DENY.equals(microphoneSetting))) {
+                callback.reject();
+                return;
+            }
+            boolean cameraAllowed = videoSource == null
+                    || SettingsKeys.VALUE_ALLOW.equals(cameraSetting);
+            boolean microphoneAllowed = audioSource == null
+                    || SettingsKeys.VALUE_ALLOW.equals(microphoneSetting);
+            String origin = getDisplayOrigin(uri);
+            String permissionLabel = getMediaPermissionLabel(videoSource, audioSource);
+            boolean siteAllowed = SitePermissionsActivity.hasPermission(prefs, origin, permissionLabel);
+            if (cameraAllowed && microphoneAllowed) {
+                callback.grant(videoSource, audioSource);
+                SitePermissionsActivity.recordPermission(
+                        prefs, origin, permissionLabel);
+                return;
+            }
+            if (siteAllowed) {
+                callback.grant(videoSource, audioSource);
+                return;
+            }
             activity.runOnUiThread(() ->
                     showMediaPermissionPrompt(uri, videoSource, audioSource, callback));
         } else {
@@ -97,11 +155,35 @@ class BrowserPermissionDelegate implements GeckoSession.PermissionDelegate {
                 .setTitle(activity.getString(R.string.site_permission_request_title, permissionLabel))
                 .setMessage(activity.getString(R.string.site_permission_request_message,
                         origin, permissionLabel))
-                .setPositiveButton(R.string.allow, (dialog, which) ->
-                        callback.grant(videoSource, audioSource))
+                .setPositiveButton(R.string.allow, (dialog, which) -> {
+                    callback.grant(videoSource, audioSource);
+                    SitePermissionsActivity.recordPermission(
+                            PreferenceManager.getDefaultSharedPreferences(activity),
+                            origin, permissionLabel);
+                })
                 .setNegativeButton(R.string.deny, (dialog, which) -> callback.reject())
                 .setOnCancelListener(dialog -> callback.reject())
                 .show();
+    }
+
+    private String getContentPermissionSetting(SharedPreferences prefs, int permission) {
+        if (permission == GeckoSession.PermissionDelegate.PERMISSION_GEOLOCATION) {
+            return prefs.getString(SettingsKeys.PREF_SITE_LOCATION, SettingsKeys.VALUE_ASK);
+        }
+        if (permission == GeckoSession.PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION) {
+            return prefs.getString(SettingsKeys.PREF_SITE_NOTIFICATIONS, SettingsKeys.VALUE_ASK);
+        }
+        if (permission == GeckoSession.PermissionDelegate.PERMISSION_MEDIA_KEY_SYSTEM_ACCESS) {
+            if (!prefs.getBoolean(SettingsKeys.PREF_PROTECTED_MEDIA_ENABLED, true)) {
+                return SettingsKeys.VALUE_DENY;
+            }
+            return prefs.getString(SettingsKeys.PREF_SITE_PROTECTED_MEDIA,
+                    SettingsKeys.VALUE_ASK);
+        }
+        if (permission == GeckoSession.PermissionDelegate.PERMISSION_LOCAL_NETWORK_ACCESS) {
+            return prefs.getString(SettingsKeys.PREF_SITE_LOCAL_NETWORK, SettingsKeys.VALUE_ASK);
+        }
+        return SettingsKeys.VALUE_ASK;
     }
 
     private String getDisplayOrigin(String uri) {
@@ -141,6 +223,8 @@ class BrowserPermissionDelegate implements GeckoSession.PermissionDelegate {
                 return activity.getString(R.string.autoplay);
             case GeckoSession.PermissionDelegate.PERMISSION_MEDIA_KEY_SYSTEM_ACCESS:
                 return activity.getString(R.string.protected_media);
+            case GeckoSession.PermissionDelegate.PERMISSION_LOCAL_NETWORK_ACCESS:
+                return activity.getString(R.string.local_network);
             case GeckoSession.PermissionDelegate.PERMISSION_STORAGE_ACCESS:
                 return activity.getString(R.string.storage_access);
             default:

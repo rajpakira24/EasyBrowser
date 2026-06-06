@@ -12,9 +12,9 @@
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            android:background="?attr/colorPrimary"
+            android:background="@color/app_bar_background"
             app:title="@string/user_styles"
-            app:titleTextColor="@android:color/white"/>
+            app:titleTextColor="@color/app_bar_foreground"/>
 
     </com.google.android.material.appbar.AppBarLayout>
 
@@ -50,6 +50,6 @@
         android:layout_gravity="bottom|end"
         android:layout_margin="16dp"
         android:src="@drawable/ic_add"
-        app:tint="@android:color/white"/>
+        app:tint="@color/colorOnPrimary"/>
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

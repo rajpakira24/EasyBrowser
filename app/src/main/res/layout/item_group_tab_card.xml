@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/tab_card"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="6dp"
+    app:cardBackgroundColor="@color/group_tab_card_background"
+    app:cardCornerRadius="22dp"
+    app:cardElevation="1dp"
+    app:strokeColor="@color/group_tab_card_stroke"
+    app:strokeWidth="1dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="10dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="4dp"
+            android:paddingBottom="6dp">
+
+            <ImageView
+                android:id="@+id/favicon"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+
+                android:background="@drawable/bg_tab_chip_inactive"
+                android:contentDescription="@string/tab_favicon"
+                android:padding="5dp"
+                android:src="@drawable/ic_globe" />
+
+            <TextView
+                android:id="@+id/tab_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+                android:textColor="@color/tab_manager_text"
+                android:textSize="17sp"
+                tools:text="Project dashboard" />
+
+            <ImageView
+                android:id="@+id/pinned_icon"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:contentDescription="@string/pin_tab"
+                android:padding="5dp"
+                android:src="@drawable/ic_pin"
+                android:visibility="gone"
+                app:tint="@color/tab_manager_text_secondary"
+                tools:visibility="visible" />
+
+            <ImageButton
+                android:id="@+id/overflow_button"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/close_tab"
+                android:padding="10dp"
+                android:src="@drawable/ic_close"
+                app:tint="@color/tab_manager_text_secondary" />
+        </LinearLayout>
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="176dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="8dp"
+            android:layout_marginBottom="8dp">
+
+            <ImageView
+                android:id="@+id/thumbnail"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/bg_tab_thumbnail"
+                android:scaleType="centerCrop" />
+
+            <ImageButton
+                android:id="@+id/close_button"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_gravity="end|top"
+                android:layout_margin="6dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/close_tab"
+                android:padding="10dp"
+                android:src="@drawable/ic_close"
+                android:visibility="gone" />
+
+            <View
+                android:id="@+id/selection_overlay"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@color/black_overlay"
+                android:visibility="gone" />
+        </FrameLayout>
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

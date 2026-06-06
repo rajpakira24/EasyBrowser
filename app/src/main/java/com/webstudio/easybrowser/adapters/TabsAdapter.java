@@ -21,6 +21,7 @@ import com.google.android.material.card.MaterialCardView;
 import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.managers.TabThumbnailCache;
 import com.webstudio.easybrowser.models.Tab;
+import com.webstudio.easybrowser.repository.TabRepository;
 import com.webstudio.easybrowser.utils.UrlUtils;
 
 import java.util.ArrayList;
@@ -36,17 +37,6 @@ public class TabsAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     private static final int TYPE_CHILD = 2;
 
     // ── Group accent colors (Brave-like palette) ─────────────────────────────
-    private static final int[] GROUP_COLORS = {
-            0xFF388E3C, // green
-            0xFFE65100, // orange
-            0xFF1565C0, // blue
-            0xFF6A1B9A, // purple
-            0xFFC62828, // red
-            0xFF00695C, // teal
-            0xFFF57F17, // amber
-            0xFF00838F, // cyan
-    };
-
     // ── Internal display-item model ──────────────────────────────────────────
     private static class DisplayItem {
         final int type;
@@ -171,11 +161,9 @@ public class TabsAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         }
 
         // Emit groups first
-        int colorIdx = 0;
         for (Map.Entry<String, List<Tab>> entry : groupMap.entrySet()) {
-            int color = GROUP_COLORS[colorIdx % GROUP_COLORS.length];
+            int color = firstGroupColor(entry.getValue());
             items.add(DisplayItem.group(entry.getKey(), entry.getValue(), color));
-            colorIdx++;
         }
 
         // Emit top-level tabs, each followed by all descendants (BFS flattened as TYPE_CHILD)
@@ -269,7 +257,9 @@ public class TabsAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         }
 
         void bind(DisplayItem item) {
-            int color = item.groupColor;
+            int color = item.groupColor != 0
+                    ? item.groupColor
+                    : TabRepository.getDefaultGroupColor(itemView.getContext());
             List<Tab> groupTabs = item.groupTabs;
             int count = groupTabs.size();
 
@@ -492,5 +482,17 @@ public class TabsAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         } catch (Exception e) {
             return rawUrl;
         }
+    }
+
+    private static int firstGroupColor(List<Tab> tabs) {
+        if (tabs == null) {
+            return 0;
+        }
+        for (Tab tab : tabs) {
+            if (tab != null && tab.getGroupColor() != 0) {
+                return tab.getGroupColor();
+            }
+        }
+        return 0;
     }
 }

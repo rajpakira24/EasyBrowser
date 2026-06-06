@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="44dp"
+    android:layout_height="50dp"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:paddingStart="1dp"
+    android:paddingEnd="1dp"
+    tools:ignore="RtlSymmetry">
+
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/chip_card"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_gravity="center"
+        android:layout_marginBottom="4dp"
+        app:cardCornerRadius="18dp"
+        app:cardElevation="0dp"
+        app:strokeWidth="0dp">
+
+        <ImageView
+            android:id="@+id/chip_favicon"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:layout_gravity="center"
+            android:contentDescription="@string/tab_favicon"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_globe" />
+    </com.google.android.material.card.MaterialCardView>
+
+    <ImageButton
+        android:id="@+id/chip_close"
+        android:layout_width="16dp"
+        android:layout_height="16dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="0dp"
+        android:layout_marginEnd="0dp"
+        android:background="@drawable/bg_quick_tab_close"
+        android:contentDescription="@string/close_tab"
+        android:padding="4dp"
+        android:src="@drawable/ic_close"
+        android:visibility="gone"
+        app:tint="@color/colorOnPrimary"
+        tools:visibility="visible" />
+</FrameLayout>

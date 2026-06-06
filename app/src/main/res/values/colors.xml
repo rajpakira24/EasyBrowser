@@ -1,61 +1,129 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Primary Colors -->
-    <color name="colorPrimary">#1976D2</color>
-    <color name="colorPrimaryVariant">#1565C0</color>
-    <color name="colorOnPrimary">#FFFFFF</color>
-    <color name="brandBlue">#1A73E8</color>
-    <color name="brandRed">#EA4335</color>
-    <color name="brandYellow">#FBBC04</color>
-    <color name="brandGreen">#34A853</color>
-    <color name="shieldPurple">#6D4AFF</color>
-    <color name="shieldTeal">#00A88E</color>
+    <color name="palette_frosted_white">#FAFAFA</color>
+    <color name="palette_warm_white">#F6F3ED</color>
+    <color name="palette_soft_snow">#FFFBFF</color>
+    <color name="palette_cloud_blue">#EAEFFE</color>
+    <color name="palette_soft_cloud">#BBE1FA</color>
+    <color name="palette_glacier_gray">#D1D1D1</color>
+    <color name="palette_mist_gray">#C2CBD3</color>
+    <color name="palette_steel_gray">#929292</color>
+    <color name="palette_sky_focus">#3282B8</color>
+    <color name="palette_royal_blue">#0F4C75</color>
+    <color name="palette_lavender">#9787F3</color>
+    <color name="palette_deep_navy">#313851</color>
+    <color name="palette_deep_space">#1B262C</color>
+    <color name="palette_obsidian">#222222</color>
+    <color name="palette_royal_purple">#460B6A</color>
+    <color name="palette_deep_purple">#2D274B</color>
+
+    <color name="colorPrimary">#3282B8</color>
+    <color name="colorPrimaryVariant">#0F4C75</color>
+    <color name="colorOnPrimary">#FAFAFA</color>
+    <color name="app_bar_background">#BBE1FA</color>
+    <color name="app_bar_foreground">#1B262C</color>
+    <color name="browser_chrome_background">#FAFAFA</color>
+    <color name="browser_chrome_foreground">#313851</color>
+    <color name="section_heading">#0F4C75</color>
+    <color name="brandBlue">#3282B8</color>
+    <color name="brandRed">#460B6A</color>
+    <color name="brandYellow">#9787F3</color>
+    <color name="brandGreen">#0F4C75</color>
+    <color name="shieldPurple">#9787F3</color>
+    <color name="shieldTeal">#BBE1FA</color>
 
     <!-- Secondary Colors -->
-    <color name="colorSecondary">#4CAF50</color>
-    <color name="colorSecondaryVariant">#43A047</color>
-    <color name="colorOnSecondary">#FFFFFF</color>
+    <color name="colorSecondary">#9787F3</color>
+    <color name="colorSecondaryVariant">#2D274B</color>
+    <color name="colorOnSecondary">#FAFAFA</color>
 
     <!-- Background Colors -->
-    <color name="backgroundColor">#F8FAFD</color>
-    <color name="colorBackground">#FFFFFF</color>
-    <color name="colorOnBackground">#000000</color>
+    <color name="backgroundColor">#F6F3ED</color>
+    <color name="colorBackground">#F6F3ED</color>
+    <color name="colorOnBackground">#313851</color>
 
     <!-- Surface Colors -->
-    <color name="colorSurface">#FFFFFF</color>
-    <color name="colorOnSurface">#000000</color>
+    <color name="colorSurface">#FAFAFA</color>
+    <color name="colorOnSurface">#313851</color>
+    <color name="surface_variant">#EAEFFE</color>
+    <color name="text_secondary">#6F7482</color>
+    <color name="settings_card_background">#FAFAFA</color>
 
     <!-- UI Colors -->
-    <color name="white">#FFFFFF</color>
-    <color name="black">#000000</color>
-    <color name="gray">#757575</color>
-    <color name="light_gray">#E0E0E0</color>
-    <color name="dark_gray">#424242</color>
+    <color name="white">#FAFAFA</color>
+    <color name="black">#222222</color>
+    <color name="gray">#6F7482</color>
+    <color name="light_gray">#D1D1D1</color>
+    <color name="dark_gray">#313851</color>
 
     <!-- Search Bar Colors -->
-    <color name="search_bar_background">#F1F3F4</color>
-    <color name="search_bar_border">#E0E0E0</color>
-    <color name="search_bar_stroke">#E0E0E0</color>
-    <color name="border_color">#DADCE0</color>
+    <color name="search_bar_background">#F1F2F4</color>
+    <color name="search_bar_border">#E2E5E8</color>
+    <color name="search_bar_stroke">#E2E5E8</color>
+    <color name="border_color">#C2CBD3</color>
 
     <!-- Quick Access Colors -->
-    <color name="quick_access_bg">#F8F9FA</color>
+    <color name="quick_access_bg">#EAEFFE</color>
 
     <!-- Status Colors -->
-    <color name="error">#F44336</color>
-    <color name="success">#4CAF50</color>
-    <color name="warning">#FF9800</color>
-    <color name="info">#2196F3</color>
+    <color name="error">#460B6A</color>
+    <color name="success">#0F4C75</color>
+    <color name="warning">#9787F3</color>
+    <color name="info">#3282B8</color>
 
     <!-- Tab Colors -->
-    <color name="tab_selected">#1976D2</color>
-    <color name="tab_unselected">#757575</color>
+    <color name="tab_selected">#3282B8</color>
+    <color name="tab_unselected">#929292</color>
 
     <!-- Security Colors -->
-    <color name="secure_connection">#4CAF50</color>
-    <color name="insecure_connection">#F44336</color>
+    <color name="secure_connection">#0F4C75</color>
+    <color name="insecure_connection">#460B6A</color>
 
     <!-- Transparency -->
-    <color name="black_overlay">#66000000</color>
-    <color name="white_overlay">#66FFFFFF</color>
+    <color name="black_overlay">#66313851</color>
+    <color name="white_overlay">#66FAFAFA</color>
+
+    <!-- Tab manager dark surface -->
+    <color name="tab_manager_background">#FAFAFA</color>
+    <color name="tab_manager_panel">#FFFFFF</color>
+    <color name="tab_manager_panel_selected">#EEF3FF</color>
+    <color name="tab_manager_search">#F1F2F4</color>
+    <color name="tab_manager_card">#F7F8FA</color>
+    <color name="tab_manager_preview">#EEF1F5</color>
+    <color name="tab_manager_preview_alt">#F3F5F8</color>
+    <color name="tab_manager_text">#313851</color>
+    <color name="tab_manager_text_secondary">#929292</color>
+    <color name="tab_manager_icon_chip">#EAEFFE</color>
+    <color name="tab_manager_fab">#3282B8</color>
+    <color name="tab_manager_on_fab">#FAFAFA</color>
+    <color name="tab_strip_shadow">#26313851</color>
+    <color name="group_panel_background">#FAFAFA</color>
+    <color name="group_panel_text">#313851</color>
+    <color name="group_tab_card_background">#F6F8FF</color>
+    <color name="group_tab_card_stroke">#D1D8E8</color>
+
+    <!-- Home screen -->
+    <color name="home_background">#F7F8FA</color>
+    <color name="home_search_background">#FFFFFF</color>
+    <color name="home_search_stroke">#DDE6ED</color>
+    <color name="home_panel_background">#FFFFFF</color>
+    <color name="home_panel_border">#DCE4EA</color>
+    <color name="home_quick_access_icon_bg">#EFF3F7</color>
+    <color name="home_accent_warm">#E05B45</color>
+    <color name="home_accent_blue">#3B82B8</color>
+    <color name="home_accent_mint">#4DAA89</color>
+    <color name="home_accent_ink">#26323A</color>
+    <color name="home_primary_text">#26323A</color>
+    <color name="home_on_image_text">#FFFFFF</color>
+    <color name="home_on_image_muted">#DDE6EA</color>
+    <color name="home_glass_background">#7A101820</color>
+    <color name="home_glass_background_strong">#A6101820</color>
+    <color name="home_glass_border">#35FFFFFF</color>
+    <color name="home_photo_scrim_top">#33000000</color>
+    <color name="home_photo_scrim_bottom">#99000000</color>
+    <color name="edge_search_background">#4A5158</color>
+    <color name="edge_search_icon_background">#252B31</color>
+    <color name="edge_search_foreground">#FFFFFF</color>
+    <color name="edge_search_hint">#F1F5F8</color>
 </resources>

@@ -54,4 +54,16 @@
         <item>2097152</item>
         <item>5242880</item>
     </string-array>
+
+    <array name="tab_group_palette">
+        <item>@color/palette_sky_focus</item>
+        <item>@color/palette_lavender</item>
+        <item>@color/palette_deep_navy</item>
+        <item>@color/palette_mist_gray</item>
+        <item>@color/palette_royal_purple</item>
+        <item>@color/palette_soft_cloud</item>
+        <item>@color/palette_deep_purple</item>
+        <item>@color/palette_glacier_gray</item>
+        <item>@color/palette_royal_blue</item>
+    </array>
 </resources>

@@ -189,4 +189,55 @@ public class UrlUtilsTest {
         String url = UrlUtils.getSuggestionUrl("https://some-unknown-engine.com/search?q=");
         assertTrue(url.contains("duckduckgo.com"));
     }
+
+    @Test
+    public void getQuickAccessUrl_mobileSubdomain_returnsMainSite() {
+        assertEquals("https://youtube.com",
+                UrlUtils.getQuickAccessUrl("https://m.youtube.com/watch?v=abc"));
+    }
+
+    @Test
+    public void getQuickAccessUrl_languageSubdomain_returnsMainSite() {
+        assertEquals("https://wikipedia.org",
+                UrlUtils.getQuickAccessUrl("https://en.wikipedia.org/wiki/Android"));
+    }
+
+    @Test
+    public void getQuickAccessUrl_translateProxyHost_returnsOriginalSite() {
+        assertEquals("https://ixigo.com",
+                UrlUtils.getQuickAccessUrl("https://www-ixigo-com.translate.goog/trip"));
+    }
+
+    @Test
+    public void getQuickAccessUrl_wwwSubdomain_returnsMainSite() {
+        assertEquals("https://ixigo.com",
+                UrlUtils.getQuickAccessUrl("https://www.ixigo.com/flights"));
+    }
+
+    @Test
+    public void getQuickAccessUrl_internalPage_returnsNull() {
+        assertNull(UrlUtils.getQuickAccessUrl("data:text/html;charset=utf-8,%3Chtml%3E"));
+    }
+
+    @Test
+    public void isInternalPageUrl_trimsAndIgnoresCase() {
+        assertTrue(UrlUtils.isInternalPageUrl("  DATA:text/html;charset=utf-8,%3Chtml%3E"));
+    }
+
+    @Test
+    public void isInternalPageUrl_httpUrl_false() {
+        assertFalse(UrlUtils.isInternalPageUrl("https://example.com"));
+    }
+
+    @Test
+    public void getFaviconUrl_usesHighResolutionCanonicalUrl() {
+        assertEquals("https://www.google.com/s2/favicons?sz=128&domain_url=https%3A%2F%2Fyoutube.com",
+                UrlUtils.getFaviconUrl("https://m.youtube.com/watch?v=abc"));
+    }
+
+    @Test
+    public void getDirectFaviconUrl_usesCanonicalQuickAccessUrl() {
+        assertEquals("https://youtube.com/favicon.ico",
+                UrlUtils.getDirectFaviconUrl("https://m.youtube.com/watch?v=abc"));
+    }
 }

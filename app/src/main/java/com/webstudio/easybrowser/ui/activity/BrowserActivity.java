@@ -33,6 +33,7 @@ import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.GestureDetector;
 import android.view.KeyEvent;
+import android.view.Menu;
 import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
@@ -42,6 +43,7 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.ImageButton;
+import android.widget.PopupMenu;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -52,11 +54,13 @@ import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
+import androidx.coordinatorlayout.widget.CoordinatorLayout;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.pm.ShortcutInfoCompat;
 import androidx.core.content.pm.ShortcutManagerCompat;
 import androidx.core.graphics.drawable.IconCompat;
 import androidx.lifecycle.ViewModelProvider;
+import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
@@ -67,21 +71,30 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.slider.Slider;
 import com.google.android.material.snackbar.Snackbar;
 import com.webstudio.easybrowser.R;
+import com.webstudio.easybrowser.adapters.QuickTabStripAdapter;
 import com.webstudio.easybrowser.adapters.SuggestionsAdapter;
+import com.webstudio.easybrowser.adapters.TabItemTouchHelperCallback;
 import com.webstudio.easybrowser.managers.AnalyticsManager;
 import com.webstudio.easybrowser.managers.AppDownloadManager;
+import com.webstudio.easybrowser.managers.PrivacyStatsManager;
 import com.webstudio.easybrowser.managers.RuntimeManager;
 import com.webstudio.easybrowser.managers.TabManager;
 import com.webstudio.easybrowser.managers.TabThumbnailCache;
+import com.webstudio.easybrowser.managers.TabThumbnailManager;
 import com.webstudio.easybrowser.models.Bookmark;
 import com.webstudio.easybrowser.models.HistoryItem;
+import com.webstudio.easybrowser.models.QuickAccessItem;
 import com.webstudio.easybrowser.models.Tab;
 import com.webstudio.easybrowser.repository.BookmarkRepository;
 import com.webstudio.easybrowser.repository.HistoryRepository;
 import com.webstudio.easybrowser.repository.QuickAccessRepository;
 import com.webstudio.easybrowser.repository.ReadingListRepository;
+import com.webstudio.easybrowser.repository.TabRepository;
 import com.webstudio.easybrowser.models.ReadingListItem;
+import com.webstudio.easybrowser.utils.ScreenshotProtection;
 import com.webstudio.easybrowser.utils.SearchSuggestionProvider;
+import com.webstudio.easybrowser.utils.SettingsKeys;
+import com.webstudio.easybrowser.utils.SystemBarUtils;
 import com.webstudio.easybrowser.utils.UrlUtils;
 
 import org.json.JSONObject;
@@ -96,6 +109,7 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -109,7 +123,7 @@ public class BrowserActivity extends AppCompatActivity {
     ProgressBar progressBar;
     SwipeRefreshLayout swipeRefresh;
     private ImageButton bookmarkButton;
-    private ImageButton pipButton;
+    private ImageButton toolbarShortcutButton;
     ImageButton backButton;
     private BookmarkRepository bookmarkRepository;
     private HistoryRepository historyRepository;
@@ -119,10 +133,17 @@ public class BrowserActivity extends AppCompatActivity {
     private String lastRecordedUrl;
     private boolean isCurrentPageBookmarked = false;
     private BottomNavigationView bottomNav;
+    private View quickTabStripContainer;
+    private View quickTabStripShadow;
+    private RecyclerView quickTabStrip;
+    private ImageButton quickTabAdd;
+    private QuickTabStripAdapter quickTabStripAdapter;
     private boolean hadExistingTabsOnCreate;
     private int contentScrollY = 0;
     private AppBarLayout appBar;
     private boolean browserChromeVisible = true;
+    private boolean addressBarAtBottom = false;
+    private boolean bottomNavigationEnabled = true;
     private int lastChromeScrollY = 0;
     private int accumulatedChromeScrollDelta = 0;
     private static final int CHROME_SCROLL_THRESHOLD_PX = 48;
@@ -141,10 +162,12 @@ public class BrowserActivity extends AppCompatActivity {
     BrowserHistoryDelegate historyDelegate;
     private ActivityResultLauncher<Intent> filePickerLauncher;
     private ActivityResultLauncher<Intent> tabsActivityLauncher;
+    private boolean tabManagerLaunchPending;
     private final SearchSuggestionProvider suggestionProvider = new SearchSuggestionProvider();
 
     private boolean isDesktopMode = false;
     private GestureDetector gestureDetector;
+    private GestureDetector tabStripGestureDetector;
 
     // F12 — Site info bottom sheet
     GeckoSession.ProgressDelegate.SecurityInformation lastSecurityInfo;
@@ -159,6 +182,7 @@ public class BrowserActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_browser);
+        applySystemBars();
 
         initializeRepositories();
         initializeViewModel();
@@ -179,6 +203,11 @@ public class BrowserActivity extends AppCompatActivity {
         handleIncomingIntent(getIntent(), hadExistingTabsOnCreate);
     }
 
+    private void applySystemBars() {
+        int chrome = ContextCompat.getColor(this, R.color.browser_chrome_background);
+        SystemBarUtils.apply(this, chrome, chrome);
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -186,6 +215,7 @@ public class BrowserActivity extends AppCompatActivity {
             session.setActive(true);
         }
         startConnectivityMonitoring();
+        applyBrowserUiPreferences();
         // F9: Re-apply UA preset if it changed in settings
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
         String currentPreset = prefs.getString("user_agent_preset", "mobile");
@@ -341,10 +371,45 @@ public class BrowserActivity extends AppCompatActivity {
             return;
         }
         Snackbar snackbar = Snackbar.make(anchorView, messageResId, Snackbar.LENGTH_LONG);
-        if (bottomNav != null && browserChromeVisible && bottomNav.getTranslationY() == 0f) {
+        if (bottomNav != null && bottomNav.getVisibility() == View.VISIBLE
+                && browserChromeVisible && bottomNav.getTranslationY() == 0f) {
             snackbar.setAnchorView(bottomNav);
         }
         snackbar.show();
+    }
+
+    private void showClosedTabUndoSnackbar(TabManager.ClosedTab closedTab) {
+        if (!PreferenceManager.getDefaultSharedPreferences(this)
+                .getBoolean(SettingsKeys.PREF_SHOW_TAB_UNDO, true)) {
+            return;
+        }
+        View anchorView = browserRoot != null ? browserRoot : geckoView;
+        if (anchorView == null || closedTab == null) {
+            return;
+        }
+        Snackbar snackbar = Snackbar.make(anchorView,
+                getString(R.string.closed_tab_snackbar, getClosedTabLabel(closedTab)),
+                Snackbar.LENGTH_LONG);
+        snackbar.setAction(R.string.undo, v -> {
+            Tab restored = tabManager != null ? tabManager.restoreClosedTab(closedTab) : null;
+            if (restored != null) {
+                attachTabToView(restored);
+                updateTabCount();
+                updateQuickTabStrip();
+            }
+        });
+        if (bottomNav != null && bottomNav.getVisibility() == View.VISIBLE
+                && browserChromeVisible && bottomNav.getTranslationY() == 0f) {
+            snackbar.setAnchorView(bottomNav);
+        }
+        snackbar.show();
+    }
+
+    private String getClosedTabLabel(TabManager.ClosedTab closedTab) {
+        if (closedTab.title != null && !closedTab.title.trim().isEmpty()) {
+            return closedTab.title;
+        }
+        return getString(R.string.tab_title_default);
     }
 
     private void initializeViewModel() {
@@ -405,7 +470,7 @@ public class BrowserActivity extends AppCompatActivity {
         urlInput = findViewById(R.id.url_input);
         progressBar = findViewById(R.id.progress_bar);
         bookmarkButton = findViewById(R.id.btn_bookmark);
-        pipButton = findViewById(R.id.btn_pip);
+        toolbarShortcutButton = findViewById(R.id.btn_toolbar_shortcut);
         backButton = findViewById(R.id.btn_back);
         swipeRefresh = findViewById(R.id.swipe_refresh);
         browserRoot = findViewById(R.id.browser_root);
@@ -420,15 +485,11 @@ public class BrowserActivity extends AppCompatActivity {
             }
         });
 
-        bookmarkButton.setOnClickListener(v -> toggleBookmark());
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            pipButton.setVisibility(android.view.View.VISIBLE);
-            pipButton.setOnClickListener(v -> enterPip());
-        }
+        bookmarkButton.setOnClickListener(v -> handleBookmarkButtonClick());
         // F12: Site info bottom sheet
         ImageButton securityButton = findViewById(R.id.btn_security);
         if (securityButton != null) {
-            securityButton.setOnClickListener(v -> showSiteInfoBottomSheet());
+            securityButton.setOnClickListener(v -> handleSecurityButtonClick());
         }
         backButton.setOnClickListener(v -> {
             if (session != null && canGoBack) {
@@ -441,7 +502,13 @@ public class BrowserActivity extends AppCompatActivity {
         });
 
         bottomNav = findViewById(R.id.bottom_navigation);
+        quickTabStripContainer = findViewById(R.id.quick_tab_strip_container);
+        quickTabStripShadow = findViewById(R.id.quick_tab_strip_shadow);
+        quickTabStrip = findViewById(R.id.quick_tab_strip);
+        quickTabAdd = findViewById(R.id.quick_tab_add);
         setupBottomNavigation();
+        setupQuickTabStrip();
+        applyBrowserUiPreferences();
     }
 
     private void handleIncomingIntent(Intent intent, boolean preserveExistingTabWithoutUrl) {
@@ -619,9 +686,18 @@ public class BrowserActivity extends AppCompatActivity {
             public void handleOnBackPressed() {
                 if (session != null && canGoBack) {
                     session.goBack();
-                } else if (shouldCloseCurrentTabOnBack()
-                        && tabManager.closeCurrentTabAndSwitchToPrevious()) {
-                    updateTabCount();
+                } else if (shouldCloseCurrentTabOnBack()) {
+                    TabManager.ClosedTab closedTab =
+                            tabManager.closeCurrentTabAndSwitchToPreviousForUndo();
+                    if (closedTab != null) {
+                        updateTabCount();
+                        updateQuickTabStrip();
+                        showClosedTabUndoSnackbar(closedTab);
+                    } else if (tabManager != null && tabManager.switchToPreviousTab()) {
+                        updateTabCount();
+                    } else {
+                        moveTaskToBack(true);
+                    }
                 } else if (tabManager != null && tabManager.switchToPreviousTab()) {
                     updateTabCount();
                 } else {
@@ -644,11 +720,18 @@ public class BrowserActivity extends AppCompatActivity {
             @Override
             public void onTabChanged(Tab tab) {
                 attachTabToView(tab);
+                updateQuickTabStrip();
             }
 
             @Override
             public void onTabCountChanged(int count) {
                 updateTabCount();
+                updateQuickTabStrip();
+            }
+
+            @Override
+            public void onTabMetadataChanged(Tab tab) {
+                updateQuickTabStrip();
             }
         };
 
@@ -665,17 +748,14 @@ public class BrowserActivity extends AppCompatActivity {
         lastChromeScrollY = 0;
         accumulatedChromeScrollDelta = 0;
         session = tab.getSession();
-        if (tab.isPrivate()) {
-            getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
-        } else {
-            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
-        }
+        ScreenshotProtection.apply(this);
         session.getSettings().setAllowJavascript(PreferenceManager
                 .getDefaultSharedPreferences(this)
                 .getBoolean("javascript_enabled", true));
         configureSession(session);
         geckoView.setSession(session);
         updateUIForTab(tab);
+        updateQuickTabStrip();
         if (tab.isInitialLoadPending()) {
             String tabUrl = tab.getUrl();
             tab.setInitialLoadPending(false);
@@ -688,6 +768,7 @@ public class BrowserActivity extends AppCompatActivity {
     private void configureSession(GeckoSession targetSession) {
         targetSession.setNavigationDelegate(new BrowserNavigationDelegate(this));
         targetSession.setContentDelegate(new BrowserContentDelegate(this));
+        targetSession.setContentBlockingDelegate(new BrowserContentBlockingDelegate(this));
         targetSession.setProgressDelegate(new BrowserProgressDelegate(this));
         targetSession.setScrollDelegate(new GeckoSession.ScrollDelegate() {
             @Override
@@ -713,7 +794,9 @@ public class BrowserActivity extends AppCompatActivity {
     }
 
     private void toggleBookmark() {
-        if (currentUrl == null || currentUrl.trim().isEmpty() || "about:blank".equals(currentUrl)) {
+        if (currentUrl == null || currentUrl.trim().isEmpty()
+                || "about:blank".equals(currentUrl)
+                || UrlUtils.isInternalPageUrl(currentUrl)) {
             return;
         }
         if (isCurrentPageBookmarked) {
@@ -771,8 +854,11 @@ public class BrowserActivity extends AppCompatActivity {
     }
 
     void updateBookmarkStatus() {
-        // Add null check for currentUrl
-        if (currentUrl == null) {
+        if (currentUrl == null || currentUrl.trim().isEmpty()
+                || "about:blank".equals(currentUrl)
+                || UrlUtils.isInternalPageUrl(currentUrl)) {
+            isCurrentPageBookmarked = false;
+            updateBookmarkIcon();
             return;
         }
 
@@ -825,7 +911,7 @@ public class BrowserActivity extends AppCompatActivity {
         Tab currentTab = tabManager.getCurrentTab();
         if (currentTab != null && currentTab.getSession() != null) {
             url = UrlUtils.sanitizeUrl(url);
-            urlInput.setText(url);
+            updateUrlInputForUrl(url);
             currentUrl = url;
             currentTab.setInitialLoadPending(false);
             tabManager.updateTabUrl(currentTab, url);
@@ -837,7 +923,7 @@ public class BrowserActivity extends AppCompatActivity {
 
     private void updateUIForTab(Tab tab) {
         if (tab != null) {
-            urlInput.setText(tab.getUrl());
+            updateUrlInputForUrl(tab.getUrl());
             currentUrl = tab.getUrl();
             currentTitle = tab.getTitle();
             canGoBack = tab.canGoBack();
@@ -857,6 +943,21 @@ public class BrowserActivity extends AppCompatActivity {
         }
     }
 
+    void updateUrlInputForUrl(String url) {
+        if (urlInput != null) {
+            urlInput.setText(getToolbarDisplayUrl(url));
+        }
+    }
+
+    private String getToolbarDisplayUrl(String url) {
+        if (url == null || url.trim().isEmpty()
+                || "about:blank".equals(url)
+                || UrlUtils.isInternalPageUrl(url)) {
+            return "";
+        }
+        return url;
+    }
+
     private void updateTabCount() {
         if (bottomNav == null) {
             return;
@@ -864,10 +965,17 @@ public class BrowserActivity extends AppCompatActivity {
         MenuItem tabsItem = bottomNav.getMenu().findItem(R.id.nav_tabs);
         if (tabsItem != null) {
             if (tabManager != null) {
-                int count = tabManager.getTabCount();
+                Tab active = tabManager.getCurrentTab();
+                boolean privateMode = active != null && active.isPrivate();
+                int count = tabManager.getTabCount(privateMode);
                 bottomNav.removeBadge(R.id.nav_tabs);
                 tabsItem.setIcon(createTabCountIcon(count));
-                bottomNav.post(() -> tabsItem.setIcon(createTabCountIcon(tabManager.getTabCount())));
+                bottomNav.post(() -> {
+                    Tab latestActive = tabManager.getCurrentTab();
+                    boolean latestPrivateMode = latestActive != null && latestActive.isPrivate();
+                    tabsItem.setIcon(createTabCountIcon(tabManager.getTabCount(latestPrivateMode)));
+                });
+                updateQuickTabStrip();
             }
         }
     }
@@ -876,13 +984,34 @@ public class BrowserActivity extends AppCompatActivity {
         if (tabManager == null || tabsActivityLauncher == null) {
             return;
         }
-        captureCurrentTabThumbnail();
+        if (tabManagerLaunchPending) {
+            return;
+        }
+        tabManagerLaunchPending = true;
+        captureCurrentTabThumbnail(() -> {
+            tabManagerLaunchPending = false;
+            launchTabsActivityWithCurrentState();
+        });
+    }
+
+    private void launchTabsActivityWithCurrentState() {
+        if (tabManager == null || tabsActivityLauncher == null) {
+            return;
+        }
         ArrayList<String> ids = new ArrayList<>();
         ArrayList<String> titles = new ArrayList<>();
         ArrayList<String> urls = new ArrayList<>();
         ArrayList<String> groups = new ArrayList<>();
+        ArrayList<String> groupIds = new ArrayList<>();
+        ArrayList<String> thumbnailPaths = new ArrayList<>();
+        ArrayList<String> faviconUris = new ArrayList<>();
         ArrayList<String> parentIds = new ArrayList<>();
         boolean[] privateStates = new boolean[tabManager.getTabCount()];
+        boolean[] pinnedStates = new boolean[tabManager.getTabCount()];
+        int[] groupColors = new int[tabManager.getTabCount()];
+        int[] positions = new int[tabManager.getTabCount()];
+        long[] createdAt = new long[tabManager.getTabCount()];
+        long[] lastAccessed = new long[tabManager.getTabCount()];
         List<Tab> tabs = tabManager.getTabs();
         for (int i = 0; i < tabs.size(); i++) {
             Tab tab = tabs.get(i);
@@ -890,8 +1019,16 @@ public class BrowserActivity extends AppCompatActivity {
             titles.add(tab.getTitle());
             urls.add(tab.getUrl());
             groups.add(tab.getGroupName() != null ? tab.getGroupName() : "");
+            groupIds.add(tab.getGroupId() != null ? tab.getGroupId() : "");
+            thumbnailPaths.add(tab.getThumbnailPath() != null ? tab.getThumbnailPath() : "");
+            faviconUris.add(tab.getFaviconUri() != null ? tab.getFaviconUri() : "");
             parentIds.add(tab.getParentTabId() != null ? tab.getParentTabId() : "");
             privateStates[i] = tab.isPrivate();
+            pinnedStates[i] = tab.isPinned();
+            groupColors[i] = tab.getGroupColor();
+            positions[i] = tab.getPosition();
+            createdAt[i] = tab.getCreatedAt();
+            lastAccessed[i] = tab.getLastAccessed();
         }
         String currentTabId = tabManager.getCurrentTab() != null
                 ? tabManager.getCurrentTab().getId()
@@ -902,32 +1039,70 @@ public class BrowserActivity extends AppCompatActivity {
             closedTitles.add(ct.title != null ? ct.title : "");
             closedUrls.add(ct.url);
         }
-        Intent intent = new Intent(this, TabsActivity.class)
+        Intent intent = new Intent(this, TabManagerActivity.class)
                 .putStringArrayListExtra(TabsActivity.EXTRA_TAB_IDS, ids)
                 .putStringArrayListExtra(TabsActivity.EXTRA_TAB_TITLES, titles)
                 .putStringArrayListExtra(TabsActivity.EXTRA_TAB_URLS, urls)
                 .putExtra(TabsActivity.EXTRA_TAB_PRIVATE_STATES, privateStates)
+                .putExtra(TabsActivity.EXTRA_TAB_PINNED_STATES, pinnedStates)
                 .putExtra(TabsActivity.EXTRA_CURRENT_TAB_ID, currentTabId)
                 .putStringArrayListExtra(TabsActivity.EXTRA_CLOSED_TAB_TITLES, closedTitles)
                 .putStringArrayListExtra(TabsActivity.EXTRA_CLOSED_TAB_URLS, closedUrls)
                 .putStringArrayListExtra(TabsActivity.EXTRA_TAB_GROUPS, groups)
+                .putStringArrayListExtra(TabsActivity.EXTRA_TAB_GROUP_IDS, groupIds)
+                .putExtra(TabsActivity.EXTRA_TAB_GROUP_COLORS, groupColors)
+                .putStringArrayListExtra(TabsActivity.EXTRA_TAB_THUMBNAILS, thumbnailPaths)
+                .putStringArrayListExtra(TabsActivity.EXTRA_TAB_FAVICONS, faviconUris)
+                .putExtra(TabsActivity.EXTRA_TAB_POSITIONS, positions)
+                .putExtra(TabsActivity.EXTRA_TAB_CREATED_AT, createdAt)
+                .putExtra(TabsActivity.EXTRA_TAB_LAST_ACCESSED, lastAccessed)
                 .putStringArrayListExtra(TabsActivity.EXTRA_TAB_PARENT_IDS, parentIds);
         tabsActivityLauncher.launch(intent);
     }
 
     private void captureCurrentTabThumbnail() {
-        if (tabManager == null || geckoView == null) return;
+        captureCurrentTabThumbnail(null);
+    }
+
+    private void captureCurrentTabThumbnail(Runnable onComplete) {
+        if (tabManager == null || geckoView == null) {
+            finishThumbnailCapture(onComplete);
+            return;
+        }
         Tab cur = tabManager.getCurrentTab();
-        if (cur == null || cur.getSession() == null || cur.isPrivate()) return;
+        if (cur == null || cur.getSession() == null || cur.isPrivate()) {
+            finishThumbnailCapture(onComplete);
+            return;
+        }
         String tabId = cur.getId();
         try {
             geckoView.capturePixels().then(bitmap -> {
+                String thumbnailPath = null;
                 if (bitmap != null) {
                     TabThumbnailCache.put(tabId, bitmap);
+                    thumbnailPath = TabThumbnailManager.saveThumbnail(
+                            getApplicationContext(), tabId, bitmap);
                 }
+                final String savedPath = thumbnailPath;
+                runOnUiThread(() -> {
+                    if (savedPath != null && tabManager != null) {
+                        tabManager.updateTabThumbnail(tabId, savedPath);
+                    }
+                    finishThumbnailCapture(onComplete);
+                });
                 return GeckoResult.fromValue(null);
-            }, error -> GeckoResult.fromValue(null));
+            }, error -> {
+                runOnUiThread(() -> finishThumbnailCapture(onComplete));
+                return GeckoResult.fromValue(null);
+            });
         } catch (Exception ignored) {
+            finishThumbnailCapture(onComplete);
+        }
+    }
+
+    private void finishThumbnailCapture(Runnable onComplete) {
+        if (onComplete != null) {
+            onComplete.run();
         }
     }
 
@@ -941,17 +1116,38 @@ public class BrowserActivity extends AppCompatActivity {
                 closeTabById(closedId);
             }
         }
+        ArrayList<String> restoredInactiveIds =
+                data.getStringArrayListExtra(InactiveTabsActivity.RESULT_RESTORED_TAB_IDS);
+        if (restoredInactiveIds != null && !restoredInactiveIds.isEmpty()) {
+            tabManager.touchTabs(restoredInactiveIds);
+        }
         if (data.hasExtra(TabsActivity.RESULT_CREATE_PRIVATE_TAB)) {
-            createNewTab(data.getBooleanExtra(TabsActivity.RESULT_CREATE_PRIVATE_TAB, false));
+            String resultGroupId = data.getStringExtra(GroupTabsActivity.EXTRA_GROUP_ID);
+            if (resultGroupId != null) {
+                createNewTabInGroup(
+                        data.getBooleanExtra(TabsActivity.RESULT_CREATE_PRIVATE_TAB, false),
+                        resultGroupId,
+                        data.getStringExtra(GroupTabsActivity.EXTRA_GROUP_NAME),
+                        data.getIntExtra(GroupTabsActivity.EXTRA_GROUP_COLOR,
+                                TabRepository.getDefaultGroupColor(this)));
+            } else {
+                createNewTab(data.getBooleanExtra(TabsActivity.RESULT_CREATE_PRIVATE_TAB, false));
+            }
             return;
         }
         String restoreUrl = data.getStringExtra(TabsActivity.RESULT_RESTORE_URL);
         if (restoreUrl != null) {
-            openUrlInNewTab(restoreUrl, false);
+            openUrlInNewTab(restoreUrl, data.getBooleanExtra(TabsActivity.RESULT_RESTORE_PRIVATE, false));
             updateTabCount();
             return;
         }
-        applyTabGroupResults(data);
+        applyCreatedPrivateGroups(data);
+        applyTabGroupMutations(data);
+        applyPrivateTabReorder(data);
+        if (data.getBooleanExtra(TabManagerActivity.RESULT_GROUPS_CHANGED, false)) {
+            tabManager.refreshMetadataFromRepository();
+        }
+        applyTabPinMutations(data);
         String selectedTabId = data.getStringExtra(TabsActivity.RESULT_SELECTED_TAB_ID);
         if (selectedTabId != null) {
             switchToTabById(selectedTabId);
@@ -961,29 +1157,133 @@ public class BrowserActivity extends AppCompatActivity {
         updateTabCount();
     }
 
-    private void applyTabGroupResults(Intent data) {
-        ArrayList<String> groupIds = data.getStringArrayListExtra(TabsActivity.RESULT_TAB_GROUP_IDS);
-        ArrayList<String> groupNames = data.getStringArrayListExtra(TabsActivity.RESULT_TAB_GROUP_NAMES);
-        if (groupIds == null || groupNames == null) {
-            return;
-        }
-        int count = Math.min(groupIds.size(), groupNames.size());
-        boolean changed = false;
-        for (Tab tab : tabManager.getTabs()) {
-            for (int i = 0; i < count; i++) {
-                if (tab.getId().equals(groupIds.get(i))) {
-                    String groupName = groupNames.get(i);
-                    tab.setGroupName(groupName == null || groupName.trim().isEmpty()
-                            ? null
-                            : groupName);
-                    changed = true;
-                    break;
-                }
+    private void applyTabPinMutations(Intent data) {
+        ArrayList<String> pinnedIds =
+                data.getStringArrayListExtra(TabManagerActivity.RESULT_PINNED_TAB_IDS);
+        if (pinnedIds != null) {
+            for (String tabId : pinnedIds) {
+                tabManager.setTabPinned(tabId, true);
             }
         }
-        if (changed) {
-            tabManager.persistCurrentTabGroup();
+        ArrayList<String> unpinnedIds =
+                data.getStringArrayListExtra(TabManagerActivity.RESULT_UNPINNED_TAB_IDS);
+        if (unpinnedIds != null) {
+            for (String tabId : unpinnedIds) {
+                tabManager.setTabPinned(tabId, false);
+            }
         }
+        if ((pinnedIds != null && !pinnedIds.isEmpty())
+                || (unpinnedIds != null && !unpinnedIds.isEmpty())) {
+            updateQuickTabStrip();
+        }
+    }
+
+    private void applyCreatedPrivateGroups(Intent data) {
+        ArrayList<String> groupIds = data.getStringArrayListExtra(
+                TabManagerActivity.RESULT_CREATED_PRIVATE_GROUP_IDS);
+        ArrayList<String> tabIds = data.getStringArrayListExtra(
+                TabManagerActivity.RESULT_CREATED_PRIVATE_GROUP_TAB_IDS);
+        ArrayList<Integer> tabCounts = data.getIntegerArrayListExtra(
+                TabManagerActivity.RESULT_CREATED_PRIVATE_GROUP_TAB_COUNTS);
+        ArrayList<String> groupNames = data.getStringArrayListExtra(
+                TabManagerActivity.RESULT_CREATED_PRIVATE_GROUP_NAMES);
+        ArrayList<Integer> groupColors = data.getIntegerArrayListExtra(
+                TabManagerActivity.RESULT_CREATED_PRIVATE_GROUP_COLORS);
+        if (groupIds == null || tabIds == null || tabCounts == null
+                || groupNames == null || groupColors == null) {
+            return;
+        }
+        int cursor = 0;
+        int count = Math.min(Math.min(groupIds.size(), tabCounts.size()),
+                Math.min(groupNames.size(), groupColors.size()));
+        for (int i = 0; i < count; i++) {
+            int tabCount = Math.max(0, tabCounts.get(i));
+            if (cursor + tabCount > tabIds.size()) {
+                break;
+            }
+            ArrayList<String> groupTabIds = new ArrayList<>();
+            for (int tabIndex = 0; tabIndex < tabCount; tabIndex++) {
+                groupTabIds.add(tabIds.get(cursor + tabIndex));
+            }
+            cursor += tabCount;
+            tabManager.createGroupForTabs(groupTabIds,
+                    groupNames.get(i),
+                    groupColors.get(i),
+                    true,
+                    groupIds.get(i));
+        }
+        updateQuickTabStrip();
+    }
+
+    private void applyPrivateTabReorder(Intent data) {
+        ArrayList<String> tabIds = data.getStringArrayListExtra(
+                TabManagerActivity.RESULT_REORDERED_PRIVATE_TAB_IDS);
+        if (tabIds == null || tabIds.size() < 2) {
+            return;
+        }
+        List<Tab> orderedTabs = new ArrayList<>();
+        for (String tabId : tabIds) {
+            Tab tab = findTabById(tabId);
+            if (tab != null && tab.isPrivate()) {
+                orderedTabs.add(tab);
+            }
+        }
+        if (orderedTabs.size() >= 2) {
+            tabManager.reorderTabs(orderedTabs);
+            updateQuickTabStrip();
+        }
+    }
+
+    private void applyTabGroupMutations(Intent data) {
+        ArrayList<String> tabIds = data.getStringArrayListExtra(
+                TabManagerActivity.RESULT_GROUP_MUTATION_TAB_IDS);
+        ArrayList<String> groupIds = data.getStringArrayListExtra(
+                TabManagerActivity.RESULT_GROUP_MUTATION_GROUP_IDS);
+        ArrayList<String> groupNames = data.getStringArrayListExtra(
+                TabManagerActivity.RESULT_GROUP_MUTATION_GROUP_NAMES);
+        ArrayList<Integer> groupColors = data.getIntegerArrayListExtra(
+                TabManagerActivity.RESULT_GROUP_MUTATION_GROUP_COLORS);
+        if (tabIds == null || groupIds == null || groupNames == null || groupColors == null) {
+            return;
+        }
+        int count = Math.min(Math.min(tabIds.size(), groupIds.size()),
+                Math.min(groupNames.size(), groupColors.size()));
+        for (int i = 0; i < count; i++) {
+            Tab tab = findTabById(tabIds.get(i));
+            if (tab == null) {
+                continue;
+            }
+            String groupId = groupIds.get(i);
+            if (groupId == null || groupId.trim().isEmpty()) {
+                tabManager.removeTabFromGroup(tab);
+            } else {
+                tabManager.addTabToGroup(tab, groupId, groupNames.get(i), groupColors.get(i));
+            }
+        }
+        updateQuickTabStrip();
+    }
+
+    private List<Tab> getActiveGroupTabs() {
+        List<Tab> groupTabs = new ArrayList<>();
+        if (tabManager == null || tabManager.getCurrentTab() == null) {
+            return groupTabs;
+        }
+        String groupId = tabManager.getCurrentTab().getGroupId();
+        if (groupId == null) {
+            return groupTabs;
+        }
+        for (Tab tab : tabManager.getTabs()) {
+            if (groupId.equals(tab.getGroupId())) {
+                groupTabs.add(tab);
+            }
+        }
+        groupTabs.sort((first, second) -> {
+            if (first.isPinned() != second.isPinned()) {
+                return first.isPinned() ? -1 : 1;
+            }
+            return Integer.compare(first.getPosition(), second.getPosition());
+        });
+        return groupTabs;
     }
 
     private void closeTabById(String tabId) {
@@ -995,9 +1295,33 @@ public class BrowserActivity extends AppCompatActivity {
         }
     }
 
+    private Tab findTabById(String tabId) {
+        if (tabId == null || tabManager == null) {
+            return null;
+        }
+        for (Tab tab : tabManager.getTabs()) {
+            if (tabId.equals(tab.getId())) {
+                return tab;
+            }
+        }
+        return null;
+    }
+
+    private void closeTabWithUndo(Tab tab) {
+        if (tab == null || tabManager == null) {
+            return;
+        }
+        TabManager.ClosedTab closedTab = tabManager.closeTab(tab);
+        attachTabToView(tabManager.getCurrentTab());
+        updateTabCount();
+        updateQuickTabStrip();
+        showClosedTabUndoSnackbar(closedTab);
+    }
+
     private void switchToTabById(String tabId) {
         for (Tab tab : tabManager.getTabs()) {
             if (tab.getId().equals(tabId)) {
+                captureCurrentTabThumbnail();
                 tabManager.switchToTab(tab);
                 return;
             }
@@ -1010,7 +1334,7 @@ public class BrowserActivity extends AppCompatActivity {
         Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        int iconColor = ContextCompat.getColor(this, R.color.black);
+        int iconColor = ContextCompat.getColor(this, R.color.browser_chrome_foreground);
 
         paint.setStyle(Paint.Style.STROKE);
         paint.setStrokeWidth(strokeWidth);
@@ -1035,11 +1359,30 @@ public class BrowserActivity extends AppCompatActivity {
     }
 
     private void updateBookmarkIcon() {
-        if (isCurrentPageBookmarked) {
+        if (isInternalOrBlankPage(currentUrl)) {
             bookmarkButton.setImageResource(R.drawable.ic_bookmarks);
+            bookmarkButton.setContentDescription(getString(R.string.bookmarks));
+        } else if (isCurrentPageBookmarked) {
+            bookmarkButton.setImageResource(R.drawable.ic_bookmarks);
+            bookmarkButton.setContentDescription(getString(R.string.bookmark));
         } else {
             bookmarkButton.setImageResource(R.drawable.ic_bookmark_border);
+            bookmarkButton.setContentDescription(getString(R.string.bookmark));
         }
+    }
+
+    private void handleBookmarkButtonClick() {
+        if (isInternalOrBlankPage(currentUrl)) {
+            startActivity(new Intent(this, BookmarksActivity.class));
+            return;
+        }
+        toggleBookmark();
+    }
+
+    private boolean isInternalOrBlankPage(String url) {
+        return url == null || url.trim().isEmpty()
+                || "about:blank".equals(url)
+                || UrlUtils.isInternalPageUrl(url);
     }
 
     private void setupBottomNavigation() {
@@ -1066,6 +1409,408 @@ public class BrowserActivity extends AppCompatActivity {
 
         // Update initial tab count
         updateTabCount();
+    }
+
+    private void applyBrowserUiPreferences() {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        bottomNavigationEnabled = prefs.getBoolean(
+                SettingsKeys.PREF_BOTTOM_NAVIGATION_ENABLED, true);
+        addressBarAtBottom = "bottom".equals(
+                prefs.getString(SettingsKeys.PREF_ADDRESS_BAR_POSITION, "top"));
+
+        if (bottomNav != null) {
+            bottomNav.setVisibility(bottomNavigationEnabled ? View.VISIBLE : View.GONE);
+        }
+        applyAddressBarPosition(addressBarAtBottom, bottomNavigationEnabled);
+        applyQuickTabStripMargins(addressBarAtBottom, bottomNavigationEnabled);
+        updateToolbarShortcutButton(prefs, bottomNavigationEnabled);
+    }
+
+    private void applyAddressBarPosition(boolean bottom, boolean bottomNavEnabled) {
+        if (appBar != null && appBar.getLayoutParams() instanceof CoordinatorLayout.LayoutParams) {
+            CoordinatorLayout.LayoutParams appBarParams =
+                    (CoordinatorLayout.LayoutParams) appBar.getLayoutParams();
+            appBarParams.gravity = bottom ? Gravity.BOTTOM : Gravity.TOP;
+            appBarParams.bottomMargin = bottom && bottomNavEnabled ? dp(58) : 0;
+            appBar.setLayoutParams(appBarParams);
+            appBar.setElevation(dp(6));
+            appBar.bringToFront();
+            bringBottomChromeToFront();
+        }
+
+        if (swipeRefresh != null
+                && swipeRefresh.getLayoutParams() instanceof CoordinatorLayout.LayoutParams) {
+            CoordinatorLayout.LayoutParams contentParams =
+                    (CoordinatorLayout.LayoutParams) swipeRefresh.getLayoutParams();
+            if (bottom) {
+                contentParams.setBehavior(null);
+                contentParams.topMargin = 0;
+                contentParams.bottomMargin = 0;
+            } else {
+                contentParams.setBehavior(new AppBarLayout.ScrollingViewBehavior());
+                contentParams.topMargin = 0;
+                contentParams.bottomMargin = 0;
+            }
+            swipeRefresh.setLayoutParams(contentParams);
+        }
+    }
+
+    private void applyQuickTabStripMargins(boolean addressBarBottom, boolean bottomNavEnabled) {
+        int bottomBase = bottomNavEnabled ? dp(58) : 0;
+        int addressBarSpace = addressBarBottom ? dp(60) : 0;
+        int stripHeight = getQuickTabStripHeight();
+        setBottomMargin(quickTabStripContainer, bottomBase + addressBarSpace);
+        setBottomMargin(quickTabStripShadow, bottomBase + addressBarSpace + stripHeight);
+    }
+
+    private int getQuickTabStripHeight() {
+        if (quickTabStripContainer != null && quickTabStripContainer.getHeight() > 0) {
+            return quickTabStripContainer.getHeight();
+        }
+        return dp(56);
+    }
+
+    private void setBottomMargin(View view, int margin) {
+        if (view == null || !(view.getLayoutParams() instanceof CoordinatorLayout.LayoutParams)) {
+            return;
+        }
+        CoordinatorLayout.LayoutParams params =
+                (CoordinatorLayout.LayoutParams) view.getLayoutParams();
+        params.bottomMargin = margin;
+        view.setLayoutParams(params);
+    }
+
+    private void bringBottomChromeToFront() {
+        if (appBar != null) {
+            appBar.setTranslationZ(dp(6));
+        }
+        if (quickTabStripShadow != null) {
+            quickTabStripShadow.setTranslationZ(dp(7));
+            quickTabStripShadow.bringToFront();
+        }
+        if (quickTabStripContainer != null) {
+            quickTabStripContainer.setTranslationZ(dp(8));
+            quickTabStripContainer.bringToFront();
+        }
+        if (bottomNav != null) {
+            bottomNav.setTranslationZ(dp(9));
+            bottomNav.bringToFront();
+        }
+    }
+
+    private void updateToolbarShortcutButton(SharedPreferences prefs, boolean bottomNavEnabled) {
+        if (toolbarShortcutButton == null) {
+            return;
+        }
+        String shortcut = prefs.getString(SettingsKeys.PREF_TOOLBAR_SHORTCUT,
+                SettingsKeys.VALUE_OFF);
+        boolean showFallbackMenu = !bottomNavEnabled && SettingsKeys.VALUE_OFF.equals(shortcut);
+        if (SettingsKeys.VALUE_OFF.equals(shortcut) && !showFallbackMenu) {
+            toolbarShortcutButton.setVisibility(View.GONE);
+            return;
+        }
+
+        toolbarShortcutButton.setVisibility(View.VISIBLE);
+        if (showFallbackMenu) {
+            toolbarShortcutButton.setImageResource(R.drawable.ic_more_vert);
+            toolbarShortcutButton.setContentDescription(getString(R.string.more));
+            toolbarShortcutButton.setOnClickListener(v -> showMoreMenu());
+            return;
+        }
+
+        toolbarShortcutButton.setImageResource(getToolbarShortcutIcon(shortcut));
+        toolbarShortcutButton.setContentDescription(getToolbarShortcutLabel(shortcut));
+        toolbarShortcutButton.setOnClickListener(v -> performToolbarShortcut(shortcut));
+    }
+
+    private int getToolbarShortcutIcon(String shortcut) {
+        switch (shortcut) {
+            case "new_tab":
+                return R.drawable.ic_add;
+            case "bookmarks":
+                return R.drawable.ic_bookmarks;
+            case "history":
+                return R.drawable.ic_history;
+            case "downloads":
+                return R.drawable.ic_download;
+            case "share":
+                return R.drawable.ic_share;
+            case "translate":
+                return R.drawable.ic_translate;
+            case "find":
+                return R.drawable.ic_search;
+            default:
+                return R.drawable.ic_more_vert;
+        }
+    }
+
+    private String getToolbarShortcutLabel(String shortcut) {
+        switch (shortcut) {
+            case "new_tab":
+                return getString(R.string.new_tab);
+            case "bookmarks":
+                return getString(R.string.bookmarks);
+            case "history":
+                return getString(R.string.history);
+            case "downloads":
+                return getString(R.string.downloads);
+            case "share":
+                return getString(R.string.share);
+            case "translate":
+                return getString(R.string.translate_page);
+            case "find":
+                return getString(R.string.find_in_page);
+            default:
+                return getString(R.string.toolbar_shortcut);
+        }
+    }
+
+    private void performToolbarShortcut(String shortcut) {
+        switch (shortcut) {
+            case "new_tab":
+                createNewTab(false);
+                break;
+            case "bookmarks":
+                startActivity(new Intent(this, BookmarksActivity.class));
+                break;
+            case "history":
+                startActivity(new Intent(this, HistoryActivity.class));
+                break;
+            case "downloads":
+                startActivity(new Intent(this, DownloadsActivity.class));
+                break;
+            case "share":
+                shareCurrentPage();
+                break;
+            case "translate":
+                translatePage();
+                break;
+            case "find":
+                showFindInPageDialog();
+                break;
+            default:
+                showMoreMenu();
+                break;
+        }
+    }
+
+    private void setupQuickTabStrip() {
+        if (quickTabStrip == null || quickTabAdd == null) {
+            return;
+        }
+        quickTabStripAdapter = new QuickTabStripAdapter(new QuickTabStripAdapter.Listener() {
+            @Override
+            public void onTabClick(Tab tab) {
+                captureCurrentTabThumbnail();
+                tabManager.switchToTab(tab);
+                updateQuickTabStrip();
+            }
+
+            @Override
+            public void onTabClose(Tab tab) {
+                closeTabWithUndo(tab);
+            }
+
+            @Override
+            public void onTabLongClick(Tab tab, View anchor) {
+                showQuickTabMenu(tab, anchor);
+            }
+
+            @Override
+            public void onTabsReordered(List<Tab> tabs) {
+                if (tabManager != null && tabManager.reorderTabs(tabs)) {
+                    updateQuickTabStrip();
+                }
+            }
+        });
+        quickTabStrip.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false));
+        quickTabStrip.setAdapter(quickTabStripAdapter);
+        new ItemTouchHelper(new TabItemTouchHelperCallback(quickTabStripAdapter))
+                .attachToRecyclerView(quickTabStrip);
+        quickTabStrip.setContentDescription(getString(R.string.quick_tab_strip));
+        quickTabAdd.setOnClickListener(this::showNewTabButtonMenu);
+        quickTabAdd.setOnLongClickListener(v -> {
+            showNewTabLongPressMenu(v);
+            return true;
+        });
+
+        tabStripGestureDetector = new GestureDetector(this,
+                new GestureDetector.SimpleOnGestureListener() {
+                    private static final int SWIPE_MIN_DISTANCE = 80;
+                    private static final int SWIPE_MIN_VELOCITY = 160;
+
+                    @Override
+                    public boolean onFling(MotionEvent e1, MotionEvent e2,
+                                           float velocityX, float velocityY) {
+                        if (e1 == null || e2 == null) return false;
+                        float dx = e2.getX() - e1.getX();
+                        float dy = e2.getY() - e1.getY();
+                        if (Math.abs(dy) > Math.abs(dx)) return false;
+                        if (Math.abs(dx) < SWIPE_MIN_DISTANCE
+                                || Math.abs(velocityX) < SWIPE_MIN_VELOCITY) return false;
+                        switchAdjacentTab(dx < 0 ? 1 : -1);
+                        return true;
+                    }
+                });
+        quickTabStrip.setOnTouchListener((v, event) -> {
+            if (tabStripGestureDetector != null) {
+                tabStripGestureDetector.onTouchEvent(event);
+            }
+            return false;
+        });
+        updateQuickTabStrip();
+    }
+
+    private void showQuickTabMenu(Tab tab, View anchor) {
+        PopupMenu menu = new PopupMenu(this, anchor);
+        menu.getMenu().add(Menu.NONE, 1, Menu.NONE, R.string.close_tab);
+        menu.getMenu().add(Menu.NONE, 2, Menu.NONE, R.string.new_tab);
+        menu.getMenu().add(Menu.NONE, 3, Menu.NONE, R.string.tab_groups_title);
+        menu.getMenu().add(Menu.NONE, 4, Menu.NONE,
+                tab.isPinned() ? R.string.unpin_tab : R.string.pin_tab);
+        menu.setOnMenuItemClickListener(item -> {
+            if (item.getItemId() == 1) {
+                closeTabWithUndo(tab);
+                return true;
+            } else if (item.getItemId() == 2) {
+                createNewTabInGroup(tab.isPrivate(), tab.getGroupId(),
+                        tab.getGroupName(), tab.getGroupColor());
+                return true;
+            } else if (item.getItemId() == 3) {
+                launchTabsActivity();
+                return true;
+            } else if (item.getItemId() == 4) {
+                tabManager.setTabPinned(tab.getId(), !tab.isPinned());
+                updateQuickTabStrip();
+                Toast.makeText(this,
+                        tab.isPinned() ? R.string.tab_pinned : R.string.tab_unpinned,
+                        Toast.LENGTH_SHORT).show();
+                return true;
+            }
+            return false;
+        });
+        menu.show();
+    }
+
+    private void showNewTabButtonMenu(View anchor) {
+        PopupMenu menu = new PopupMenu(this, anchor);
+        Tab current = tabManager != null ? tabManager.getCurrentTab() : null;
+        boolean insideGroup = current != null && current.getGroupId() != null;
+        if (insideGroup) {
+            menu.getMenu().add(Menu.NONE, 1, Menu.NONE, R.string.new_tab_in_group);
+        }
+        menu.getMenu().add(Menu.NONE, 2, Menu.NONE, R.string.new_tab);
+        menu.getMenu().add(Menu.NONE, 3, Menu.NONE, R.string.new_private_tab);
+        menu.setOnMenuItemClickListener(item -> {
+            if (item.getItemId() == 1 && current != null) {
+                createNewTabInGroup(current.isPrivate(), current.getGroupId(),
+                        current.getGroupName(), current.getGroupColor());
+                return true;
+            } else if (item.getItemId() == 2) {
+                createNewTab(false);
+                return true;
+            } else if (item.getItemId() == 3) {
+                createNewTab(true);
+                return true;
+            }
+            return false;
+        });
+        menu.show();
+    }
+
+    private void showNewTabLongPressMenu(View anchor) {
+        PopupMenu menu = new PopupMenu(this, anchor);
+        menu.getMenu().add(Menu.NONE, 1, Menu.NONE, R.string.select_tabs);
+        menu.getMenu().add(Menu.NONE, 2, Menu.NONE, R.string.close_all_tabs);
+        menu.setOnMenuItemClickListener(item -> {
+            if (item.getItemId() == 1) {
+                launchTabsActivity();
+                return true;
+            } else if (item.getItemId() == 2) {
+                confirmCloseAllTabs();
+                return true;
+            }
+            return false;
+        });
+        menu.show();
+    }
+
+    private void confirmCloseAllTabs() {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.close_all_tabs)
+                .setMessage(R.string.close_all_tabs_confirm)
+                .setNegativeButton(R.string.cancel, null)
+                .setPositiveButton(R.string.close_all_tabs, (dialog, which) -> {
+                    if (tabManager == null) {
+                        return;
+                    }
+                    captureCurrentTabThumbnail();
+                    tabManager.closeAllTabs();
+                    attachTabToView(tabManager.getCurrentTab());
+                    updateTabCount();
+                    updateQuickTabStrip();
+                })
+                .show();
+    }
+
+    private void updateQuickTabStrip() {
+        if (quickTabStripAdapter == null || tabManager == null) {
+            return;
+        }
+        Tab current = tabManager.getCurrentTab();
+        String currentId = current != null ? current.getId() : null;
+        List<Tab> tabs = getActiveGroupTabs();
+        boolean showStrip = current != null && current.getGroupId() != null && tabs.size() >= 2;
+        if (quickTabStripContainer != null) {
+            quickTabStripContainer.setVisibility(showStrip ? View.VISIBLE : View.GONE);
+            if (showStrip && browserChromeVisible) {
+                quickTabStripContainer.setTranslationY(0f);
+            }
+        }
+        if (quickTabStripShadow != null) {
+            quickTabStripShadow.setVisibility(showStrip ? View.VISIBLE : View.GONE);
+            if (showStrip && browserChromeVisible) {
+                quickTabStripShadow.setTranslationY(0f);
+            }
+        }
+        quickTabStripAdapter.submitTabs(showStrip ? tabs : new ArrayList<>(), currentId);
+        if (!showStrip) {
+            return;
+        }
+        if (quickTabStrip != null && currentId != null) {
+            for (int i = 0; i < tabs.size(); i++) {
+                if (currentId.equals(tabs.get(i).getId())) {
+                    final int position = i;
+                    quickTabStrip.post(() -> quickTabStrip.smoothScrollToPosition(position));
+                    break;
+                }
+            }
+        }
+    }
+
+    private void switchAdjacentTab(int direction) {
+        if (tabManager == null) {
+            return;
+        }
+        Tab current = tabManager.getCurrentTab();
+        List<Tab> tabs = getActiveGroupTabs();
+        if (tabs.size() < 2 || current == null) {
+            return;
+        }
+        int index = -1;
+        for (int i = 0; i < tabs.size(); i++) {
+            if (current.getId().equals(tabs.get(i).getId())) {
+                index = i;
+                break;
+            }
+        }
+        if (index == -1) {
+            return;
+        }
+        int nextIndex = (index + direction + tabs.size()) % tabs.size();
+        captureCurrentTabThumbnail();
+        tabManager.switchToTab(tabs.get(nextIndex));
+        updateQuickTabStrip();
     }
 
     private void handleBrowserChromeForScroll(int scrollY) {
@@ -1105,11 +1850,35 @@ public class BrowserActivity extends AppCompatActivity {
             return;
         }
         browserChromeVisible = false;
-        appBar.setExpanded(false, true);
+        int bottomNavOffset = getBottomNavHideOffset();
+        if (addressBarAtBottom) {
+            appBar.animate()
+                    .translationY(bottomNavOffset + appBar.getHeight())
+                    .setDuration(180)
+                    .start();
+        } else {
+            appBar.setExpanded(false, true);
+        }
         bottomNav.animate()
-                .translationY(bottomNav.getHeight())
+                .translationY(bottomNavOffset)
                 .setDuration(180)
                 .start();
+        int stripOffset = bottomNavOffset + dp(12);
+        if (addressBarAtBottom) {
+            stripOffset += appBar.getHeight();
+        }
+        if (quickTabStripContainer != null) {
+            quickTabStripContainer.animate()
+                    .translationY(stripOffset + quickTabStripContainer.getHeight())
+                    .setDuration(180)
+                    .start();
+        }
+        if (quickTabStripShadow != null && quickTabStripContainer != null) {
+            quickTabStripShadow.animate()
+                    .translationY(stripOffset + quickTabStripContainer.getHeight())
+                    .setDuration(180)
+                    .start();
+        }
     }
 
     private void showBrowserChrome(boolean animated) {
@@ -1119,6 +1888,10 @@ public class BrowserActivity extends AppCompatActivity {
         browserChromeVisible = true;
         if (appBar != null) {
             appBar.setExpanded(true, animated);
+            appBar.animate()
+                    .translationY(0f)
+                    .setDuration(animated ? 180 : 0)
+                    .start();
         }
         if (bottomNav != null) {
             bottomNav.animate()
@@ -1126,10 +1899,40 @@ public class BrowserActivity extends AppCompatActivity {
                     .setDuration(animated ? 180 : 0)
                     .start();
         }
+        if (quickTabStripContainer != null) {
+            quickTabStripContainer.animate()
+                    .translationY(0f)
+                    .setDuration(animated ? 180 : 0)
+                    .start();
+        }
+        if (quickTabStripShadow != null) {
+            quickTabStripShadow.animate()
+                    .translationY(0f)
+                    .setDuration(animated ? 180 : 0)
+                    .start();
+        }
+    }
+
+    private int getBottomNavHideOffset() {
+        if (bottomNav == null || bottomNav.getVisibility() != View.VISIBLE) {
+            return 0;
+        }
+        return bottomNav.getHeight();
     }
 
     private void showMoreMenu() {
-        View anchor = bottomNav.findViewById(R.id.nav_settings);
+        View anchor = null;
+        if (bottomNav != null && bottomNav.getVisibility() == View.VISIBLE) {
+            anchor = bottomNav.findViewById(R.id.nav_settings);
+        }
+        if (anchor == null && toolbarShortcutButton != null
+                && toolbarShortcutButton.getVisibility() == View.VISIBLE) {
+            anchor = toolbarShortcutButton;
+        }
+        if (anchor == null) {
+            anchor = browserRoot != null ? browserRoot : geckoView;
+        }
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
         List<MoreMenuPopup.Action> navigationActions = new ArrayList<>();
         navigationActions.add(new MoreMenuPopup.Action(R.drawable.ic_arrow_back, R.string.back,
                 canGoBack, () -> {
@@ -1153,58 +1956,89 @@ public class BrowserActivity extends AppCompatActivity {
                 currentUrl != null && !currentUrl.trim().isEmpty(), this::shareCurrentPage));
 
         List<MoreMenuPopup.Action> menuActions = new ArrayList<>();
-        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_add, R.string.new_tab,
-                true, () -> createNewTab(false)));
-        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_add, R.string.new_private_tab,
-                true, () -> createNewTab(true)));
-        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_history, R.string.history,
-                true, () -> startActivity(new Intent(this, HistoryActivity.class))));
-        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_download, R.string.downloads,
-                true, () -> startActivity(new Intent(this, DownloadsActivity.class))));
-        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_bookmarks, R.string.bookmarks,
-                true, () -> startActivity(new Intent(this, BookmarksActivity.class))));
-        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_search, R.string.find_in_page,
-                session != null, this::showFindInPageDialog));
-        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_desktop, R.string.desktop_site,
-                session != null, this::toggleDesktopSite));
+        addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_NEW_TAB,
+                new MoreMenuPopup.Action(R.drawable.ic_tabs, R.string.new_tab,
+                        true, () -> createNewTab(false)));
+        addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_NEW_PRIVATE_TAB,
+                new MoreMenuPopup.Action(R.drawable.ic_incognito, R.string.new_private_tab,
+                        true, () -> createNewTab(true)));
+        addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_HISTORY,
+                new MoreMenuPopup.Action(R.drawable.ic_history, R.string.history,
+                        true, () -> startActivity(new Intent(this, HistoryActivity.class))));
+        addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_DOWNLOADS,
+                new MoreMenuPopup.Action(R.drawable.ic_download, R.string.downloads,
+                        true, () -> startActivity(new Intent(this, DownloadsActivity.class))));
+        addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_BOOKMARKS,
+                new MoreMenuPopup.Action(R.drawable.ic_bookmarks, R.string.bookmarks,
+                        true, () -> startActivity(new Intent(this, BookmarksActivity.class))));
+        addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_FIND_IN_PAGE,
+                new MoreMenuPopup.Action(R.drawable.ic_search, R.string.find_in_page,
+                        session != null, this::showFindInPageDialog));
+        addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_DESKTOP_SITE,
+                new MoreMenuPopup.Action(R.drawable.ic_desktop, R.string.desktop_site,
+                        session != null, this::toggleDesktopSite));
         boolean isReaderMode = currentUrl != null && currentUrl.startsWith("about:reader");
-        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_recent,
-                isReaderMode ? R.string.reader_mode_on : R.string.reader_mode,
-                session != null && currentUrl != null,
-                this::toggleReaderMode));
-        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_add, R.string.add_to_quick_access,
-                currentUrl != null && !currentUrl.trim().isEmpty(),
-                this::addCurrentPageToQuickAccess));
-        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_search, R.string.zoom_for_site,
-                currentUrl != null && !currentUrl.trim().isEmpty()
-                        && !"about:blank".equals(currentUrl),
-                this::showSiteZoomDialog));
-        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_download, R.string.save_page,
-                session != null, this::savePageAsPdf));
-        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_add, R.string.add_to_home_screen,
-                currentUrl != null && !currentUrl.trim().isEmpty() && !"about:blank".equals(currentUrl),
-                this::addToHomeScreen));
-        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_history, R.string.reading_list,
-                true, () -> startActivity(new Intent(this, ReadingListActivity.class))));
-        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_download, R.string.save_to_reading_list,
-                session != null && currentUrl != null && !currentUrl.trim().isEmpty(),
-                this::saveToReadingList));
-        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_add, R.string.extensions,
-                true, () -> startActivity(new Intent(this, ExtensionsActivity.class))));
+        if (prefs.getBoolean(SettingsKeys.PREF_READER_MODE_MENU_ENABLED, true)) {
+            addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_READER_MODE,
+                    new MoreMenuPopup.Action(R.drawable.ic_text,
+                            isReaderMode ? R.string.reader_mode_on : R.string.reader_mode,
+                            session != null && currentUrl != null,
+                            this::toggleReaderMode));
+        }
+        addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_ADD_TO_QUICK_ACCESS,
+                new MoreMenuPopup.Action(R.drawable.ic_view_grid, R.string.add_to_quick_access,
+                        currentUrl != null && !currentUrl.trim().isEmpty(),
+                        this::addCurrentPageToQuickAccess));
+        addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_ZOOM,
+                new MoreMenuPopup.Action(R.drawable.ic_search, R.string.zoom_for_site,
+                        currentUrl != null && !currentUrl.trim().isEmpty()
+                                && !"about:blank".equals(currentUrl),
+                        this::showSiteZoomDialog));
+        addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_SAVE_PAGE,
+                new MoreMenuPopup.Action(R.drawable.ic_pdf, R.string.save_page,
+                        session != null, this::savePageAsPdf));
+        addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_ADD_TO_HOME_SCREEN,
+                new MoreMenuPopup.Action(R.drawable.ic_home, R.string.add_to_home_screen,
+                        currentUrl != null && !currentUrl.trim().isEmpty()
+                                && !"about:blank".equals(currentUrl),
+                        this::addToHomeScreen));
+        addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_READING_LIST,
+                new MoreMenuPopup.Action(R.drawable.ic_history, R.string.reading_list,
+                        true, () -> startActivity(new Intent(this, ReadingListActivity.class))));
+        addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_SAVE_TO_READING_LIST,
+                new MoreMenuPopup.Action(R.drawable.ic_download, R.string.save_to_reading_list,
+                        session != null && currentUrl != null && !currentUrl.trim().isEmpty(),
+                        this::saveToReadingList));
+        addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_TRANSLATE,
+                new MoreMenuPopup.Action(R.drawable.ic_translate, R.string.translate_page,
+                        currentUrl != null && !currentUrl.trim().isEmpty(),
+                        this::translatePage));
+        addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_EXTENSIONS,
+                new MoreMenuPopup.Action(R.drawable.ic_extensions_puzzle, R.string.extensions,
+                        true, () -> startActivity(new Intent(this, ExtensionsActivity.class))));
         menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_settings, R.string.settings,
                 true, () -> startActivity(new Intent(this, SettingsActivity.class))));
-        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_exit, R.string.exit,
-                true, this::exitApp));
+        addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_EXIT,
+                new MoreMenuPopup.Action(R.drawable.ic_exit, R.string.exit,
+                        true, this::exitApp));
 
         MoreMenuPopup.show(this, anchor, navigationActions, menuActions);
     }
 
+    private void addMenuAction(List<MoreMenuPopup.Action> actions, SharedPreferences prefs,
+                               String prefKey, MoreMenuPopup.Action action) {
+        if (prefs.getBoolean(prefKey, true)) {
+            actions.add(action);
+        }
+    }
+
     private void createNewTab(boolean isPrivate) {
         if (tabManager != null) {
+            captureCurrentTabThumbnail();
             Tab newTab = tabManager.createNewTab(isPrivate);
             attachTabToView(newTab);
             if (!isPrivate) {
-                urlInput.setText(newTab.getUrl());
+                updateUrlInputForUrl(newTab.getUrl());
             } else {
                 urlInput.setText("");
                 Toast.makeText(this, R.string.private_tab_started, Toast.LENGTH_SHORT).show();
@@ -1213,11 +2047,32 @@ public class BrowserActivity extends AppCompatActivity {
         }
     }
 
+    private void createNewTabInGroup(boolean isPrivate, String groupId,
+                                     String groupName, int groupColor) {
+        if (tabManager == null || groupId == null) {
+            createNewTab(isPrivate);
+            return;
+        }
+        captureCurrentTabThumbnail();
+        Tab newTab = tabManager.createNewTab(isPrivate);
+        tabManager.addTabToGroup(newTab, groupId, groupName,
+                groupColor != 0 ? groupColor : TabRepository.getDefaultGroupColor(this));
+        attachTabToView(newTab);
+        if (!isPrivate) {
+            updateUrlInputForUrl(newTab.getUrl());
+        } else {
+            urlInput.setText("");
+            Toast.makeText(this, R.string.private_tab_started, Toast.LENGTH_SHORT).show();
+        }
+        updateTabCount();
+        updateQuickTabStrip();
+    }
+
     void recordHistory() {
         if (currentUrl == null || currentUrl.isEmpty() || "about:blank".equals(currentUrl)) {
             return;
         }
-        if (!PreferenceManager.getDefaultSharedPreferences(this).getBoolean("save_history", true)) {
+        if (UrlUtils.isInternalPageUrl(currentUrl)) {
             return;
         }
         if (currentUrl.equals(lastRecordedUrl)) {
@@ -1229,17 +2084,15 @@ public class BrowserActivity extends AppCompatActivity {
         }
         String title = currentTitle != null && !currentTitle.isEmpty() ? currentTitle : currentUrl;
         lastRecordedUrl = currentUrl;
-        String adBlockLevel = PreferenceManager.getDefaultSharedPreferences(this)
-                .getString("ad_blocking_level", "balanced");
-        boolean isProtected = !"off".equals(adBlockLevel);
-        incrementPrivacyStats(isProtected ? 1 : 0, estimateBlockedItems());
+        PrivacyStatsManager.recordProtectedPage(this);
+        if (!PreferenceManager.getDefaultSharedPreferences(this).getBoolean("save_history", true)) {
+            return;
+        }
         if (!UrlUtils.isSearchResultsUrl(this, currentUrl)) {
-            String quickAccessUrl = UrlUtils.getSiteOrigin(currentUrl);
-            String quickAccessTitle = UrlUtils.getDisplayHost(currentUrl);
-            quickAccessRepository.updateQuickAccessItem(
-                    new com.webstudio.easybrowser.models.QuickAccessItem(
-                            quickAccessTitle != null ? quickAccessTitle : title,
-                            quickAccessUrl != null ? quickAccessUrl : currentUrl));
+            QuickAccessItem quickAccessItem = createQuickAccessItem(title, currentUrl, currentTab);
+            if (quickAccessItem != null) {
+                quickAccessRepository.updateQuickAccessItem(quickAccessItem);
+            }
         }
         historyRepository.addHistoryItem(new HistoryItem(title, currentUrl), new HistoryRepository.HistoryCallback() {
             @Override
@@ -1253,31 +2106,8 @@ public class BrowserActivity extends AppCompatActivity {
         });
     }
 
-    private int estimateBlockedItems() {
-        String level = PreferenceManager.getDefaultSharedPreferences(this)
-                .getString("ad_blocking_level", "balanced");
-        if ("off".equals(level)) {
-            return 0;
-        }
-        if ("aggressive".equals(level)) {
-            return 4;
-        }
-        return 2;
-    }
-
-    void incrementPrivacyStats(int protectedPages, int blockedItems) {
-        if (protectedPages == 0 && blockedItems == 0) {
-            return;
-        }
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
-        prefs.edit()
-                .putInt("privacy_pages_protected",
-                        prefs.getInt("privacy_pages_protected", 0) + protectedPages)
-                .putInt("privacy_items_blocked",
-                        prefs.getInt("privacy_items_blocked", 0) + blockedItems)
-                .putInt("privacy_time_saved_seconds",
-                        prefs.getInt("privacy_time_saved_seconds", 0) + blockedItems)
-                .apply();
+    void recordBlockedPrivacyItem() {
+        PrivacyStatsManager.recordBlockedItem(this);
     }
 
     private void enterPip() {
@@ -1384,6 +2214,8 @@ public class BrowserActivity extends AppCompatActivity {
         if (!TextUtils.isEmpty(link)) {
             labels.add(getString(R.string.context_menu_open_new_tab));
             actions.add(() -> openUrlInNewTab(link, false));
+            labels.add(getString(R.string.context_menu_open_new_tab_in_group));
+            actions.add(() -> openUrlInNewTabInGroup(link));
             labels.add(getString(R.string.context_menu_open_private_tab));
             actions.add(() -> openUrlInNewTab(link, true));
             labels.add(getString(R.string.context_menu_copy_link));
@@ -1430,13 +2262,56 @@ public class BrowserActivity extends AppCompatActivity {
         if (tabManager == null) {
             return;
         }
-        String parentId = (!isPrivate && tabManager.getCurrentTab() != null)
-                ? tabManager.getCurrentTab().getId() : null;
+        captureCurrentTabThumbnail();
+        Tab current = tabManager.getCurrentTab();
+        String parentId = (!isPrivate && current != null) ? current.getId() : null;
         Tab tab = tabManager.createNewTab(isPrivate, false, parentId);
+        if (shouldOpenNewTabInCurrentGroup(current, isPrivate)) {
+            tabManager.addTabToGroup(tab, current.getGroupId(),
+                    current.getGroupName(), current.getGroupColor());
+        }
         tab.setCloseOnBackToPreviousTab(closeOnBackToPreviousTab);
         attachTabToView(tab);
         loadUrl(url);
         updateTabCount();
+        updateQuickTabStrip();
+    }
+
+    private boolean shouldOpenNewTabInCurrentGroup(Tab current, boolean isPrivate) {
+        return current != null
+                && current.getGroupId() != null
+                && current.isPrivate() == isPrivate
+                && PreferenceManager.getDefaultSharedPreferences(this).getBoolean(
+                SettingsKeys.PREF_ONLY_OPEN_LINKS_IN_CURRENT_GROUP, false);
+    }
+
+    private void openUrlInNewTabInGroup(String url) {
+        if (tabManager == null) {
+            return;
+        }
+        Tab current = tabManager.getCurrentTab();
+        if (current == null) {
+            openUrlInNewTab(url, false);
+            return;
+        }
+        captureCurrentTabThumbnail();
+        boolean isPrivate = current.isPrivate();
+        Tab tab = tabManager.createNewTab(isPrivate, false, current.getId());
+        if (current.getGroupId() != null) {
+            tabManager.addTabToGroup(tab, current.getGroupId(), current.getGroupName(), current.getGroupColor());
+        } else {
+            String groupName = current.getTitle() != null && !current.getTitle().trim().isEmpty()
+                    ? current.getTitle()
+                    : getString(R.string.tab_group);
+            tabManager.createGroupForTabs(Arrays.asList(current.getId(), tab.getId()),
+                    groupName,
+                    TabRepository.getDefaultGroupColor(this),
+                    isPrivate);
+        }
+        attachTabToView(tab);
+        loadUrl(url);
+        updateTabCount();
+        updateQuickTabStrip();
     }
 
     private void copyToClipboard(String value) {
@@ -1716,9 +2591,31 @@ public class BrowserActivity extends AppCompatActivity {
     private void addCurrentPageToQuickAccess() {
         if (currentUrl == null || currentUrl.trim().isEmpty()) return;
         String title = currentTitle != null && !currentTitle.isEmpty() ? currentTitle : currentUrl;
-        quickAccessRepository.updateQuickAccessItem(
-                new com.webstudio.easybrowser.models.QuickAccessItem(title, currentUrl));
+        Tab currentTab = tabManager != null ? tabManager.getCurrentTab() : null;
+        QuickAccessItem item = createQuickAccessItem(title, currentUrl, currentTab);
+        if (item == null) {
+            Toast.makeText(this, R.string.error_invalid_url, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        quickAccessRepository.updateQuickAccessItem(item);
         Toast.makeText(this, R.string.added_to_quick_access, Toast.LENGTH_SHORT).show();
+    }
+
+    private QuickAccessItem createQuickAccessItem(String fallbackTitle, String url, Tab tab) {
+        String quickAccessUrl = UrlUtils.getQuickAccessUrl(url);
+        if (quickAccessUrl == null) {
+            return null;
+        }
+        String quickAccessTitle = UrlUtils.getQuickAccessTitle(url);
+        QuickAccessItem item = new QuickAccessItem(
+                !TextUtils.isEmpty(quickAccessTitle) ? quickAccessTitle : fallbackTitle,
+                quickAccessUrl);
+        String faviconUrl = UrlUtils.getFaviconUrl(quickAccessUrl);
+        if (TextUtils.isEmpty(faviconUrl) && tab != null) {
+            faviconUrl = tab.getFaviconUri();
+        }
+        item.setFaviconUrl(faviconUrl);
+        return item;
     }
 
     private void savePageAsPdf() {
@@ -1954,6 +2851,18 @@ public class BrowserActivity extends AppCompatActivity {
     }
 
     // F12 — Site info bottom sheet
+    private void handleSecurityButtonClick() {
+        if (UrlUtils.isInternalPageUrl(currentUrl)) {
+            new MaterialAlertDialogBuilder(this)
+                    .setTitle(R.string.new_tab_info_title)
+                    .setMessage(R.string.new_tab_info_message)
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show();
+            return;
+        }
+        showSiteInfoBottomSheet();
+    }
+
     private void showSiteInfoBottomSheet() {
         if (currentUrl == null) return;
         boolean isSecure = lastSecurityInfo != null && lastSecurityInfo.isSecure;

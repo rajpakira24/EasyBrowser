@@ -19,6 +19,7 @@ import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.adapters.HistoryAdapter;
 import com.webstudio.easybrowser.models.HistoryItem;
 import com.webstudio.easybrowser.repository.HistoryRepository;
+import com.webstudio.easybrowser.utils.ScreenshotProtection;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -39,11 +40,7 @@ public class HistoryActivity extends AppCompatActivity implements HistoryAdapter
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // Browsing history is privacy-sensitive — keep it out of screenshots and
-        // the recent-apps thumbnail.
-        getWindow().setFlags(
-                android.view.WindowManager.LayoutParams.FLAG_SECURE,
-                android.view.WindowManager.LayoutParams.FLAG_SECURE);
+        ScreenshotProtection.apply(this);
         setContentView(R.layout.activity_history);
 
         setupToolbar();

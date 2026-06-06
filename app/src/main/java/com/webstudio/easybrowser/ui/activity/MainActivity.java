@@ -24,6 +24,7 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -33,17 +34,21 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.content.ContextCompat;
-import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import com.bumptech.glide.Glide;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.textfield.TextInputEditText;
 import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.adapters.QuickAccessAdapter;
 import com.webstudio.easybrowser.managers.AnalyticsManager;
+import com.webstudio.easybrowser.managers.PrivacyStatsManager;
 import com.webstudio.easybrowser.models.QuickAccessItem;
 import com.webstudio.easybrowser.repository.QuickAccessRepository;
+import com.webstudio.easybrowser.utils.HomeBackgroundProvider;
 import com.webstudio.easybrowser.utils.SearchSuggestionProvider;
+import com.webstudio.easybrowser.utils.SystemBarUtils;
 import com.webstudio.easybrowser.utils.UrlUtils;
 
 import com.webstudio.easybrowser.adapters.SuggestionsAdapter;
@@ -66,9 +71,19 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
     private TextView protectedPagesStat;
     private TextView blockedItemsStat;
     private TextView timeSavedStat;
+    private ImageView homeBackgroundImage;
+    private TextView photoCredit;
+    private View homeSearchBar;
     private BottomNavigationView bottomNav;
     private QuickAccessRepository quickAccessRepository;
     private QuickAccessAdapter quickAccessAdapter;
+    private HomeBackgroundProvider.Photo currentHomePhoto;
+    private final SharedPreferences.OnSharedPreferenceChangeListener privacyStatsListener =
+            (sharedPreferences, key) -> {
+                if (PrivacyStatsManager.isStatsKey(key)) {
+                    runOnUiThread(this::updatePrivacyStats);
+                }
+            };
 
     private ActivityResultLauncher<Intent> speechRecognizer;
 
@@ -76,6 +91,9 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        SystemBarUtils.apply(this,
+                ContextCompat.getColor(this, R.color.home_background),
+                ContextCompat.getColor(this, R.color.home_panel_background));
 
         initializeViews();
         setupToolbar();
@@ -85,6 +103,7 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         setupBottomNavigation();
         setupClickListeners();
         setupSpeechRecognition();
+        setupHomeBackground();
         applyHomeSectionVisibility();
         updatePrivacyStats();
         handleIncomingIntent(getIntent());
@@ -100,9 +119,18 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
     @Override
     protected void onResume() {
         super.onResume();
+        PreferenceManager.getDefaultSharedPreferences(this)
+                .registerOnSharedPreferenceChangeListener(privacyStatsListener);
         applyHomeSectionVisibility();
         updatePrivacyStats();
         reloadQuickAccess();
+    }
+
+    @Override
+    protected void onPause() {
+        PreferenceManager.getDefaultSharedPreferences(this)
+                .unregisterOnSharedPreferenceChangeListener(privacyStatsListener);
+        super.onPause();
     }
 
     private void initializeViews() {
@@ -117,6 +145,9 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         protectedPagesStat = findViewById(R.id.stat_protected_pages);
         blockedItemsStat = findViewById(R.id.stat_blocked_items);
         timeSavedStat = findViewById(R.id.stat_time_saved);
+        homeBackgroundImage = findViewById(R.id.home_background_image);
+        photoCredit = findViewById(R.id.home_photo_credit);
+        homeSearchBar = findViewById(R.id.home_edge_search_bar);
         bottomNav = findViewById(R.id.bottom_navigation);
         updateTabCountIcon();
     }
@@ -218,7 +249,8 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
     }
 
     private void setupQuickAccess() {
-        quickAccessRecycler.setLayoutManager(new GridLayoutManager(this, 4));
+        quickAccessRecycler.setLayoutManager(new LinearLayoutManager(
+                this, LinearLayoutManager.HORIZONTAL, false));
         quickAccessAdapter = new QuickAccessAdapter(new ArrayList<>(), this);
         quickAccessRecycler.setAdapter(quickAccessAdapter);
 
@@ -256,6 +288,22 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         });
     }
 
+    private void setupHomeBackground() {
+        currentHomePhoto = HomeBackgroundProvider.nextPhoto();
+        if (homeBackgroundImage != null) {
+            Glide.with(this)
+                    .load(currentHomePhoto.getImageUrl())
+                    .placeholder(R.drawable.bg_home_photo_scrim)
+                    .error(R.drawable.bg_home_photo_scrim)
+                    .centerCrop()
+                    .into(homeBackgroundImage);
+        }
+        if (photoCredit != null) {
+            photoCredit.setText(currentHomePhoto.getCreditText());
+            photoCredit.setOnClickListener(v -> handleUrlInput(currentHomePhoto.getSourceUrl()));
+        }
+    }
+
     private void applyHomeSectionVisibility() {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
         boolean showPrivacyStats = prefs.getBoolean("show_privacy_stats", true);
@@ -266,14 +314,11 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
     }
 
     private void updatePrivacyStats() {
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
-        int protectedPages = prefs.getInt("privacy_pages_protected", 0);
-        int blockedItems = prefs.getInt("privacy_items_blocked", 0);
-        int secondsSaved = prefs.getInt("privacy_time_saved_seconds", 0);
+        PrivacyStatsManager.Stats stats = PrivacyStatsManager.getStats(this);
 
-        protectedPagesStat.setText(String.valueOf(protectedPages));
-        blockedItemsStat.setText(String.valueOf(blockedItems));
-        timeSavedStat.setText(formatTimeSaved(secondsSaved));
+        protectedPagesStat.setText(String.valueOf(stats.pagesProtected));
+        blockedItemsStat.setText(String.valueOf(stats.itemsBlocked));
+        timeSavedStat.setText(formatTimeSaved(stats.timeSavedSeconds));
     }
 
     private String formatTimeSaved(int seconds) {
@@ -343,7 +388,7 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        int iconColor = ContextCompat.getColor(this, R.color.black);
+        int iconColor = ContextCompat.getColor(this, R.color.home_accent_ink);
 
         paint.setStyle(Paint.Style.STROKE);
         paint.setStrokeWidth(strokeWidth);
@@ -370,7 +415,7 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
     private void setupClickListeners() {
         micButton.setOnClickListener(v -> startVoiceRecognition());
 
-        securityButton.setOnClickListener(v -> showSecurityInfo());
+        securityButton.setOnClickListener(v -> showSearchPopup());
         urlInput.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_GO ||
                     actionId == EditorInfo.IME_ACTION_SEARCH ||
@@ -391,6 +436,14 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
                 this, android.R.style.Theme_Translucent_NoTitleBar);
         dialog.setContentView(R.layout.dialog_search_popup);
         dialog.setCanceledOnTouchOutside(false);
+        if (homeSearchBar != null) {
+            homeSearchBar.setVisibility(View.INVISIBLE);
+        }
+        dialog.setOnDismissListener(d -> {
+            if (homeSearchBar != null) {
+                homeSearchBar.setVisibility(View.VISIBLE);
+            }
+        });
 
         EditText searchInput = dialog.findViewById(R.id.search_popup_input);
         ImageButton popupMic = dialog.findViewById(R.id.btn_search_popup_mic);
@@ -487,10 +540,10 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
                 false, () -> {}));
 
         List<MoreMenuPopup.Action> menuActions = new ArrayList<>();
-        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_add, R.string.new_tab,
+        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_tabs, R.string.new_tab,
                 true, () -> startActivity(new Intent(this, BrowserActivity.class)
                         .putExtra("new_tab", true))));
-        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_add, R.string.new_private_tab,
+        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_incognito, R.string.new_private_tab,
                 true, () -> {
             Intent intent = new Intent(this, BrowserActivity.class);
             intent.putExtra("private_tab", true);
@@ -505,7 +558,7 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_recent, R.string.recent_tabs,
                 true, () -> startActivity(new Intent(this, BrowserActivity.class)
                         .putExtra("show_tabs", true))));
-        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_add, R.string.extensions,
+        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_extensions_puzzle, R.string.extensions,
                 true, () -> startActivity(new Intent(this, ExtensionsActivity.class))));
         menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_settings, R.string.settings,
                 true, () -> startActivity(new Intent(this, SettingsActivity.class))));

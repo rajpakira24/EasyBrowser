@@ -7,16 +7,16 @@
 
     <!-- Outer Circle -->
     <path
-        android:fillColor="@android:color/black"
+        android:fillColor="@color/colorOnSurface"
         android:pathData="M12,2A10,10 0 1,1 2,12A10,10 0 0,1 12,2M12,0A12,12 0 1,0 24,12A12,12 0 0,0 12,0Z" />
 
     <!-- Longitude Lines -->
     <path
-        android:fillColor="@android:color/black"
+        android:fillColor="@color/colorOnSurface"
         android:pathData="M8,12A8,8 0 0,1 16,12A8,8 0 0,1 8,12M7,12A9,9 0 0,0 17,12A9,9 0 0,0 7,12Z" />
 
     <!-- Latitude Lines -->
     <path
-        android:fillColor="@android:color/black"
+        android:fillColor="@color/colorOnSurface"
         android:pathData="M12,4A8,8 0 0,1 12,20A8,8 0 0,1 12,4M12,3A9,9 0 0,0 12,21A9,9 0 0,0 12,3Z" />
 </vector>

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -15,26 +16,38 @@
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="56dp"
+            android:background="@drawable/bg_edge_home_search"
             android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:orientation="horizontal"
+            android:paddingStart="7dp"
+            android:paddingEnd="6dp">
+
+            <ImageView
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:background="@drawable/bg_edge_home_search_icon"
+                android:contentDescription="@string/search"
+                android:padding="10dp"
+                android:src="@drawable/ic_search"
+                app:tint="@color/edge_search_foreground" />
 
             <EditText
                 android:id="@+id/search_popup_input"
                 android:layout_width="0dp"
-                android:layout_height="48dp"
+                android:layout_height="match_parent"
                 android:layout_weight="1"
-                android:background="@drawable/search_bar_background"
+                android:background="@null"
                 android:hint="@string/search_or_type_url"
                 android:imeOptions="actionSearch"
                 android:inputType="textUri"
                 android:maxLength="2048"
-                android:paddingStart="16dp"
-                android:paddingEnd="16dp"
+                android:paddingStart="10dp"
+                android:paddingEnd="8dp"
                 android:selectAllOnFocus="true"
                 android:singleLine="true"
-                android:textColor="@color/colorOnSurface"
-                android:textColorHint="@color/colorOnSurface"
+                android:textColor="@color/edge_search_foreground"
+                android:textColorHint="@color/edge_search_hint"
                 android:textSize="16sp"
                 tools:ignore="Autofill" />
 
@@ -45,7 +58,8 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/voice_search"
                 android:padding="10dp"
-                android:src="@drawable/ic_mic" />
+                android:src="@drawable/ic_mic"
+                app:tint="@color/edge_search_foreground" />
 
             <ImageButton
                 android:id="@+id/btn_search_popup_go"
@@ -54,7 +68,8 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/search"
                 android:padding="10dp"
-                android:src="@drawable/ic_arrow_forward" />
+                android:src="@drawable/ic_arrow_forward"
+                app:tint="@color/edge_search_foreground" />
         </LinearLayout>
 
         <androidx.recyclerview.widget.RecyclerView

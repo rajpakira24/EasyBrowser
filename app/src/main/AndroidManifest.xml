@@ -27,6 +27,7 @@
         android:required="false" />
 
     <application
+        android:name=".EasyBrowserApplication"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -102,11 +103,32 @@
             android:exported="false"
             android:parentActivityName=".ui.activity.BrowserActivity" />
 
+        <activity
+            android:name=".ui.activity.TabManagerActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.activity.BrowserActivity" />
+
+        <activity
+            android:name=".ui.activity.InactiveTabsActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.activity.TabManagerActivity" />
+
+        <activity
+            android:name=".ui.activity.GroupTabsActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.activity.TabManagerActivity"
+            android:theme="@style/Theme.EasyBrowser.GroupOverlay" />
+
         <!-- Settings Activity -->
         <activity
             android:name=".ui.activity.SettingsActivity"
             android:exported="false"
             android:parentActivityName=".ui.activity.MainActivity" />
+
+        <activity
+            android:name=".ui.activity.SettingsSubpageActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.activity.SettingsActivity" />
 
         <!-- Bookmarks Activity -->
         <activity

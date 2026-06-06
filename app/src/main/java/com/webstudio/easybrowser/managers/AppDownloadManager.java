@@ -24,6 +24,8 @@ import android.widget.Toast;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
+import androidx.preference.PreferenceManager;
 
 import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.database.AppDatabase;
@@ -31,6 +33,7 @@ import com.webstudio.easybrowser.database.entity.DownloadEntity;
 import com.webstudio.easybrowser.models.DownloadItem;
 import com.webstudio.easybrowser.repository.DownloadRepository;
 import com.webstudio.easybrowser.ui.activity.DownloadsActivity;
+import com.webstudio.easybrowser.utils.SettingsKeys;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -108,9 +111,9 @@ public class AppDownloadManager {
         item.setDestinationPath(targetFile.getAbsolutePath());
         DownloadRepository repository = new DownloadRepository(appContext);
 
-        boolean wifiOnly = androidx.preference.PreferenceManager
+        boolean wifiOnly = PreferenceManager
                 .getDefaultSharedPreferences(appContext)
-                .getBoolean("download_wifi_only", false);
+                .getBoolean(SettingsKeys.PREF_DOWNLOAD_WIFI_ONLY, false);
         if (wifiOnly && isMetered(appContext)) {
             item.setStatus(DownloadItem.Status.QUEUED);
             repository.saveDownload(item, null);
@@ -155,9 +158,9 @@ public class AppDownloadManager {
         int limitBytesPerSec;
         try {
             limitBytesPerSec = Integer.parseInt(
-                    androidx.preference.PreferenceManager
+                    PreferenceManager
                             .getDefaultSharedPreferences(context)
-                            .getString("download_bandwidth_limit", "0"));
+                            .getString(SettingsKeys.PREF_DOWNLOAD_BANDWIDTH_LIMIT, "0"));
         } catch (NumberFormatException e) {
             limitBytesPerSec = 0;
         }
@@ -288,6 +291,7 @@ public class AppDownloadManager {
                 repository.saveDownload(item, null);
                 AnalyticsManager.logDownloadCompleted(context, item.getMimeType());
                 showCompletedNotification(context, item);
+                openCompletedDownloadIfEnabled(context, item);
             }
             }
         } catch (IOException e) {
@@ -516,9 +520,9 @@ public class AppDownloadManager {
         values.put(MediaStore.Downloads.MIME_TYPE, !TextUtils.isEmpty(item.getMimeType())
                 ? item.getMimeType()
                 : "application/octet-stream");
-        String customFolder = androidx.preference.PreferenceManager
+        String customFolder = PreferenceManager
                 .getDefaultSharedPreferences(context)
-                .getString("downloads_folder_custom", "");
+                .getString(SettingsKeys.PREF_DOWNLOADS_FOLDER_CUSTOM, "");
         String relativePath = Environment.DIRECTORY_DOWNLOADS + "/"
                 + (customFolder.isEmpty() ? "Easy Browser" : customFolder);
         values.put(MediaStore.Downloads.RELATIVE_PATH, relativePath);
@@ -773,7 +777,9 @@ public class AppDownloadManager {
     }
 
     private void showProgressNotification(Context context, DownloadItem item) {
-        if (!canPostNotifications(context)) {
+        if (!isDownloadNotificationEnabled(context,
+                SettingsKeys.PREF_DOWNLOAD_PROGRESS_NOTIFICATIONS, true)
+                || !canPostNotifications(context)) {
             return;
         }
         createNotificationChannel(context);
@@ -791,7 +797,9 @@ public class AppDownloadManager {
     }
 
     private void showCompletedNotification(Context context, DownloadItem item) {
-        if (!canPostNotifications(context)) {
+        if (!isDownloadNotificationEnabled(context,
+                SettingsKeys.PREF_DOWNLOAD_COMPLETION_NOTIFICATIONS, true)
+                || !canPostNotifications(context)) {
             return;
         }
         createNotificationChannel(context);
@@ -806,7 +814,9 @@ public class AppDownloadManager {
     }
 
     private void showFailedNotification(Context context, DownloadItem item) {
-        if (!canPostNotifications(context)) {
+        if (!isDownloadNotificationEnabled(context,
+                SettingsKeys.PREF_DOWNLOAD_COMPLETION_NOTIFICATIONS, true)
+                || !canPostNotifications(context)) {
             return;
         }
         createNotificationChannel(context);
@@ -842,6 +852,52 @@ public class AppDownloadManager {
         return Build.VERSION.SDK_INT < 33
                 || ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
                 == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private boolean isDownloadNotificationEnabled(Context context, String key, boolean defaultValue) {
+        return PreferenceManager.getDefaultSharedPreferences(context)
+                .getBoolean(key, defaultValue);
+    }
+
+    private void openCompletedDownloadIfEnabled(Context context, DownloadItem item) {
+        if (!PreferenceManager.getDefaultSharedPreferences(context)
+                .getBoolean(SettingsKeys.PREF_DOWNLOAD_AUTO_OPEN, false)) {
+            return;
+        }
+        Uri uri = getDownloadUri(context, item);
+        if (uri == null) {
+            return;
+        }
+        Intent intent = new Intent(Intent.ACTION_VIEW);
+        intent.setDataAndType(uri, !TextUtils.isEmpty(item.getMimeType())
+                ? item.getMimeType() : "*/*");
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        try {
+            context.startActivity(intent);
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    private Uri getDownloadUri(Context context, DownloadItem item) {
+        if (item == null || TextUtils.isEmpty(item.getDestinationPath())) {
+            return null;
+        }
+        if (item.getDestinationPath().startsWith("content://")) {
+            return Uri.parse(item.getDestinationPath());
+        }
+        File file = new File(item.getDestinationPath());
+        if (!file.exists()) {
+            return null;
+        }
+        try {
+            return FileProvider.getUriForFile(
+                    context,
+                    context.getPackageName() + ".fileprovider",
+                    file);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
     }
 
     private void createNotificationChannel(Context context) {

@@ -15,6 +15,14 @@ public class Tab {
     private boolean isPrivate;
     private boolean initialLoadPending;
     private String groupName;
+    private String groupId;
+    private int groupColor;
+    private String faviconUri;
+    private String thumbnailPath;
+    private long createdAt;
+    private long lastAccessed;
+    private int position;
+    private boolean pinned;
     private boolean canGoBack;
     private boolean canGoForward;
     private boolean closeOnBackToPreviousTab;
@@ -32,6 +40,8 @@ public class Tab {
         this.url = url;
         this.isPrivate = isPrivate;
         this.initialLoadPending = false;
+        this.createdAt = System.currentTimeMillis();
+        this.lastAccessed = createdAt;
     }
 
     // Getters and Setters
@@ -89,6 +99,70 @@ public class Tab {
 
     public void setGroupName(String groupName) {
         this.groupName = groupName;
+    }
+
+    public String getGroupId() {
+        return groupId;
+    }
+
+    public void setGroupId(String groupId) {
+        this.groupId = groupId;
+    }
+
+    public int getGroupColor() {
+        return groupColor;
+    }
+
+    public void setGroupColor(int groupColor) {
+        this.groupColor = groupColor;
+    }
+
+    public String getFaviconUri() {
+        return faviconUri;
+    }
+
+    public void setFaviconUri(String faviconUri) {
+        this.faviconUri = faviconUri;
+    }
+
+    public String getThumbnailPath() {
+        return thumbnailPath;
+    }
+
+    public void setThumbnailPath(String thumbnailPath) {
+        this.thumbnailPath = thumbnailPath;
+    }
+
+    public long getLastAccessed() {
+        return lastAccessed;
+    }
+
+    public void setLastAccessed(long lastAccessed) {
+        this.lastAccessed = lastAccessed;
+    }
+
+    public long getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(long createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public int getPosition() {
+        return position;
+    }
+
+    public void setPosition(int position) {
+        this.position = position;
+    }
+
+    public boolean isPinned() {
+        return pinned;
+    }
+
+    public void setPinned(boolean pinned) {
+        this.pinned = pinned;
     }
 
     public boolean canGoBack() {

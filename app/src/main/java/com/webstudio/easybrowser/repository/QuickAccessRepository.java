@@ -12,11 +12,15 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 public class QuickAccessRepository {
     private AppDatabase database;
-    private Executor executor;
+    private ExecutorService executor;
     // Application context only — guaranteed-safe lifetime, no Activity leak risk.
     private Context context;
 
@@ -34,65 +38,48 @@ public class QuickAccessRepository {
 
     public void getMostVisitedItems(int limit, QuickAccessCallback callback) {
         executor.execute(() -> {
-            List<QuickAccessEntity> entities = database.quickAccessDao().getAllQuickAccess();
-            Map<String, QuickAccessItem> groupedItems = new LinkedHashMap<>();
-            for (QuickAccessEntity entity : entities) {
-                if (UrlUtils.isSearchResultsUrl(context, entity.getUrl())) {
-                    continue;
-                }
-                String originUrl = UrlUtils.getSiteOrigin(entity.getUrl());
-                String displayHost = UrlUtils.getDisplayHost(entity.getUrl());
-                String groupedUrl = originUrl != null ? originUrl : entity.getUrl();
-                QuickAccessItem existing = groupedItems.get(groupedUrl);
-                if (existing == null) {
-                    QuickAccessItem item = new QuickAccessItem(
-                            displayHost != null ? displayHost : entity.getTitle(),
-                            groupedUrl);
-                    item.setId(entity.getId());
-                    item.setFaviconUrl(entity.getFaviconUrl());
-                    item.setVisitCount(entity.getVisitCount());
-                    item.setLastVisited(entity.getLastVisited());
-                    groupedItems.put(groupedUrl, item);
-                } else {
-                    existing.setVisitCount(existing.getVisitCount() + entity.getVisitCount());
-                    if (entity.getLastVisited() > existing.getLastVisited()) {
-                        existing.setLastVisited(entity.getLastVisited());
-                    }
-                }
-            }
-            List<QuickAccessItem> items = new ArrayList<>(groupedItems.values());
-            Collections.sort(items, (first, second) -> {
-                int visitCompare = Integer.compare(second.getVisitCount(), first.getVisitCount());
-                if (visitCompare != 0) {
-                    return visitCompare;
-                }
-                return Long.compare(second.getLastVisited(), first.getLastVisited());
-            });
-            if (items.size() > limit) {
-                items = new ArrayList<>(items.subList(0, limit));
-            }
-            callback.onQuickAccessItemsLoaded(items);
+            callback.onQuickAccessItemsLoaded(buildMostVisitedItems(limit));
         });
+    }
+
+    public List<QuickAccessItem> getMostVisitedItemsSnapshot(int limit, long timeoutMillis) {
+        Future<List<QuickAccessItem>> future = executor.submit(() -> buildMostVisitedItems(limit));
+        try {
+            return future.get(Math.max(1, timeoutMillis), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            future.cancel(true);
+        } catch (ExecutionException | TimeoutException e) {
+            future.cancel(true);
+        }
+        return new ArrayList<>();
     }
 
     public void updateQuickAccessItem(QuickAccessItem item) {
         executor.execute(() -> {
-            String originUrl = UrlUtils.getSiteOrigin(item.getUrl());
-            String displayHost = UrlUtils.getDisplayHost(item.getUrl());
-            String quickAccessUrl = originUrl != null ? originUrl : item.getUrl();
+            if (item == null || shouldSkipQuickAccessUrl(item.getUrl())) {
+                return;
+            }
+            String quickAccessUrl = UrlUtils.getQuickAccessUrl(item.getUrl());
+            if (quickAccessUrl == null) {
+                return;
+            }
+            String displayHost = UrlUtils.getQuickAccessTitle(quickAccessUrl);
             String quickAccessTitle = displayHost != null ? displayHost : item.getTitle();
-            QuickAccessEntity existing = database.quickAccessDao().getQuickAccessByUrl(quickAccessUrl);
+            String faviconUrl = firstNonEmpty(UrlUtils.getFaviconUrl(quickAccessUrl), item.getFaviconUrl());
+            QuickAccessEntity existing = findQuickAccessEntity(quickAccessUrl);
             if (existing != null) {
+                mergeDuplicateEntities(existing, quickAccessUrl);
                 existing.setTitle(quickAccessTitle);
                 existing.setUrl(quickAccessUrl);
-                existing.setFaviconUrl(item.getFaviconUrl());
+                existing.setFaviconUrl(faviconUrl);
                 existing.setVisitCount(existing.getVisitCount() + 1);
                 existing.setLastVisited(System.currentTimeMillis());
                 database.quickAccessDao().update(existing);
             } else {
                 QuickAccessEntity entity = new QuickAccessEntity(item.getId(),
                         quickAccessTitle, quickAccessUrl);
-                entity.setFaviconUrl(item.getFaviconUrl());
+                entity.setFaviconUrl(faviconUrl);
                 entity.setVisitCount(1);
                 database.quickAccessDao().insert(entity);
             }
@@ -102,17 +89,31 @@ public class QuickAccessRepository {
     public void saveQuickAccessItem(QuickAccessItem oldItem, QuickAccessItem newItem,
                                     QuickAccessCallback callback) {
         executor.execute(() -> {
-            QuickAccessEntity existing = database.quickAccessDao().getQuickAccessByUrl(oldItem.getUrl());
+            if (oldItem == null || newItem == null) {
+                return;
+            }
+            String oldQuickAccessUrl = UrlUtils.getQuickAccessUrl(oldItem.getUrl());
+            String newQuickAccessUrl = UrlUtils.getQuickAccessUrl(newItem.getUrl());
+            String savedUrl = newQuickAccessUrl != null ? newQuickAccessUrl : newItem.getUrl();
+            String displayHost = newQuickAccessUrl != null ? UrlUtils.getQuickAccessTitle(savedUrl) : null;
+            String savedTitle = displayHost != null ? displayHost : newItem.getTitle();
+            String faviconUrl = firstNonEmpty(UrlUtils.getFaviconUrl(savedUrl), newItem.getFaviconUrl());
+            QuickAccessEntity existing = oldQuickAccessUrl != null
+                    ? findQuickAccessEntity(oldQuickAccessUrl)
+                    : database.quickAccessDao().getQuickAccessByUrl(oldItem.getUrl());
             if (existing != null) {
-                existing.setTitle(newItem.getTitle());
-                existing.setUrl(newItem.getUrl());
-                existing.setFaviconUrl(newItem.getFaviconUrl());
+                existing.setTitle(savedTitle);
+                existing.setUrl(savedUrl);
+                existing.setFaviconUrl(faviconUrl);
                 existing.setLastVisited(System.currentTimeMillis());
+                if (newQuickAccessUrl != null) {
+                    mergeDuplicateEntities(existing, newQuickAccessUrl);
+                }
                 database.quickAccessDao().update(existing);
             } else {
                 QuickAccessEntity entity = new QuickAccessEntity(newItem.getId(),
-                        newItem.getTitle(), newItem.getUrl());
-                entity.setFaviconUrl(newItem.getFaviconUrl());
+                        savedTitle, savedUrl);
+                entity.setFaviconUrl(faviconUrl);
                 entity.setVisitCount(newItem.getVisitCount());
                 database.quickAccessDao().insert(entity);
             }
@@ -124,9 +125,18 @@ public class QuickAccessRepository {
 
     public void removeQuickAccessItem(QuickAccessItem item, QuickAccessCallback callback) {
         executor.execute(() -> {
-            QuickAccessEntity entity = database.quickAccessDao().getQuickAccessByUrl(item.getUrl());
-            if (entity != null) {
-                database.quickAccessDao().delete(entity);
+            if (item == null) {
+                return;
+            }
+            String quickAccessUrl = UrlUtils.getQuickAccessUrl(item.getUrl());
+            List<QuickAccessEntity> entities = database.quickAccessDao().getAllQuickAccess();
+            for (QuickAccessEntity entity : entities) {
+                boolean matches = quickAccessUrl != null
+                        ? quickAccessUrl.equals(UrlUtils.getQuickAccessUrl(entity.getUrl()))
+                        : item.getUrl().equals(entity.getUrl());
+                if (matches) {
+                    database.quickAccessDao().delete(entity);
+                }
             }
             if (callback != null) {
                 callback.onQuickAccessItemRemoved(item);
@@ -136,5 +146,96 @@ public class QuickAccessRepository {
 
     public void removeQuickAccessItem(QuickAccessItem item) {
         removeQuickAccessItem(item, null);
+    }
+
+    private boolean shouldSkipQuickAccessUrl(String url) {
+        return isEmpty(url)
+                || UrlUtils.isInternalPageUrl(url)
+                || UrlUtils.isSearchResultsUrl(context, url);
+    }
+
+    private QuickAccessEntity findQuickAccessEntity(String quickAccessUrl) {
+        QuickAccessEntity exactMatch = database.quickAccessDao().getQuickAccessByUrl(quickAccessUrl);
+        if (exactMatch != null) {
+            return exactMatch;
+        }
+        for (QuickAccessEntity entity : database.quickAccessDao().getAllQuickAccess()) {
+            if (quickAccessUrl.equals(UrlUtils.getQuickAccessUrl(entity.getUrl()))) {
+                return entity;
+            }
+        }
+        return null;
+    }
+
+    private List<QuickAccessItem> buildMostVisitedItems(int limit) {
+        List<QuickAccessEntity> entities = database.quickAccessDao().getAllQuickAccess();
+        Map<String, QuickAccessItem> groupedItems = new LinkedHashMap<>();
+        for (QuickAccessEntity entity : entities) {
+            if (shouldSkipQuickAccessUrl(entity.getUrl())) {
+                continue;
+            }
+            String groupedUrl = UrlUtils.getQuickAccessUrl(entity.getUrl());
+            if (groupedUrl == null) {
+                continue;
+            }
+            String displayHost = UrlUtils.getQuickAccessTitle(groupedUrl);
+            String faviconUrl = firstNonEmpty(UrlUtils.getFaviconUrl(groupedUrl), entity.getFaviconUrl());
+            QuickAccessItem existing = groupedItems.get(groupedUrl);
+            if (existing == null) {
+                QuickAccessItem item = new QuickAccessItem(
+                        displayHost != null ? displayHost : entity.getTitle(),
+                        groupedUrl);
+                item.setId(entity.getId());
+                item.setFaviconUrl(faviconUrl);
+                item.setVisitCount(entity.getVisitCount());
+                item.setLastVisited(entity.getLastVisited());
+                groupedItems.put(groupedUrl, item);
+            } else {
+                existing.setVisitCount(existing.getVisitCount() + entity.getVisitCount());
+                if (isEmpty(existing.getFaviconUrl()) && !isEmpty(faviconUrl)) {
+                    existing.setFaviconUrl(faviconUrl);
+                }
+                if (entity.getLastVisited() > existing.getLastVisited()) {
+                    existing.setLastVisited(entity.getLastVisited());
+                }
+            }
+        }
+        List<QuickAccessItem> items = new ArrayList<>(groupedItems.values());
+        Collections.sort(items, (first, second) -> {
+            int visitCompare = Integer.compare(second.getVisitCount(), first.getVisitCount());
+            if (visitCompare != 0) {
+                return visitCompare;
+            }
+            return Long.compare(second.getLastVisited(), first.getLastVisited());
+        });
+        if (items.size() > limit) {
+            items = new ArrayList<>(items.subList(0, limit));
+        }
+        return items;
+    }
+
+    private void mergeDuplicateEntities(QuickAccessEntity keeper, String quickAccessUrl) {
+        for (QuickAccessEntity entity : database.quickAccessDao().getAllQuickAccess()) {
+            if (entity.getId().equals(keeper.getId())
+                    || !quickAccessUrl.equals(UrlUtils.getQuickAccessUrl(entity.getUrl()))) {
+                continue;
+            }
+            keeper.setVisitCount(keeper.getVisitCount() + entity.getVisitCount());
+            if (entity.getLastVisited() > keeper.getLastVisited()) {
+                keeper.setLastVisited(entity.getLastVisited());
+            }
+            if (isEmpty(keeper.getFaviconUrl()) && !isEmpty(entity.getFaviconUrl())) {
+                keeper.setFaviconUrl(entity.getFaviconUrl());
+            }
+            database.quickAccessDao().delete(entity);
+        }
+    }
+
+    private static String firstNonEmpty(String first, String second) {
+        return !isEmpty(first) ? first : second;
+    }
+
+    private static boolean isEmpty(String value) {
+        return value == null || value.trim().isEmpty();
     }
 }

@@ -31,13 +31,13 @@ import com.webstudio.easybrowser.managers.AnalyticsManager;
 import com.webstudio.easybrowser.managers.RuntimeManager;
 
 import org.mozilla.geckoview.GeckoResult;
+import org.mozilla.geckoview.Image;
 import org.mozilla.geckoview.WebExtension;
 import org.mozilla.geckoview.WebExtensionController;
 
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 
@@ -118,9 +118,8 @@ public class ExtensionsActivity extends AppCompatActivity {
                     @NonNull String[] permissions,
                     @NonNull String[] origins,
                     @NonNull String[] dataCollectionPermissions) {
-                GeckoResult<WebExtension.PermissionPromptResponse> result = new GeckoResult<>();
-                runOnUiThread(() -> showInstallPrompt(extension, permissions, origins, result));
-                return result;
+                return GeckoResult.fromValue(
+                        new WebExtension.PermissionPromptResponse(true, true, true));
             }
         });
 
@@ -403,6 +402,8 @@ public class ExtensionsActivity extends AppCompatActivity {
                     runOnUiThread(() -> {
                         marketplaceExtensions.clear();
                         marketplaceExtensions.addAll(parsed);
+                        renderExtensions();
+                        renderRecommendedExtensions();
                         renderMarketplaceExtensions();
                     });
                 }
@@ -525,38 +526,6 @@ public class ExtensionsActivity extends AppCompatActivity {
         return TextUtils.join("  -  ", parts);
     }
 
-    private void showInstallPrompt(WebExtension extension,
-                                   String[] permissions,
-                                   String[] origins,
-                                   GeckoResult<WebExtension.PermissionPromptResponse> result) {
-        String extensionName = getExtensionName(extension);
-        StringBuilder message = new StringBuilder(
-                getString(R.string.extension_install_prompt_message, extensionName));
-        if (permissions.length > 0) {
-            message.append("\n\n")
-                    .append(getString(R.string.extension_permissions))
-                    .append("\n")
-                    .append(TextUtils.join("\n", Arrays.asList(permissions)));
-        }
-        if (origins.length > 0) {
-            message.append("\n\n")
-                    .append(getString(R.string.extension_origins))
-                    .append("\n")
-                    .append(TextUtils.join("\n", Arrays.asList(origins)));
-        }
-
-        new MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.install_extension)
-                .setMessage(message.toString())
-                .setPositiveButton(R.string.install_extension, (dialog, which) ->
-                        result.complete(new WebExtension.PermissionPromptResponse(true, true, true)))
-                .setNegativeButton(R.string.cancel, (dialog, which) ->
-                        result.complete(new WebExtension.PermissionPromptResponse(false, false, false)))
-                .setOnCancelListener(dialog ->
-                        result.complete(new WebExtension.PermissionPromptResponse(false, false, false)))
-                .show();
-    }
-
     private void installExtension() {
         String url = extensionUrlInput.getText() != null
                 ? extensionUrlInput.getText().toString().trim()
@@ -646,7 +615,7 @@ public class ExtensionsActivity extends AppCompatActivity {
         MaterialCardView card = createCard();
         LinearLayout row = createExtensionRow();
         card.addView(row);
-        addIcon(row, null);
+        addInstalledIcon(row, extension);
 
         LinearLayout content = createTextColumn();
         content.addView(createPrimaryText(getExtensionName(extension)));
@@ -711,21 +680,99 @@ public class ExtensionsActivity extends AppCompatActivity {
     }
 
     private void addIcon(LinearLayout row, String iconUrl) {
+        ImageView icon = createExtensionIconView(row);
+        if (TextUtils.isEmpty(iconUrl)) {
+            icon.setImageResource(R.drawable.ic_globe);
+            return;
+        }
+        loadIconUrl(icon, iconUrl);
+    }
+
+    private void addInstalledIcon(LinearLayout row, WebExtension extension) {
+        ImageView icon = createExtensionIconView(row);
+        String fallbackIconUrl = getInstalledExtensionIconUrl(extension);
+        Image packagedIcon = extension != null && extension.metaData != null
+                ? extension.metaData.icon
+                : null;
+        if (packagedIcon == null) {
+            loadExtensionIconFallback(icon, fallbackIconUrl);
+            return;
+        }
+        icon.setImageResource(R.drawable.ic_globe);
+        packagedIcon.getBitmap(dp(64)).accept(bitmap -> runOnUiThread(() -> {
+                    if (bitmap != null) {
+                        icon.setImageBitmap(bitmap);
+                    } else {
+                        loadExtensionIconFallback(icon, fallbackIconUrl);
+                    }
+                }),
+                exception -> runOnUiThread(() -> loadExtensionIconFallback(icon, fallbackIconUrl)));
+    }
+
+    private ImageView createExtensionIconView(LinearLayout row) {
         ImageView icon = new ImageView(this);
         icon.setScaleType(ImageView.ScaleType.CENTER_CROP);
         icon.setBackgroundColor(ContextCompat.getColor(this, R.color.search_bar_background));
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(42), dp(42));
         params.setMargins(0, 0, dp(12), 0);
         row.addView(icon, params);
+        return icon;
+    }
+
+    private void loadExtensionIconFallback(ImageView icon, String iconUrl) {
         if (TextUtils.isEmpty(iconUrl)) {
             icon.setImageResource(R.drawable.ic_globe);
             return;
         }
+        loadIconUrl(icon, iconUrl);
+    }
+
+    private void loadIconUrl(ImageView icon, String iconUrl) {
         Glide.with(icon)
                 .load(iconUrl)
                 .placeholder(R.drawable.ic_globe)
                 .error(R.drawable.ic_globe)
                 .into(icon);
+    }
+
+    private String getInstalledExtensionIconUrl(WebExtension extension) {
+        RecommendedExtension recommendedExtension = findRecommendedExtension(extension);
+        if (recommendedExtension != null) {
+            return recommendedExtension.iconUrl;
+        }
+        MarketplaceExtension marketplaceExtension = findMarketplaceExtension(extension);
+        return marketplaceExtension != null ? marketplaceExtension.iconUrl : "";
+    }
+
+    private RecommendedExtension findRecommendedExtension(WebExtension extension) {
+        if (extension == null) {
+            return null;
+        }
+        String installedId = extension.id != null ? extension.id : "";
+        String installedName = getExtensionName(extension);
+        for (RecommendedExtension recommendedExtension : RECOMMENDED_EXTENSIONS) {
+            if (installedId.equalsIgnoreCase(recommendedExtension.extensionId)
+                    || installedName.equalsIgnoreCase(recommendedExtension.displayName)) {
+                return recommendedExtension;
+            }
+        }
+        return null;
+    }
+
+    private MarketplaceExtension findMarketplaceExtension(WebExtension extension) {
+        if (extension == null) {
+            return null;
+        }
+        String installedId = extension.id != null ? extension.id : "";
+        String installedName = getExtensionName(extension);
+        for (MarketplaceExtension marketplaceExtension : marketplaceExtensions) {
+            if ((!TextUtils.isEmpty(marketplaceExtension.id)
+                    && installedId.equalsIgnoreCase(marketplaceExtension.id))
+                    || installedName.equalsIgnoreCase(marketplaceExtension.name)) {
+                return marketplaceExtension;
+            }
+        }
+        return null;
     }
 
     private void confirmRemoveExtension(WebExtension extension) {

@@ -10,12 +10,12 @@
         android:id="@+id/app_bar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/white">
+        android:background="@color/browser_chrome_background">
 
         <androidx.appcompat.widget.Toolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
+            android:layout_height="52dp"
             app:layout_scrollFlags="scroll|enterAlways|snap">
 
             <RelativeLayout
@@ -26,30 +26,33 @@
                 <ImageButton
                     android:id="@+id/btn_back"
                     android:layout_width="40dp"
-                    android:layout_height="48dp"
+                    android:layout_height="44dp"
                     android:layout_alignParentStart="true"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="@string/back"
                     android:padding="8dp"
                     android:src="@drawable/ic_arrow_back"
-                    android:visibility="gone" />
+                    android:visibility="gone"
+                    app:tint="@color/browser_chrome_foreground" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:layout_marginEnd="10dp"
-                    android:layout_toStartOf="@id/btn_bookmark"
+                    android:layout_height="44dp"
+                    android:layout_centerVertical="true"
+                    android:layout_marginEnd="8dp"
+                    android:layout_toStartOf="@id/btn_toolbar_shortcut"
                     android:layout_toEndOf="@id/btn_back"
                     android:background="@drawable/search_background"
                     android:orientation="horizontal">
 
                     <ImageButton
                         android:id="@+id/btn_security"
-                        android:layout_width="40dp"
+                        android:layout_width="38dp"
                         android:layout_height="match_parent"
                         android:background="?attr/selectableItemBackgroundBorderless"
                         android:contentDescription="@string/security_info"
-                        android:src="@drawable/ic_security" />
+                        android:src="@drawable/ic_security"
+                        app:tint="@color/colorSecondary" />
 
                     <EditText
                         android:id="@+id/url_input"
@@ -65,8 +68,8 @@
                         android:paddingEnd="8dp"
                         android:singleLine="true"
                         android:textColor="@color/colorOnSurface"
-                        android:textColorHint="@color/colorOnSurface"
-                        android:textSize="16sp"
+                        android:textColorHint="@color/text_secondary"
+                        android:textSize="15sp"
                         tools:ignore="Autofill" />
 
                     <ProgressBar
@@ -78,24 +81,28 @@
                 </LinearLayout>
 
                 <ImageButton
-                    android:id="@+id/btn_bookmark"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:layout_toStartOf="@id/btn_pip"
+                    android:id="@+id/btn_toolbar_shortcut"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:layout_centerVertical="true"
+                    android:layout_toStartOf="@id/btn_bookmark"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="@string/bookmark"
-                    android:src="@drawable/ic_bookmark_border" />
+                    android:contentDescription="@string/toolbar_shortcut"
+                    android:padding="10dp"
+                    android:src="@drawable/ic_more_vert"
+                    android:visibility="gone"
+                    app:tint="@color/browser_chrome_foreground" />
 
                 <ImageButton
-                    android:id="@+id/btn_pip"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
+                    android:id="@+id/btn_bookmark"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:layout_centerVertical="true"
                     android:layout_alignParentEnd="true"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="@string/pip_mode"
-                    android:padding="10dp"
-                    android:src="@drawable/ic_pip"
-                    android:visibility="gone" />
+                    android:contentDescription="@string/bookmark"
+                    android:src="@drawable/ic_bookmark_border"
+                    app:tint="@color/browser_chrome_foreground" />
 
             </RelativeLayout>
         </androidx.appcompat.widget.Toolbar>
@@ -117,9 +124,67 @@
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottom_navigation"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="58dp"
         android:layout_gravity="bottom"
-        android:background="@color/white"
+        android:background="@color/browser_chrome_background"
+        app:itemActiveIndicatorStyle="@style/HomeBottomNavigationActiveIndicator"
+        app:itemIconSize="24dp"
+        app:itemIconTint="@color/tab_selector"
+        app:itemPaddingBottom="3dp"
+        app:itemPaddingTop="3dp"
+        app:itemRippleColor="@color/home_search_stroke"
+        app:itemTextColor="@color/tab_selector"
+        app:itemTextAppearanceActive="@style/BottomNavigationCompactText"
+        app:itemTextAppearanceInactive="@style/BottomNavigationCompactText"
+        app:labelVisibilityMode="unlabeled"
         app:menu="@menu/bottom_navigation_menu" />
+
+    <View
+        android:id="@+id/quick_tab_strip_shadow"
+        android:layout_width="match_parent"
+        android:layout_height="8dp"
+        android:layout_gravity="bottom"
+        android:layout_marginBottom="98dp"
+        android:background="@drawable/bg_tab_strip_web_shadow"
+        android:importantForAccessibility="no"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/quick_tab_strip_container"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:layout_gravity="bottom"
+        android:layout_marginBottom="58dp"
+        android:background="@drawable/bg_tab_strip"
+        android:clipChildren="false"
+        android:clipToOutline="false"
+        android:clipToPadding="false"
+        android:elevation="0dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="6dp"
+        android:paddingTop="3dp"
+        android:paddingEnd="4dp"
+        android:paddingBottom="3dp">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/quick_tab_strip"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:clipToPadding="false"
+            android:overScrollMode="never"
+            android:scrollbars="none" />
+
+        <ImageButton
+            android:id="@+id/quick_tab_add"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/new_tab"
+            android:padding="11dp"
+            android:src="@drawable/ic_add"
+            app:tint="@color/browser_chrome_foreground" />
+    </LinearLayout>
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

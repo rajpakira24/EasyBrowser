@@ -6,7 +6,10 @@ import android.view.ViewGroup;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.RecyclerView;
+
+import com.webstudio.easybrowser.R;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,6 +37,7 @@ public class SuggestionsAdapter extends RecyclerView.Adapter<SuggestionsAdapter.
         TextView tv = new TextView(parent.getContext());
         tv.setPadding(dp(parent, 16), dp(parent, 12), dp(parent, 16), dp(parent, 12));
         tv.setTextSize(15);
+        tv.setTextColor(ContextCompat.getColor(parent.getContext(), R.color.home_primary_text));
         tv.setLayoutParams(new RecyclerView.LayoutParams(
                 RecyclerView.LayoutParams.MATCH_PARENT,
                 RecyclerView.LayoutParams.WRAP_CONTENT));

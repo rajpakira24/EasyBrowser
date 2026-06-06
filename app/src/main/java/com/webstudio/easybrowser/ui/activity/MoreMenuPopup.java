@@ -1,32 +1,33 @@
 package com.webstudio.easybrowser.ui.activity;
 
-import android.app.Dialog;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
+import android.os.Build;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.Window;
-import android.view.WindowManager;
 import android.view.animation.DecelerateInterpolator;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.PopupWindow;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
 import androidx.core.content.ContextCompat;
 import androidx.core.widget.ImageViewCompat;
 
+import com.google.android.material.card.MaterialCardView;
 import com.webstudio.easybrowser.R;
 
 import java.util.List;
 
 class MoreMenuPopup {
-    private static Dialog currentDialog;
+    private static PopupWindow currentPopup;
 
     static class Action {
         final int iconResId;
@@ -44,29 +45,60 @@ class MoreMenuPopup {
 
     static void show(Context context, View anchor, List<Action> navigationActions,
                      List<Action> menuActions) {
-        if (currentDialog != null && currentDialog.isShowing()) {
-            currentDialog.dismiss();
-            currentDialog = null;
+        if (currentPopup != null && currentPopup.isShowing()) {
+            currentPopup.dismiss();
+            currentPopup = null;
             return;
         }
 
-        Dialog dialog = new Dialog(context, android.R.style.Theme_Translucent_NoTitleBar);
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
-        dialog.setCanceledOnTouchOutside(true);
-        dialog.setOnDismissListener(d -> {
-            if (currentDialog == dialog) {
-                currentDialog = null;
+        PopupWindow popup = new PopupWindow(context);
+        popup.setWidth(getMenuWidth(context));
+        popup.setHeight(ViewGroup.LayoutParams.WRAP_CONTENT);
+        popup.setFocusable(true);
+        popup.setOutsideTouchable(true);
+        popup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        popup.setClippingEnabled(true);
+        popup.setAnimationStyle(0);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            popup.setElevation(dp(context, 0));
+        }
+        popup.setOnDismissListener(() -> {
+            if (currentPopup == popup) {
+                currentPopup = null;
             }
         });
-        ScrollView scrollView = new ScrollView(context);
+
+        FrameLayout container = new FrameLayout(context);
+        container.setClipToPadding(false);
+        container.setPadding(dp(context, 6), dp(context, 8), 0, dp(context, 14));
+
+        MaterialCardView card = new MaterialCardView(context);
+        card.setCardBackgroundColor(ContextCompat.getColor(context, R.color.colorSurface));
+        card.setRadius(dp(context, 28));
+        card.setCardElevation(dp(context, 14));
+        card.setUseCompatPadding(false);
+        card.setPreventCornerOverlap(true);
+        card.setStrokeWidth(dp(context, 1));
+        card.setStrokeColor(ContextCompat.getColor(context, R.color.border_color));
+        card.setScaleX(0.92f);
+        card.setScaleY(0.92f);
+        card.setAlpha(0f);
+
+        MaxHeightScrollView scrollView = new MaxHeightScrollView(context, getMenuMaxHeight(context));
+        scrollView.setFillViewport(false);
+        scrollView.setClipToPadding(false);
+        scrollView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+
         LinearLayout root = new LinearLayout(context);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(context, 8), dp(context, 8), dp(context, 8), dp(context, 12));
-        root.setBackgroundColor(ContextCompat.getColor(context, R.color.colorSurface));
-        root.setScaleX(0.92f);
-        root.setScaleY(0.92f);
-        root.setAlpha(0f);
         scrollView.addView(root, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+        card.addView(scrollView, new MaterialCardView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+        container.addView(card, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -78,8 +110,8 @@ class MoreMenuPopup {
                 ViewGroup.LayoutParams.WRAP_CONTENT));
 
         for (Action action : navigationActions) {
-            navRow.addView(createIconAction(context, action, dialog),
-                    new LinearLayout.LayoutParams(0, dp(context, 50), 1));
+            navRow.addView(createIconAction(context, action, popup),
+                    new LinearLayout.LayoutParams(0, dp(context, 54), 1));
         }
 
         View divider = new View(context);
@@ -90,21 +122,22 @@ class MoreMenuPopup {
         root.addView(divider, dividerParams);
 
         for (Action action : menuActions) {
-            root.addView(createTextAction(context, action, dialog),
+            root.addView(createTextAction(context, action, popup),
                     new LinearLayout.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
-                            dp(context, 48)));
+                            dp(context, 52)));
         }
 
-        dialog.setContentView(scrollView);
-        configureWindow(dialog, context);
-        dialog.show();
-        currentDialog = dialog;
-        configureWindow(dialog, context);
-        root.post(() -> {
-            root.setPivotX(root.getWidth());
-            root.setPivotY(root.getHeight());
-            root.animate()
+        popup.setContentView(container);
+        currentPopup = popup;
+        View parent = anchor != null && anchor.getRootView() != null
+                ? anchor.getRootView()
+                : anchor;
+        popup.showAtLocation(parent, Gravity.BOTTOM | Gravity.END, 0, dp(context, 10));
+        card.post(() -> {
+            card.setPivotX(card.getWidth());
+            card.setPivotY(card.getHeight());
+            card.animate()
                     .scaleX(1f)
                     .scaleY(1f)
                     .alpha(1f)
@@ -114,29 +147,18 @@ class MoreMenuPopup {
         });
     }
 
-    private static void configureWindow(Dialog dialog, Context context) {
-        Window window = dialog.getWindow();
-        if (window == null) {
-            return;
-        }
-        window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-        window.setLayout(getMenuWidth(context), WindowManager.LayoutParams.WRAP_CONTENT);
-        window.setGravity(Gravity.BOTTOM | Gravity.END);
-        window.setWindowAnimations(0);
-    }
-
-    private static ImageButton createIconAction(Context context, Action action, Dialog dialog) {
+    private static ImageButton createIconAction(Context context, Action action, PopupWindow popup) {
         ImageButton button = new ImageButton(context);
         button.setImageResource(action.iconResId);
         tintIcon(context, button);
         button.setContentDescription(context.getString(action.titleResId));
         button.setBackgroundResource(resolveAttr(context,
                 android.R.attr.selectableItemBackgroundBorderless));
-        button.setPadding(dp(context, 12), dp(context, 12), dp(context, 12), dp(context, 12));
+        button.setPadding(dp(context, 14), dp(context, 14), dp(context, 14), dp(context, 14));
         button.setEnabled(action.enabled);
         button.setAlpha(action.enabled ? 1f : 0.35f);
         button.setOnClickListener(v -> {
-            dialog.dismiss();
+            popup.dismiss();
             if (action.enabled) {
                 action.runnable.run();
             }
@@ -144,11 +166,11 @@ class MoreMenuPopup {
         return button;
     }
 
-    private static LinearLayout createTextAction(Context context, Action action, Dialog dialog) {
+    private static LinearLayout createTextAction(Context context, Action action, PopupWindow popup) {
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(context, 14), 0, dp(context, 14), 0);
+        row.setPadding(dp(context, 18), 0, dp(context, 16), 0);
         row.setBackgroundResource(resolveAttr(context, android.R.attr.selectableItemBackground));
         row.setEnabled(action.enabled);
         row.setAlpha(action.enabled ? 1f : 0.35f);
@@ -161,14 +183,18 @@ class MoreMenuPopup {
         TextView label = new TextView(context);
         label.setText(action.titleResId);
         label.setTextColor(ContextCompat.getColor(context, R.color.colorOnSurface));
-        label.setTextSize(15);
+        label.setTextSize(16);
+        label.setGravity(Gravity.CENTER_VERTICAL);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            label.setFallbackLineSpacing(false);
+        }
         LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-        labelParams.setMargins(dp(context, 16), 0, 0, 0);
+        labelParams.setMargins(dp(context, 18), 0, 0, 0);
         row.addView(label, labelParams);
 
         row.setOnClickListener(v -> {
-            dialog.dismiss();
+            popup.dismiss();
             if (action.enabled) {
                 action.runnable.run();
             }
@@ -182,7 +208,13 @@ class MoreMenuPopup {
 
     private static int getMenuWidth(Context context) {
         int screenWidth = context.getResources().getDisplayMetrics().widthPixels;
-        return Math.max(dp(context, 280), (int) (screenWidth * 0.6f));
+        int desired = Math.max(dp(context, 286), (int) (screenWidth * 0.60f));
+        return Math.min(screenWidth - dp(context, 8), desired);
+    }
+
+    private static int getMenuMaxHeight(Context context) {
+        int screenHeight = context.getResources().getDisplayMetrics().heightPixels;
+        return Math.max(dp(context, 360), screenHeight - dp(context, 118));
     }
 
     private static void tintIcon(Context context, ImageView icon) {
@@ -194,5 +226,20 @@ class MoreMenuPopup {
         TypedValue value = new TypedValue();
         context.getTheme().resolveAttribute(attr, value, true);
         return value.resourceId;
+    }
+
+    private static final class MaxHeightScrollView extends ScrollView {
+        private final int maxHeight;
+
+        MaxHeightScrollView(Context context, int maxHeight) {
+            super(context);
+            this.maxHeight = maxHeight;
+        }
+
+        @Override
+        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            int constrainedHeightSpec = MeasureSpec.makeMeasureSpec(maxHeight, MeasureSpec.AT_MOST);
+            super.onMeasure(widthMeasureSpec, constrainedHeightSpec);
+        }
     }
 }

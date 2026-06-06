@@ -60,7 +60,7 @@
         android:gravity="center"
         android:background="@drawable/bg_visit_count"
         android:textSize="10sp"
-        android:textColor="@color/white"
+        android:textColor="@color/colorOnPrimary"
         android:visibility="gone"
         tools:ignore="NotSibling" />
 </RelativeLayout>

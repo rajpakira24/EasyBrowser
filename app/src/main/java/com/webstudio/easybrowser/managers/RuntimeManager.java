@@ -6,11 +6,14 @@ import android.util.Log;
 import androidx.preference.PreferenceManager;
 
 import com.webstudio.easybrowser.BuildConfig;
+import com.webstudio.easybrowser.utils.SettingsKeys;
 import com.webstudio.easybrowser.utils.UrlUtils;
 
 import org.mozilla.geckoview.GeckoRuntime;
 import org.mozilla.geckoview.GeckoRuntimeSettings;
 import org.mozilla.geckoview.ContentBlocking;
+
+import java.util.Locale;
 
 public class RuntimeManager {
     private static volatile GeckoRuntime runtime;
@@ -32,6 +35,13 @@ public class RuntimeManager {
                             .remoteDebuggingEnabled(prefs.getBoolean("remote_debugging_enabled", false))
                             .globalPrivacyControlEnabled(prefs.getBoolean("do_not_track", true))
                             .fontSizeFactor(prefs.getInt("text_size_percent", 100) / 100f)
+                            .forceUserScalableEnabled(
+                                    prefs.getBoolean(SettingsKeys.PREF_FORCE_ENABLE_ZOOM, false))
+                            .translationsOfferPopup(
+                                    prefs.getBoolean(SettingsKeys.PREF_TRANSLATIONS_OFFER_POPUP, true))
+                            .locales(getPreferredLocales(prefs))
+                            .preferredColorScheme(getPreferredColorScheme(prefs))
+                            .setLnaBlockingEnabled(shouldBlockLocalNetwork(prefs))
                             .trustedRecursiveResolverMode(getDohMode(prefs))
                             .trustedRecursiveResolverUri(getDohUri(prefs))
                             .debugLogging(BuildConfig.DEBUG);
@@ -45,13 +55,20 @@ public class RuntimeManager {
                 }
             }
         } else {
-            runtime.getSettings()
-                    .setJavaScriptEnabled(prefs.getBoolean("javascript_enabled", true))
+            GeckoRuntimeSettings settings = runtime.getSettings();
+            settings.setJavaScriptEnabled(prefs.getBoolean("javascript_enabled", true))
                     .setRemoteDebuggingEnabled(prefs.getBoolean("remote_debugging_enabled", false))
                     .setGlobalPrivacyControl(prefs.getBoolean("do_not_track", true))
                     .setFontSizeFactor(prefs.getInt("text_size_percent", 100) / 100f)
                     .setTrustedRecursiveResolverMode(getDohMode(prefs))
-                    .setTrustedRecursiveResolverUri(getDohUri(prefs));
+                    .setTrustedRecursiveResolverUri(getDohUri(prefs))
+                    .setForceUserScalableEnabled(
+                            prefs.getBoolean(SettingsKeys.PREF_FORCE_ENABLE_ZOOM, false))
+                    .setTranslationsOfferPopup(
+                            prefs.getBoolean(SettingsKeys.PREF_TRANSLATIONS_OFFER_POPUP, true))
+                    .setPreferredColorScheme(getPreferredColorScheme(prefs))
+                    .setLnaBlockingEnabled(shouldBlockLocalNetwork(prefs));
+            settings.setLocales(getPreferredLocales(prefs));
             applyContentBlocking(runtime.getSettings().getContentBlocking(), prefs);
         }
         return runtime;
@@ -126,5 +143,40 @@ public class RuntimeManager {
             case "custom":  return prefs.getString("doh_uri", "");
             default:        return "https://cloudflare-dns.com/dns-query";
         }
+    }
+
+    private static int getPreferredColorScheme(SharedPreferences prefs) {
+        String mode = prefs.getString(SettingsKeys.PREF_THEME_MODE, "system");
+        if ("light".equals(mode)) {
+            return GeckoRuntimeSettings.COLOR_SCHEME_LIGHT;
+        }
+        if ("dark".equals(mode)) {
+            return GeckoRuntimeSettings.COLOR_SCHEME_DARK;
+        }
+        return GeckoRuntimeSettings.COLOR_SCHEME_SYSTEM;
+    }
+
+    private static String[] getPreferredLocales(SharedPreferences prefs) {
+        String raw = prefs.getString(SettingsKeys.PREF_PREFERRED_LANGUAGES, "");
+        if (raw == null || raw.trim().isEmpty()) {
+            return new String[]{Locale.getDefault().toLanguageTag()};
+        }
+        String[] parts = raw.split(",");
+        java.util.ArrayList<String> locales = new java.util.ArrayList<>();
+        for (String part : parts) {
+            String trimmed = part.trim();
+            if (!trimmed.isEmpty()) {
+                locales.add(trimmed);
+            }
+        }
+        if (locales.isEmpty()) {
+            locales.add(Locale.getDefault().toLanguageTag());
+        }
+        return locales.toArray(new String[0]);
+    }
+
+    private static boolean shouldBlockLocalNetwork(SharedPreferences prefs) {
+        return SettingsKeys.VALUE_DENY.equals(
+                prefs.getString(SettingsKeys.PREF_SITE_LOCAL_NETWORK, SettingsKeys.VALUE_ASK));
     }
 }

@@ -4,4 +4,8 @@
         <item quantity="one">%d tab</item>
         <item quantity="other">%d tabs</item>
     </plurals>
+    <plurals name="inactive_items_count">
+        <item quantity="one">%d inactive item</item>
+        <item quantity="other">%d inactive items</item>
+    </plurals>
 </resources>
