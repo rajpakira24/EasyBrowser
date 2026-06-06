@@ -41,10 +41,10 @@ public class RuntimeManager {
                                     prefs.getBoolean(SettingsKeys.PREF_TRANSLATIONS_OFFER_POPUP, true))
                             .locales(getPreferredLocales(prefs))
                             .preferredColorScheme(getPreferredColorScheme(prefs))
-                            .setLnaBlockingEnabled(shouldBlockLocalNetwork(prefs))
                             .trustedRecursiveResolverMode(getDohMode(prefs))
                             .trustedRecursiveResolverUri(getDohUri(prefs))
                             .debugLogging(BuildConfig.DEBUG);
+                    applyLocalNetworkBlocking(runtimeSettings, shouldBlockLocalNetwork(prefs));
 
                     try {
                         runtime = GeckoRuntime.create(context, runtimeSettings.build());
@@ -66,8 +66,8 @@ public class RuntimeManager {
                             prefs.getBoolean(SettingsKeys.PREF_FORCE_ENABLE_ZOOM, false))
                     .setTranslationsOfferPopup(
                             prefs.getBoolean(SettingsKeys.PREF_TRANSLATIONS_OFFER_POPUP, true))
-                    .setPreferredColorScheme(getPreferredColorScheme(prefs))
-                    .setLnaBlockingEnabled(shouldBlockLocalNetwork(prefs));
+                    .setPreferredColorScheme(getPreferredColorScheme(prefs));
+            applyLocalNetworkBlocking(settings, shouldBlockLocalNetwork(prefs));
             settings.setLocales(getPreferredLocales(prefs));
             applyContentBlocking(runtime.getSettings().getContentBlocking(), prefs);
         }
@@ -178,5 +178,18 @@ public class RuntimeManager {
     private static boolean shouldBlockLocalNetwork(SharedPreferences prefs) {
         return SettingsKeys.VALUE_DENY.equals(
                 prefs.getString(SettingsKeys.PREF_SITE_LOCAL_NETWORK, SettingsKeys.VALUE_ASK));
+    }
+
+    private static void applyLocalNetworkBlocking(Object target, boolean enabled) {
+        if (target == null) {
+            return;
+        }
+        try {
+            target.getClass()
+                    .getMethod("setLnaBlockingEnabled", boolean.class)
+                    .invoke(target, enabled);
+        } catch (ReflectiveOperationException ignored) {
+            // GeckoView 150 no longer exposes this setting on the public API.
+        }
     }
 }

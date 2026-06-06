@@ -50,6 +50,7 @@ import com.webstudio.easybrowser.utils.ScreenshotProtection;
 import com.webstudio.easybrowser.utils.SystemBarUtils;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -1379,7 +1380,7 @@ public class GroupTabsActivity extends AppCompatActivity implements GroupTabsAda
                 tabs.add(tab);
             }
         }
-        tabs.sort((first, second) -> {
+        Collections.sort(tabs, (first, second) -> {
             if (first.isPinned() != second.isPinned()) {
                 return first.isPinned() ? -1 : 1;
             }

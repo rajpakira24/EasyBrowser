@@ -148,7 +148,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="@string/change_view"
                     android:padding="12dp"
-                    android:src="@drawable/ic_view_grid"
+                    android:src="@drawable/ic_view_list"
                     app:tint="@color/tab_manager_text" />
 
                 <ImageButton

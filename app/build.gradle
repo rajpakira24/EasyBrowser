@@ -90,6 +90,9 @@ android {
     testOptions {
         unitTests.returnDefaultValues = true
     }
+    sourceSets {
+        androidTest.assets.srcDirs += files("$projectDir/schemas")
+    }
 }
 
 dependencies {
@@ -116,6 +119,7 @@ dependencies {
     def room_version = "2.6.1"
     implementation "androidx.room:room-runtime:$room_version"
     annotationProcessor "androidx.room:room-compiler:$room_version"
+    androidTestImplementation "androidx.room:room-testing:$room_version"
 
     // Firebase. The Google Services and Crashlytics plugins are applied only
     // when app/google-services.json is present, so local debug builds still work.

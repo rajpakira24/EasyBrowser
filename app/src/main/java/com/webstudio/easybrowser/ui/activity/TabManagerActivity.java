@@ -112,6 +112,7 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
     private boolean selectionMode;
     private boolean overviewOrderDirty;
     private boolean animateNextOverviewChange;
+    private boolean pendingInitialOverviewScroll = true;
 
     private static class PendingClosedTab {
         final Tab tab;
@@ -389,23 +390,35 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
         });
         overviewItemTouchHelper.attachToRecyclerView(binding.groupsRecycler);
         updateLayoutManager();
+        updateViewToggleIcon();
         binding.viewToggle.setOnClickListener(v -> {
             gridMode = !gridMode;
             TransitionManager.beginDelayedTransition(binding.groupsRecycler);
             updateLayoutManager();
             adapter.setGridMode(gridMode);
-            binding.viewToggle.setImageResource(gridMode
-                    ? R.drawable.ic_view_list
-                    : R.drawable.ic_view_grid);
+            updateViewToggleIcon();
         });
     }
 
     private void updateLayoutManager() {
         if (gridMode) {
-            binding.groupsRecycler.setLayoutManager(new GridLayoutManager(this, 2));
+            GridLayoutManager layoutManager = new GridLayoutManager(this, 2);
+            layoutManager.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
+                @Override
+                public int getSpanSize(int position) {
+                    return adapter != null && adapter.getItemCount() == 1 ? 2 : 1;
+                }
+            });
+            binding.groupsRecycler.setLayoutManager(layoutManager);
         } else {
             binding.groupsRecycler.setLayoutManager(new LinearLayoutManager(this));
         }
+    }
+
+    private void updateViewToggleIcon() {
+        binding.viewToggle.setImageResource(gridMode
+                ? R.drawable.ic_view_list
+                : R.drawable.ic_view_grid);
     }
 
     private void setupSearch() {
@@ -436,6 +449,7 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
             boolean empty = overview.groups.isEmpty() && overview.standaloneTabs.isEmpty();
             binding.emptyView.setVisibility(empty ? View.VISIBLE : View.GONE);
             binding.groupsRecycler.setVisibility(empty ? View.GONE : View.VISIBLE);
+            scrollToInitialOverviewTargetIfNeeded();
             return;
         }
         viewModel.loadOverview(privateMode, searchQuery, (groups, standaloneTabs) -> {
@@ -451,16 +465,55 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
             boolean empty = overview.groups.isEmpty() && overview.standaloneTabs.isEmpty();
             binding.emptyView.setVisibility(empty ? View.VISIBLE : View.GONE);
             binding.groupsRecycler.setVisibility(empty ? View.GONE : View.VISIBLE);
+            scrollToInitialOverviewTargetIfNeeded();
+        });
+    }
+
+    private void scrollToInitialOverviewTargetIfNeeded() {
+        if (!pendingInitialOverviewScroll || adapter == null || binding == null) {
+            return;
+        }
+        int itemCount = adapter.getItemCount();
+        if (itemCount == 0) {
+            return;
+        }
+        pendingInitialOverviewScroll = false;
+        int targetPosition = adapter.findPositionForTabId(currentTabId);
+        if (targetPosition == RecyclerView.NO_POSITION) {
+            targetPosition = itemCount - 1;
+        }
+        final int boundedPosition = Math.max(0, Math.min(targetPosition, itemCount - 1));
+        binding.groupsRecycler.post(() -> {
+            RecyclerView.LayoutManager layoutManager = binding.groupsRecycler.getLayoutManager();
+            if (layoutManager instanceof LinearLayoutManager) {
+                ((LinearLayoutManager) layoutManager)
+                        .scrollToPositionWithOffset(boundedPosition, 0);
+            } else {
+                binding.groupsRecycler.scrollToPosition(boundedPosition);
+            }
         });
     }
 
     private void refreshCounts() {
+        if (runtimeTabs.isEmpty()) {
+            viewModel.loadCounts((loadedRegularCount, loadedPrivateCount) -> {
+                regularCount = loadedRegularCount;
+                privateCount = loadedPrivateCount;
+                normalizeModeAfterCounts();
+                updateModeSelector();
+            });
+            return;
+        }
         refreshCountsFromRuntime();
+        normalizeModeAfterCounts();
+        updateModeSelector();
+    }
+
+    private void normalizeModeAfterCounts() {
         if (privateMode && privateCount == 0) {
             privateMode = false;
             clearSelection();
         }
-        updateModeSelector();
     }
 
     private void refreshCountsFromRuntime() {
@@ -494,7 +547,7 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
         boolean archiveDuplicates = shouldArchiveDuplicateTabs();
         if (days > 0) {
             return archiveDuplicates
-                    ? getString(R.string.inactive_items_summary_days, days)
+                    ? getString(R.string.inactive_items_summary_days)
                     : getString(R.string.inactive_items_summary_age_only, days);
         }
         return archiveDuplicates

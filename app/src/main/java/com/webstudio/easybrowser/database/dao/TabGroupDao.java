@@ -84,8 +84,14 @@ public interface TabGroupDao {
     @Query("DELETE FROM tabs WHERE isPrivate = 1")
     void deletePrivateTabs();
 
+    @Query("DELETE FROM tabs WHERE isPrivate = :isPrivate")
+    void deleteTabs(boolean isPrivate);
+
     @Query("DELETE FROM tab_groups WHERE isPrivate = 1")
     void deletePrivateGroups();
+
+    @Query("DELETE FROM tab_groups WHERE isPrivate = :isPrivate")
+    void deleteGroups(boolean isPrivate);
 
     @Query("UPDATE tabs SET groupId = :groupId WHERE tabId = :tabId")
     void moveTabToGroup(String tabId, String groupId);

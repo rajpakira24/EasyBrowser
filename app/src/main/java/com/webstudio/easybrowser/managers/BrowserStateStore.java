@@ -5,6 +5,7 @@ import com.webstudio.easybrowser.models.Tab;
 import com.webstudio.easybrowser.models.TabGroup;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -22,7 +23,7 @@ public class BrowserStateStore {
     public synchronized void loadRegularState(List<Tab> tabs, List<TabGroup> restoredGroups,
                                               String activeTabId) {
         regularTabs.clear();
-        groups.entrySet().removeIf(entry -> !entry.getValue().isPrivate());
+        removeGroupsForMode(false);
         if (tabs != null) {
             for (Tab tab : tabs) {
                 if (tab == null || tab.isPrivate()) {
@@ -115,12 +116,12 @@ public class BrowserStateStore {
                 : regularTabs.values());
         if (privateTabsMode) {
             privateTabs.clear();
-            groups.entrySet().removeIf(entry -> entry.getValue().isPrivate());
+            removeGroupsForMode(true);
             activePrivateTabId = null;
             privateMode = false;
         } else {
             regularTabs.clear();
-            groups.entrySet().removeIf(entry -> !entry.getValue().isPrivate());
+            removeGroupsForMode(false);
             activeRegularTabId = null;
             privateMode = activePrivateTabId != null;
         }
@@ -276,9 +277,7 @@ public class BrowserStateStore {
         for (Map.Entry<String, Tab> entry : source.entrySet()) {
             if (orderedIdSet.contains(entry.getKey())) {
                 if (!insertedOrderedBlock) {
-                    for (int i = 0; i < orderedTabs.size(); i++) {
-                        Tab tab = orderedTabs.get(i);
-                        tab.setPosition(i);
+                    for (Tab tab : orderedTabs) {
                         reordered.put(tab.getId(), tab);
                     }
                     insertedOrderedBlock = true;
@@ -294,7 +293,30 @@ public class BrowserStateStore {
             regularTabs.clear();
             regularTabs.putAll(reordered);
         }
+        resequencePositions(source);
         normalizeGroups(privateTabsMode);
+        return true;
+    }
+
+    public synchronized boolean setTabPinned(String tabId, boolean pinned) {
+        Tab changedTab = findTabById(tabId);
+        if (changedTab == null) {
+            return false;
+        }
+        LinkedHashMap<String, Tab> source = changedTab.isPrivate() ? privateTabs : regularTabs;
+        List<Tab> orderedTabs = new ArrayList<>(source.values());
+        if (!orderedTabs.remove(changedTab)) {
+            return false;
+        }
+        changedTab.setPinned(pinned);
+        orderedTabs.add(pinned ? firstUnpinnedIndex(orderedTabs) : orderedTabs.size(), changedTab);
+
+        source.clear();
+        for (Tab tab : orderedTabs) {
+            source.put(tab.getId(), tab);
+        }
+        resequencePositions(source);
+        normalizeGroups(changedTab.isPrivate());
         return true;
     }
 
@@ -352,6 +374,12 @@ public class BrowserStateStore {
 
     public synchronized List<TabGroup> getPersistableGroups() {
         return getGroups(false);
+    }
+
+    public synchronized List<Tab> getPersistableTabs() {
+        normalizeGroups(false);
+        resequencePositions(regularTabs);
+        return getRegularTabs();
     }
 
     public synchronized int getTabCount() {
@@ -460,6 +488,35 @@ public class BrowserStateStore {
         tab.setGroupId(null);
         tab.setGroupName(null);
         tab.setGroupColor(0);
+    }
+
+    private static void resequencePositions(LinkedHashMap<String, Tab> tabs) {
+        int position = 0;
+        for (Tab tab : tabs.values()) {
+            tab.setPosition(position++);
+        }
+    }
+
+    private void removeGroupsForMode(boolean privateGroupsMode) {
+        Iterator<Map.Entry<String, TabGroup>> iterator = groups.entrySet().iterator();
+        while (iterator.hasNext()) {
+            TabGroup group = iterator.next().getValue();
+            if (group == null || group.isPrivate() == privateGroupsMode) {
+                iterator.remove();
+            }
+        }
+    }
+
+    private static int firstUnpinnedIndex(List<Tab> tabs) {
+        if (tabs == null) {
+            return 0;
+        }
+        for (int i = 0; i < tabs.size(); i++) {
+            if (!tabs.get(i).isPinned()) {
+                return i;
+            }
+        }
+        return tabs.size();
     }
 
     private static String lastKey(LinkedHashMap<String, Tab> tabs) {

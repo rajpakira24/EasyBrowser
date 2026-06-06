@@ -43,9 +43,14 @@ public class TabRepository {
     }
 
     public TabRepository(Context context) {
+        this(context, AppDatabase.getInstance(context.getApplicationContext()),
+                AppDatabase.getDatabaseExecutor());
+    }
+
+    TabRepository(Context context, AppDatabase database, Executor executor) {
         appContext = context.getApplicationContext();
-        database = AppDatabase.getInstance(appContext);
-        executor = AppDatabase.getDatabaseExecutor();
+        this.database = database;
+        this.executor = executor;
     }
 
     public static int getDefaultGroupColor(Context context) {
@@ -392,6 +397,7 @@ public class TabRepository {
     public void saveTabsBlocking(List<Tab> tabs) {
         runBlocking(() -> {
             List<TabEntity> entities = new ArrayList<>();
+            database.tabGroupDao().deleteTabs(false);
             for (Tab tab : tabs) {
                 if (tab == null) {
                     continue;
@@ -409,6 +415,7 @@ public class TabRepository {
                     database.tabGroupDao().updateGroupTimestamp(entity.getGroupId(), now);
                 }
             }
+            cleanupInvalidGroups();
             return null;
         }, null);
     }
@@ -424,8 +431,8 @@ public class TabRepository {
 
     public void clearPersistedPrivateStateBlocking() {
         runBlocking(() -> {
-            database.tabGroupDao().deletePrivateTabs();
-            database.tabGroupDao().deletePrivateGroups();
+            database.tabGroupDao().deleteTabs(true);
+            database.tabGroupDao().deleteGroups(true);
             return null;
         }, null);
     }

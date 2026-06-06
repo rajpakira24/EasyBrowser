@@ -156,7 +156,6 @@ public class TabManager {
 
         String homepage = UrlUtils.getNewTabPageUrl(context);
         Tab tab = new Tab(session, "Home", homepage);
-        makeStandalone(tab);
         tab.setPosition(stateStore.getTabCount(false));
         tab.setInitialLoadPending(true);
         stateStore.addTab(tab, true);
@@ -183,7 +182,6 @@ public class TabManager {
 
         String startUrl = isPrivate ? "about:blank" : UrlUtils.getNewTabPageUrl(context);
         Tab tab = new Tab(null, session, isPrivate ? "Private Tab" : "New Tab", startUrl, isPrivate);
-        makeStandalone(tab);
         if (parentTabId != null && !isPrivate) {
             tab.setParentTabId(parentTabId);
         }
@@ -456,48 +454,15 @@ public class TabManager {
     }
 
     public synchronized void setTabPinned(String tabId, boolean pinned) {
-        Tab tab = findTabById(tabId);
-        if (tab == null) {
+        if (!stateStore.setTabPinned(tabId, pinned)) {
             return;
         }
-        List<Tab> orderedTabs = stateStore.getTabs(tab.isPrivate());
-        Tab changedTab = null;
-        for (int i = orderedTabs.size() - 1; i >= 0; i--) {
-            Tab candidate = orderedTabs.get(i);
-            if (tabId.equals(candidate.getId())) {
-                changedTab = candidate;
-                orderedTabs.remove(i);
-                break;
-            }
-        }
-        if (changedTab == null) {
-            return;
-        }
-        changedTab.setPinned(pinned);
-        orderedTabs.add(pinned ? firstUnpinnedIndex(orderedTabs) : orderedTabs.size(), changedTab);
-        List<String> orderedIds = new ArrayList<>();
-        for (Tab orderedTab : orderedTabs) {
-            orderedIds.add(orderedTab.getId());
-        }
-        stateStore.reorderTabs(orderedIds, changedTab.isPrivate());
         syncMirrorFromState();
         persistTabs();
         if (listener != null) {
             listener.onTabChanged(currentTab);
             listener.onTabCountChanged(tabs.size());
         }
-    }
-
-    private int firstUnpinnedIndex(List<Tab> tabs) {
-        if (tabs == null) {
-            return 0;
-        }
-        for (int i = 0; i < tabs.size(); i++) {
-            if (!tabs.get(i).isPinned()) {
-                return i;
-            }
-        }
-        return tabs.size();
     }
 
     public boolean switchToPreviousTab() {
@@ -871,12 +836,12 @@ public class TabManager {
 
     private boolean restoreTabsFromRoom() {
         tabRepository.clearPersistedPrivateStateBlocking();
-        List<TabGroup> groups = tabRepository.getGroupsBlocking();
+        List<TabGroup> groups = tabRepository.getGroupsBlocking(false);
         Map<String, TabGroup> groupMap = new HashMap<>();
         for (TabGroup group : groups) {
             groupMap.put(group.getGroupId(), group);
         }
-        List<Tab> storedTabs = tabRepository.getAllTabsBlocking();
+        List<Tab> storedTabs = tabRepository.getAllTabsBlocking(false);
         String currentTabId = prefs.getString(PREF_CURRENT_TAB_ID, null);
         List<Tab> restoredRegularTabs = new ArrayList<>();
         for (Tab storedTab : storedTabs) {
@@ -971,8 +936,6 @@ public class TabManager {
                         restoredGroups.put(tab.getGroupId(), new TabGroup(
                                 tab.getGroupId(), group, tab.getGroupColor(), System.currentTimeMillis()));
                     }
-                } else {
-                    makeStandalone(tab);
                 }
                 String parentId = item.optString("parent_id", null);
                 if (parentId != null && !parentId.isEmpty()) tab.setParentTabId(parentId);
@@ -998,21 +961,10 @@ public class TabManager {
 
     private void persistTabs() {
         syncMirrorFromState();
-        int position = 0;
-        for (Tab tab : stateStore.getRegularTabs()) {
-            if (tab.getGroupId() == null) {
-                makeStandalone(tab);
-            }
-            tab.setPosition(position++);
-        }
-        tabRepository.saveTabsBlocking(stateStore.getRegularTabs());
+        List<Tab> persistableTabs = stateStore.getPersistableTabs();
+        tabRepository.saveTabsBlocking(persistableTabs);
         SharedPreferences.Editor editor = prefs.edit();
-        JSONArray saved = buildTabsJson(true);
-        String serialized = saved.toString();
-        if (serialized.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_PERSIST_BYTES) {
-            serialized = buildTabsJson(false).toString();
-        }
-        editor.putString(PREF_SAVED_TABS, serialized);
+        editor.remove(PREF_SAVED_TABS);
         BrowserState state = stateStore.snapshot();
         if (state.getActiveRegularTabId() != null) {
             editor.putString(PREF_CURRENT_TAB_ID, state.getActiveRegularTabId());
@@ -1040,12 +992,6 @@ public class TabManager {
         tab.setInitialLoadPending(true);
     }
 
-    private void makeStandalone(Tab tab) {
-        tab.setGroupId(null);
-        tab.setGroupName(null);
-        tab.setGroupColor(0);
-    }
-
     private String createStableGroupId(String groupName) {
         return "group_" + Integer.toHexString(groupName.hashCode());
     }
@@ -1056,30 +1002,4 @@ public class TabManager {
         return groupColors[index];
     }
 
-    private JSONArray buildTabsJson(boolean includeSessionState) {
-        JSONArray saved = new JSONArray();
-        for (Tab tab : stateStore.getRegularTabs()) {
-            if (tab == null) continue;
-            String url = tab.getUrl();
-            if (url == null || url.trim().isEmpty() || "about:blank".equals(url)) continue;
-            JSONObject item = new JSONObject();
-            try {
-                item.put("id", tab.getId());
-                item.put("title", tab.getTitle());
-                item.put("url", url);
-                if (includeSessionState && tab.getSessionState() != null) {
-                    item.put("session_state", tab.getSessionState());
-                }
-                if (tab.getGroupId() != null && tab.getGroupName() != null) {
-                    item.put("group", tab.getGroupName());
-                }
-                if (tab.getParentTabId() != null) item.put("parent_id", tab.getParentTabId());
-                if (tab.isPinned()) item.put("pinned", true);
-                saved.put(item);
-            } catch (Exception e) {
-                Log.e(TAG, "Failed to serialize tab " + tab.getId(), e);
-            }
-        }
-        return saved;
-    }
 }

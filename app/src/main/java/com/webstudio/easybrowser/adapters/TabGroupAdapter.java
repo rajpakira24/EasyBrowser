@@ -185,6 +185,30 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
         return items.get(position).tab;
     }
 
+    public int findPositionForTabId(String tabId) {
+        if (tabId == null || tabId.trim().isEmpty()) {
+            return RecyclerView.NO_POSITION;
+        }
+        for (int i = 0; i < items.size(); i++) {
+            DisplayItem item = items.get(i);
+            if (!item.isGroup()) {
+                if (item.tab != null && tabId.equals(item.tab.getId())) {
+                    return i;
+                }
+                continue;
+            }
+            if (item.group == null || item.group.getTabs() == null) {
+                continue;
+            }
+            for (Tab tab : item.group.getTabs()) {
+                if (tab != null && tabId.equals(tab.getId())) {
+                    return i;
+                }
+            }
+        }
+        return RecyclerView.NO_POSITION;
+    }
+
     public boolean moveItem(int fromPosition, int toPosition) {
         if (fromPosition < 0 || toPosition < 0
                 || fromPosition >= items.size() || toPosition >= items.size()

@@ -15,7 +15,7 @@
         <!-- Status bar color -->
         <item name="android:statusBarColor">@color/app_bar_background</item>
         <item name="android:navigationBarColor">@color/browser_chrome_background</item>
-        <item name="android:windowLightStatusBar">@bool/is_light_theme</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">@bool/is_light_theme</item>
         <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">@bool/is_light_theme</item>
 
         <!-- Background colors -->

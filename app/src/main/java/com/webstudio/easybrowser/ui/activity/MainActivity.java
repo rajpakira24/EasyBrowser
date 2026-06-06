@@ -18,6 +18,7 @@ import android.text.TextWatcher;
 import android.view.KeyEvent;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
@@ -46,6 +47,7 @@ import com.webstudio.easybrowser.managers.AnalyticsManager;
 import com.webstudio.easybrowser.managers.PrivacyStatsManager;
 import com.webstudio.easybrowser.models.QuickAccessItem;
 import com.webstudio.easybrowser.repository.QuickAccessRepository;
+import com.webstudio.easybrowser.repository.TabRepository;
 import com.webstudio.easybrowser.utils.HomeBackgroundProvider;
 import com.webstudio.easybrowser.utils.SearchSuggestionProvider;
 import com.webstudio.easybrowser.utils.SystemBarUtils;
@@ -60,6 +62,11 @@ import java.util.Locale;
 import org.json.JSONArray;
 
 public class MainActivity extends AppCompatActivity implements QuickAccessAdapter.OnQuickAccessClickListener {
+    private static final int HOME_SEARCH_NAV_GAP_DP = 14;
+    private static final int HOME_SEARCH_MIN_BOTTOM_MARGIN_DP = 118;
+    private static final int HOME_PHOTO_CREDIT_GAP_DP = 18;
+    private static final int HOME_SCROLL_BOTTOM_GAP_DP = 28;
+
     private EditText urlInput;
     private ImageButton micButton;
     private ImageButton securityButton;
@@ -73,11 +80,14 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
     private TextView timeSavedStat;
     private ImageView homeBackgroundImage;
     private TextView photoCredit;
+    private View homeContentContainer;
     private View homeSearchBar;
     private BottomNavigationView bottomNav;
     private QuickAccessRepository quickAccessRepository;
+    private TabRepository tabRepository;
     private QuickAccessAdapter quickAccessAdapter;
     private HomeBackgroundProvider.Photo currentHomePhoto;
+    private ActivityResultLauncher<Intent> tabManagerLauncher;
     private final SharedPreferences.OnSharedPreferenceChangeListener privacyStatsListener =
             (sharedPreferences, key) -> {
                 if (PrivacyStatsManager.isStatsKey(key)) {
@@ -95,12 +105,14 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
                 ContextCompat.getColor(this, R.color.home_background),
                 ContextCompat.getColor(this, R.color.home_panel_background));
 
+        initializeRepositories();
         initializeViews();
         setupToolbar();
         setupUrlInput();
-        initializeRepositories();
         setupQuickAccess();
+        setupTabManagerLauncher();
         setupBottomNavigation();
+        setupHomeBottomChromeSpacing();
         setupClickListeners();
         setupSpeechRecognition();
         setupHomeBackground();
@@ -123,6 +135,7 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
                 .registerOnSharedPreferenceChangeListener(privacyStatsListener);
         applyHomeSectionVisibility();
         updatePrivacyStats();
+        updateTabCountIcon();
         reloadQuickAccess();
     }
 
@@ -147,6 +160,7 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         timeSavedStat = findViewById(R.id.stat_time_saved);
         homeBackgroundImage = findViewById(R.id.home_background_image);
         photoCredit = findViewById(R.id.home_photo_credit);
+        homeContentContainer = findViewById(R.id.home_content_container);
         homeSearchBar = findViewById(R.id.home_edge_search_bar);
         bottomNav = findViewById(R.id.bottom_navigation);
         updateTabCountIcon();
@@ -154,6 +168,7 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
 
     private void initializeRepositories() {
         quickAccessRepository = new QuickAccessRepository(this);
+        tabRepository = new TabRepository(this);
     }
 
     private void setupToolbar() {
@@ -341,8 +356,7 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
                 showSearchPopup();
                 return true;
             } else if (itemId == R.id.nav_tabs) {
-                startActivity(new Intent(MainActivity.this, BrowserActivity.class)
-                        .putExtra("show_tabs", true));
+                launchTabManager();
                 return true;
             } else if (itemId == R.id.nav_bookmarks) {
                 startActivity(new Intent(MainActivity.this, BookmarksActivity.class));
@@ -354,6 +368,116 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
             return false;
         });
         updateTabCountIcon();
+    }
+
+    private void setupTabManagerLauncher() {
+        tabManagerLauncher = registerForActivityResult(
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    updateTabCountIcon();
+                    if (result.getData() != null) {
+                        handleTabManagerResult(result.getData());
+                    }
+                });
+    }
+
+    private void launchTabManager() {
+        Intent intent = new Intent(this, TabManagerActivity.class);
+        String currentTabId = PreferenceManager.getDefaultSharedPreferences(this)
+                .getString(TabsActivity.EXTRA_CURRENT_TAB_ID, null);
+        if (currentTabId != null && !currentTabId.trim().isEmpty()) {
+            intent.putExtra(TabsActivity.EXTRA_CURRENT_TAB_ID, currentTabId);
+        }
+        if (tabManagerLauncher != null) {
+            tabManagerLauncher.launch(intent);
+        } else {
+            startActivity(intent);
+        }
+    }
+
+    private void handleTabManagerResult(Intent data) {
+        if (data.hasExtra(TabsActivity.RESULT_CREATE_PRIVATE_TAB)) {
+            boolean isPrivate = data.getBooleanExtra(TabsActivity.RESULT_CREATE_PRIVATE_TAB, false);
+            startActivity(new Intent(this, BrowserActivity.class)
+                    .putExtra(isPrivate ? "private_tab" : "new_tab", true));
+            return;
+        }
+
+        String restoreUrl = data.getStringExtra(TabsActivity.RESULT_RESTORE_URL);
+        if (restoreUrl != null && !restoreUrl.trim().isEmpty()) {
+            startActivity(new Intent(this, BrowserActivity.class)
+                    .putExtra("url", restoreUrl)
+                    .putExtra("new_tab", true));
+            return;
+        }
+
+        String selectedTabId = data.getStringExtra(TabsActivity.RESULT_SELECTED_TAB_ID);
+        if (selectedTabId != null && !selectedTabId.trim().isEmpty()) {
+            PreferenceManager.getDefaultSharedPreferences(this)
+                    .edit()
+                    .putString(TabsActivity.EXTRA_CURRENT_TAB_ID, selectedTabId)
+                    .apply();
+            startActivity(new Intent(this, BrowserActivity.class));
+        }
+    }
+
+    private void setupHomeBottomChromeSpacing() {
+        if (bottomNav == null || homeSearchBar == null) {
+            return;
+        }
+        View.OnLayoutChangeListener spacingListener =
+                (v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) ->
+                        updateHomeBottomChromeSpacing();
+        bottomNav.addOnLayoutChangeListener(spacingListener);
+        homeSearchBar.addOnLayoutChangeListener(spacingListener);
+        bottomNav.post(this::updateHomeBottomChromeSpacing);
+    }
+
+    private void updateHomeBottomChromeSpacing() {
+        if (bottomNav == null || homeSearchBar == null) {
+            return;
+        }
+        int bottomNavHeight = getBottomNavClearance();
+        int searchBarHeight = homeSearchBar.getHeight() > 0 ? homeSearchBar.getHeight() : dp(48);
+        int searchBottomMargin = Math.max(
+                bottomNavHeight + dp(HOME_SEARCH_NAV_GAP_DP),
+                dp(HOME_SEARCH_MIN_BOTTOM_MARGIN_DP));
+
+        setBottomMargin(homeSearchBar, searchBottomMargin);
+        if (photoCredit != null) {
+            setBottomMargin(photoCredit,
+                    searchBottomMargin + searchBarHeight + dp(HOME_PHOTO_CREDIT_GAP_DP));
+        }
+        if (homeContentContainer != null) {
+            homeContentContainer.setPadding(
+                    homeContentContainer.getPaddingLeft(),
+                    homeContentContainer.getPaddingTop(),
+                    homeContentContainer.getPaddingRight(),
+                    searchBottomMargin + searchBarHeight + dp(HOME_SCROLL_BOTTOM_GAP_DP));
+        }
+    }
+
+    private int getBottomNavClearance() {
+        View parent = homeSearchBar.getParent() instanceof View ? (View) homeSearchBar.getParent() : null;
+        int parentHeight = parent != null ? parent.getHeight() : 0;
+        int bottomNavTop = bottomNav.getTop();
+        if (parentHeight > 0 && bottomNavTop > 0 && bottomNavTop < parentHeight) {
+            return parentHeight - bottomNavTop;
+        }
+        return bottomNav.getHeight() > 0 ? bottomNav.getHeight() : dp(72);
+    }
+
+    private void setBottomMargin(View view, int bottomMargin) {
+        ViewGroup.LayoutParams params = view.getLayoutParams();
+        if (!(params instanceof ViewGroup.MarginLayoutParams)) {
+            return;
+        }
+        ViewGroup.MarginLayoutParams marginParams = (ViewGroup.MarginLayoutParams) params;
+        if (marginParams.bottomMargin == bottomMargin) {
+            return;
+        }
+        marginParams.bottomMargin = bottomMargin;
+        view.setLayoutParams(marginParams);
     }
 
     private void updateTabCountIcon() {
@@ -370,6 +494,10 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
     }
 
     private int getSavedPublicTabCount() {
+        int roomCount = tabRepository != null ? tabRepository.getTabCountBlocking(false) : 0;
+        if (roomCount > 0) {
+            return roomCount;
+        }
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
         String savedTabs = prefs.getString("saved_tabs", null);
         if (savedTabs == null || savedTabs.trim().isEmpty()) {
@@ -556,8 +684,7 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_bookmarks, R.string.bookmarks,
                 true, () -> startActivity(new Intent(this, BookmarksActivity.class))));
         menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_recent, R.string.recent_tabs,
-                true, () -> startActivity(new Intent(this, BrowserActivity.class)
-                        .putExtra("show_tabs", true))));
+                true, this::launchTabManager));
         menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_extensions_puzzle, R.string.extensions,
                 true, () -> startActivity(new Intent(this, ExtensionsActivity.class))));
         menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_settings, R.string.settings,

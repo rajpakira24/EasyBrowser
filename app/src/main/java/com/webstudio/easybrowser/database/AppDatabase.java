@@ -45,7 +45,7 @@ public abstract class AppDatabase extends RoomDatabase {
         return DATABASE_EXECUTOR;
     }
 
-    private static final Migration MIGRATION_2_3 = new Migration(2, 3) {
+    public static final Migration MIGRATION_2_3 = new Migration(2, 3) {
         @Override
         public void migrate(SupportSQLiteDatabase database) {
             database.execSQL("CREATE TABLE IF NOT EXISTS `reading_list` ("
@@ -59,7 +59,7 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
-    private static final Migration MIGRATION_3_4 = new Migration(3, 4) {
+    public static final Migration MIGRATION_3_4 = new Migration(3, 4) {
         @Override
         public void migrate(SupportSQLiteDatabase database) {
             database.execSQL("CREATE TABLE IF NOT EXISTS `tab_groups` ("
@@ -87,7 +87,7 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
-    private static final Migration MIGRATION_4_5 = new Migration(4, 5) {
+    public static final Migration MIGRATION_4_5 = new Migration(4, 5) {
         @Override
         public void migrate(SupportSQLiteDatabase database) {
             database.execSQL("ALTER TABLE `tab_groups` ADD COLUMN `isPrivate` INTEGER NOT NULL DEFAULT 0");
@@ -99,7 +99,7 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
-    private static final Migration MIGRATION_5_6 = new Migration(5, 6) {
+    public static final Migration MIGRATION_5_6 = new Migration(5, 6) {
         @Override
         public void migrate(SupportSQLiteDatabase database) {
             database.execSQL("CREATE TABLE IF NOT EXISTS `tabs_new` ("
@@ -138,14 +138,14 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
-    private static final Migration MIGRATION_6_7 = new Migration(6, 7) {
+    public static final Migration MIGRATION_6_7 = new Migration(6, 7) {
         @Override
         public void migrate(SupportSQLiteDatabase database) {
             database.execSQL("ALTER TABLE `tabs` ADD COLUMN `pinned` INTEGER NOT NULL DEFAULT 0");
         }
     };
 
-    private static final Migration MIGRATION_1_2 = new Migration(1, 2) {
+    public static final Migration MIGRATION_1_2 = new Migration(1, 2) {
         @Override
         public void migrate(SupportSQLiteDatabase database) {
             database.execSQL("CREATE TABLE IF NOT EXISTS `downloads` ("
@@ -166,6 +166,15 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
+    public static final Migration[] ALL_MIGRATIONS = {
+            MIGRATION_1_2,
+            MIGRATION_2_3,
+            MIGRATION_3_4,
+            MIGRATION_4_5,
+            MIGRATION_5_6,
+            MIGRATION_6_7
+    };
+
     public abstract BookmarkDao bookmarkDao();
     public abstract HistoryDao historyDao();
     public abstract QuickAccessDao quickAccessDao();
@@ -182,8 +191,7 @@ public abstract class AppDatabase extends RoomDatabase {
                                     AppDatabase.class,
                                     "browser.db"
                             )
-                            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4,
-                                    MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                            .addMigrations(ALL_MIGRATIONS)
                             // Prevents a crash if the user downgrades the app.
                             // To add a new migration: define MIGRATION_X_Y, pass it here,
                             // and bump the @Database version above.

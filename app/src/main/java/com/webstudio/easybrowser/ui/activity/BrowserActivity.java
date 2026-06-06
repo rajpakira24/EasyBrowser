@@ -107,9 +107,10 @@ import org.mozilla.geckoview.StorageController;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.util.List;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -1277,7 +1278,7 @@ public class BrowserActivity extends AppCompatActivity {
                 groupTabs.add(tab);
             }
         }
-        groupTabs.sort((first, second) -> {
+        Collections.sort(groupTabs, (first, second) -> {
             if (first.isPinned() != second.isPinned()) {
                 return first.isPinned() ? -1 : 1;
             }

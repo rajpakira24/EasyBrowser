@@ -2,7 +2,10 @@ package com.webstudio.easybrowser;
 
 import android.app.Activity;
 import android.app.Application;
+import android.content.Context;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.UserManager;
 
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.preference.PreferenceManager;
@@ -35,6 +38,14 @@ public class EasyBrowserApplication extends Application {
     }
 
     private void applySavedThemeMode() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            UserManager userManager = (UserManager) getSystemService(Context.USER_SERVICE);
+            if (userManager != null && !userManager.isUserUnlocked()) {
+                AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM);
+                return;
+            }
+        }
+
         String mode = PreferenceManager.getDefaultSharedPreferences(this)
                 .getString(SettingsKeys.PREF_THEME_MODE, "system");
         if ("light".equals(mode)) {
