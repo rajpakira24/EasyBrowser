@@ -2,28 +2,30 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+For the full current architecture inventory, see `PROJECT_ARCHITECTURE_REPORT.md`.
+
 ## Build Commands
 
-All commands are run via Gradle wrapper from the project root.
+All commands are run via the Gradle wrapper from the project root.
 
 ```bash
 # Debug build
 ./gradlew assembleDebug
 
-# Release build (requires real keystore — update signingConfigs in app/build.gradle first)
+# Release build (requires a real keystore - update signingConfigs in app/build.gradle first)
 ./gradlew assembleRelease
 
 # Run unit tests
-./gradlew test
+./gradlew testDebugUnitTest
 
 # Run instrumented tests (requires connected device/emulator)
-./gradlew connectedAndroidTest
+./gradlew connectedDebugAndroidTest
 
 # Run a single unit test class
-./gradlew test --tests "com.webstudio.easybrowser.ExampleUnitTest"
+./gradlew testDebugUnitTest --tests "com.webstudio.easybrowser.ExampleUnitTest"
 
 # Lint
-./gradlew lint
+./gradlew lintDebug
 
 # Clean
 ./gradlew clean
@@ -31,91 +33,104 @@ All commands are run via Gradle wrapper from the project root.
 
 On Windows use `gradlew.bat` instead of `./gradlew`.
 
-GeckoView is fetched from `https://maven.mozilla.org/maven2/` — an internet connection is required on first build.
+GeckoView is fetched from `https://maven.mozilla.org/maven2/`; an internet connection is required on first build.
 
 ## Architecture Overview
 
-**Language:** Java. **Min SDK:** 21. **Target SDK:** 35.
+**Language:** Java. **Min SDK:** 21. **Target SDK:** 37.
 
 ### Browser Engine
 
-The app uses **Mozilla GeckoView** (not Android WebView) as its rendering engine. The singleton `GeckoRuntime` is managed by `RuntimeManager`, which must be initialized once per process. `GeckoSession` is the per-tab browsing context; each `Tab` object owns exactly one `GeckoSession`.
+The app uses **Mozilla GeckoView** rather than Android WebView. The singleton `GeckoRuntime` is managed by `RuntimeManager`, which must be initialized once per process. Each `Tab` owns exactly one `GeckoSession`.
 
 ### Tab Lifecycle
 
-```
+```text
 BrowserViewModel (AndroidViewModel)
-  └── TabManager               — owns List<Tab>, persists non-private tabs to SharedPreferences as JSON
-        └── Tab                — holds GeckoSession + metadata (id, title, url, isPrivate)
-              └── GeckoSession — the actual browser tab (opened against GeckoRuntime)
+  -> TabManager
+       -> BrowserStateStore       runtime tabs, groups, active ids, private mode
+       -> TabRepository           Room persistence for regular tabs and groups
+       -> Tab                     GeckoSession plus metadata
+            -> GeckoSession       browser session opened against GeckoRuntime
 ```
 
-`BrowserViewModel` survives configuration changes and holds `TabManager`. `BrowserActivity` retrieves it via `ViewModelProvider`. When switching tabs, `BrowserActivity.attachTabToView()` calls `geckoView.setSession(session)` — GeckoView only renders one session at a time.
+`BrowserViewModel` survives configuration changes and holds `TabManager`. `BrowserActivity` retrieves it via `ViewModelProvider`. When switching tabs, `BrowserActivity.attachTabToView()` calls `geckoView.setSession(session)` because GeckoView renders one session at a time.
 
-**Important:** Delegates on `GeckoSession` (NavigationDelegate, ContentDelegate, ProgressDelegate, PermissionDelegate, PromptDelegate) are set exclusively in `BrowserActivity.configureSession()`. `TabManager` does NOT set delegates. `BrowserActivity` explicitly calls `tabManager.updateTabUrl()` / `tabManager.updateTabTitle()` from inside its own delegates to keep tab metadata in sync.
+`TabManager` restores normal tabs from Room first. If Room restore fails or has no usable state, it falls back to the legacy `saved_tabs` SharedPreferences JSON and then persists migrated state. The fallback is capped by `MAX_PERSIST_BYTES` to avoid oversized SharedPreferences payloads.
 
-Private tabs are never persisted to SharedPreferences and are lost on process death.
+Private tabs are runtime-only. `TabRepository` skips private tabs/groups on save, and `TabManager` clears any persisted private tab/group rows while restoring.
+
+**Important:** Delegates on `GeckoSession` are set by the browser activity delegate classes (`BrowserNavigationDelegate`, `BrowserContentDelegate`, `BrowserProgressDelegate`, `BrowserPermissionDelegate`, `BrowserPromptDelegate`, and related helpers). `TabManager` does not own Gecko delegate behavior; it owns tab/session state and persistence coordination.
 
 ### Data Layer
 
-Room database (`browser.db`, version 2) with four entities and a standard DAO → Repository → Activity pattern. All repository operations are async, using a background `Executor` + callback interfaces (no LiveData or Coroutines).
+Room database: `browser.db`, version 7. The project uses DAO -> Repository -> Activity/ViewModel style with callback-based async APIs.
 
 | Entity | DAO | Repository | Purpose |
 |---|---|---|---|
 | `BookmarkEntity` | `BookmarkDao` | `BookmarkRepository` | Saved bookmarks |
 | `HistoryEntity` | `HistoryDao` | `HistoryRepository` | Browsing history |
-| `QuickAccessEntity` | `QuickAccessDao` | `QuickAccessRepository` | Most-visited sites (auto-updated on each page visit) |
+| `QuickAccessEntity` | `QuickAccessDao` | `QuickAccessRepository` | Most-visited / quick access sites |
 | `DownloadEntity` | `DownloadDao` | `DownloadRepository` | Download records |
+| `ReadingListEntity` | `ReadingListDao` | `ReadingListRepository` | Saved reading-list items |
+| `TabGroupEntity` | `TabGroupDao` | `TabRepository` | Persisted tab groups |
+| `TabEntity` | `TabGroupDao` | `TabRepository` | Persisted normal tabs |
 
-Database migration from v1→v2 creates the `downloads` table (defined in `AppDatabase`).
+`AppDatabase` defines migrations `1->2` through `6->7`. Version 7 adds the `pinned` column to `tabs`. Most repositories use `AppDatabase.getDatabaseExecutor()`; `ReadingListRepository` still creates its own single-thread executor, which is tracked as technical debt.
 
 ### Download Manager
 
-`AppDownloadManager` is a singleton that uses **OkHttp** for HTTP downloads. Downloads are written to `getCacheDir()/downloads` first, then published to MediaStore (API 29+) or `Environment.DIRECTORY_DOWNLOADS/Easy Browser` (legacy). Supports pause (via HTTP Range resume), cancel, and progress notifications.
+`AppDownloadManager` is a singleton that uses **OkHttp** for HTTP downloads. Downloads are written to `getCacheDir()/downloads` first, then published to MediaStore on API 29+ or to `Environment.DIRECTORY_DOWNLOADS/Easy Browser` on older Android versions. It supports pause via HTTP Range resume, cancel, progress tracking, and notifications.
 
 ### Privacy / Content Blocking
 
-Privacy settings flow: `SettingsActivity` → `SharedPreferences` → `RuntimeManager.getRuntime()` applies them live to `GeckoRuntime.getSettings()`.
+Privacy settings flow: `SettingsActivity` / `SettingsSubpageActivity` -> `SharedPreferences` -> `RuntimeManager.getRuntime()` applies live Gecko runtime settings.
 
 Two layers of ad/tracker blocking run in parallel:
-1. **GeckoView ContentBlocking** — ETP levels (none/default/strict), anti-tracking flags, cookie banner rejection, tracking parameter stripping. Configured in `RuntimeManager`.
-2. **URL hostname blocklist** in `UrlUtils.isBlockedByAdBlock()` — checked in `BrowserActivity`'s `onLoadRequest` delegate before GeckoView loads the URL.
 
-Blocking levels (`ad_blocking_level` pref): `"off"`, `"balanced"` (default), `"aggressive"`.
+1. **GeckoView ContentBlocking** for enhanced tracking protection levels, anti-tracking flags, cookie-banner rejection, and tracking parameter stripping.
+2. **URL hostname blocklist** in `UrlUtils.isBlockedByAdBlock()`, checked by browser navigation before GeckoView loads a URL.
+
+Blocking levels (`ad_blocking_level` pref): `"off"`, `"balanced"` default, and `"aggressive"`.
 
 ### Activity / Screen Map
 
-- `MainActivity` — home screen: search bar (opens `BrowserActivity`), quick-access grid, privacy stats counters.
-- `BrowserActivity` — core browser. Single instance (`launchMode="singleTask"`). Handles deep links via `onNewIntent`.
-- `TabsActivity` — tab switcher. Launched via `ActivityResultLauncher`; communicates back to `BrowserActivity` by returning an `Intent` with closed/selected tab IDs.
-- `SettingsActivity` — all preferences. Changes take effect immediately via `RuntimeManager`.
-- `BookmarksActivity`, `HistoryActivity`, `DownloadsActivity` — list screens backed by Room repositories.
-- `ExtensionsActivity` — stub/placeholder.
+- `MainActivity` - home screen with search, quick access, privacy counters, and restored-tab entry.
+- `BrowserActivity` - core browser; single instance (`launchMode="singleTask"`); handles deep links via `onNewIntent`.
+- `TabManagerActivity` - modern tab/group manager surface.
+- `TabsActivity` - legacy tab switcher surface still present in the codebase.
+- `GroupTabsActivity` - group editing and tab assignment flow.
+- `InactiveTabsActivity` - inactive tab management.
+- `SettingsActivity` and `SettingsSubpageActivity` - preferences and nested settings flows.
+- `BookmarksActivity`, `HistoryActivity`, `DownloadsActivity`, `ReadingListActivity` - Room-backed list screens.
+- `CookieManagerActivity`, `SitePermissionsActivity`, `UserStylesActivity` - privacy/customization tools.
+- `ExtensionsActivity` - extension discovery/placeholder surface.
 
 ### URL Handling
 
-`UrlUtils.getUrlOrSearchUrl()` is the single entry point for all user input. It calls `isSearchQuery()` to decide between passing input to the configured search engine or treating it as a URL to sanitize. The new-tab page is a self-contained `data:text/html` page generated in `UrlUtils.getNewTabPageUrl()`.
+`UrlUtils.getUrlOrSearchUrl()` is the single entry point for user text input. It calls `isSearchQuery()` to decide whether to build a configured search URL or treat input as a URL to sanitize. The new-tab page is generated in `UrlUtils.getNewTabPageUrl()`.
 
 ### SharedPreferences Keys
 
-All preferences use `PreferenceManager.getDefaultSharedPreferences()` (AndroidX). Key names used across multiple files:
+Most preference keys should be routed through `SettingsKeys` when available. Existing raw keys still appear in older code paths and should be normalized during focused refactors.
 
 | Key | Default | Used in |
 |---|---|---|
-| `search_engine_url` | DuckDuckGo URL | `UrlUtils`, `BrowserActivity`, `SettingsActivity` |
-| `homepage` | `https://duckduckgo.com` | `UrlUtils`, `SettingsActivity` |
-| `ad_blocking_level` | `"balanced"` | `RuntimeManager`, `BrowserActivity`, `UrlUtils` |
-| `javascript_enabled` | `true` | `RuntimeManager`, `TabManager`, `BrowserActivity` |
-| `block_popups` | `true` | `BrowserActivity` |
+| `search_engine_url` | DuckDuckGo URL | `UrlUtils`, browser/settings flows |
+| `homepage` | `https://duckduckgo.com` | `UrlUtils`, settings flows |
+| `ad_blocking_level` | `"balanced"` | `RuntimeManager`, browser/settings flows |
+| `javascript_enabled` | `true` | `RuntimeManager`, `TabManager`, browser/settings flows |
+| `block_popups` | `true` | Browser navigation/prompt handling |
 | `save_history` | `true` | `BrowserActivity` |
-| `do_not_track` | `false` | `RuntimeManager`, `SettingsActivity` |
-| `block_cookie_banners` | `true` | `RuntimeManager`, `SettingsActivity` |
-| `strip_tracking_params` | `true` | `RuntimeManager`, `SettingsActivity` |
-| `show_privacy_stats` | `true` | `MainActivity`, `SettingsActivity` |
-| `show_quick_access` | `true` | `MainActivity`, `SettingsActivity` |
-| `privacy_pages_protected` | 0 | `BrowserActivity`, `MainActivity` |
-| `privacy_items_blocked` | 0 | `BrowserActivity`, `MainActivity` |
-| `saved_tabs` | — | `TabManager` (JSON array) |
+| `do_not_track` | `false` | `RuntimeManager`, settings flows |
+| `block_cookie_banners` | `true` | `RuntimeManager`, settings flows |
+| `strip_tracking_params` | `true` | `RuntimeManager`, settings flows |
+| `show_privacy_stats` | `true` | `MainActivity`, settings flows |
+| `show_quick_access` | `true` | `MainActivity`, settings flows |
+| `privacy_pages_protected` | 0 | `PrivacyStatsManager`, home/browser flows |
+| `privacy_items_blocked` | 0 | `PrivacyStatsManager`, home/browser flows |
+| `saved_tabs` | legacy fallback | `TabManager` |
+| `current_tab_id` | legacy fallback | `TabManager` |
 
 ### Firebase / Crashlytics
 
@@ -123,4 +138,4 @@ Optional. The Crashlytics and Google Services Gradle plugins are applied only wh
 
 ### Release Signing
 
-`app/build.gradle` contains placeholder signing config (`path/to/your/keystore.jks`). Update `signingConfigs.release` with real values before a release build. ProGuard/R8 is currently disabled (`minifyEnabled false`) — enabling it requires adding GeckoView-specific keep rules.
+`app/build.gradle` contains placeholder signing config (`path/to/your/keystore.jks`). Update `signingConfigs.release` with real values before a release build. ProGuard/R8 is currently disabled (`minifyEnabled false`); enabling it requires adding GeckoView-specific keep rules.
