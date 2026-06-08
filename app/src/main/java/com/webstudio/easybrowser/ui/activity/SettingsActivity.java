@@ -3,15 +3,21 @@ package com.webstudio.easybrowser.ui.activity;
 import android.app.Dialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.ColorStateList;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import androidx.preference.PreferenceManager;
 import android.provider.Settings;
+import android.util.TypedValue;
+import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -21,7 +27,9 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.drawable.DrawableCompat;
+import androidx.core.widget.NestedScrollView;
 
+import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.switchmaterial.SwitchMaterial;
 import com.google.android.material.textfield.TextInputEditText;
@@ -49,6 +57,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class SettingsActivity extends AppCompatActivity {
+    private static final int[] ADVANCED_ROW_IDS = new int[]{
+            R.id.setting_auto_clear_on_exit,
+            R.id.layout_auto_clear_items,
+            R.id.setting_user_agent,
+            R.id.setting_user_styles,
+            R.id.setting_doh,
+            R.id.setting_remote_debugging
+    };
+
     private SharedPreferences prefs;
     private TextView searchEngineValue;
     private TextView homepageValue;
@@ -112,6 +129,7 @@ public class SettingsActivity extends AppCompatActivity {
         setupListeners();
         loadSettings();
         hideDuplicateSettingsRows();
+        setupVisualHierarchy();
     }
 
     @Override
@@ -120,6 +138,7 @@ public class SettingsActivity extends AppCompatActivity {
         applyThemedChrome();
         if (prefs != null) {
             loadSettings();
+            applyAdvancedVisibility();
         }
     }
 
@@ -207,6 +226,348 @@ public class SettingsActivity extends AppCompatActivity {
                 switchMaterial.setTrackTintList(ThemeEngine.switchTrackTint(this));
             }
         }
+    }
+
+    private void setupVisualHierarchy() {
+        insertSettingsModeCard();
+        insertPerformanceBenchmarkRow();
+        styleSettingsCards(findViewById(android.R.id.content));
+        applyTopLevelRowIcons();
+        applyRowMicroInteractions(findViewById(android.R.id.content));
+        applyAdvancedVisibility();
+    }
+
+    private void insertSettingsModeCard() {
+        NestedScrollView scrollView = findNestedScrollView(findViewById(android.R.id.content));
+        if (scrollView == null || scrollView.getChildCount() == 0
+                || !(scrollView.getChildAt(0) instanceof LinearLayout)) {
+            return;
+        }
+        LinearLayout container = (LinearLayout) scrollView.getChildAt(0);
+        if (container.findViewWithTag("settings_mode_card") != null) {
+            return;
+        }
+
+        MaterialCardView card = createPolishedCard();
+        card.setTag("settings_mode_card");
+
+        LinearLayout row = createTopLevelActionRow(
+                getString(R.string.settings_mode),
+                getString(R.string.settings_mode_summary),
+                R.drawable.ic_settings,
+                null);
+        SwitchMaterial advancedSwitch = new SwitchMaterial(this);
+        advancedSwitch.setChecked(areAdvancedSettingsVisible());
+        advancedSwitch.setThumbTintList(ThemeEngine.switchThumbTint(this));
+        advancedSwitch.setTrackTintList(ThemeEngine.switchTrackTint(this));
+        advancedSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            prefs.edit()
+                    .putBoolean(SettingsKeys.PREF_SETTINGS_ADVANCED_VISIBLE, isChecked)
+                    .apply();
+            applyAdvancedVisibility();
+        });
+        row.addView(advancedSwitch);
+        row.setOnClickListener(v -> advancedSwitch.toggle());
+        attachPressMicroInteraction(row);
+        card.addView(row);
+
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.setMargins(dp(16), dp(12), dp(16), dp(10));
+        container.addView(card, 0, params);
+    }
+
+    private void insertPerformanceBenchmarkRow() {
+        View aboutRow = findViewById(R.id.setting_about);
+        if (aboutRow == null || !(aboutRow.getParent() instanceof LinearLayout)) {
+            return;
+        }
+        LinearLayout parent = (LinearLayout) aboutRow.getParent();
+        if (parent.findViewWithTag("performance_benchmark_row") != null) {
+            return;
+        }
+        View divider = new View(this);
+        divider.setBackgroundResource(resolveAttr(android.R.attr.listDivider));
+        LinearLayout row = createTopLevelActionRow(
+                getString(R.string.performance_benchmark),
+                getString(R.string.performance_benchmark_short_summary),
+                R.drawable.ic_speed,
+                () -> openSubpage(SettingsSubpageActivity.PAGE_PERFORMANCE));
+        row.setTag("performance_benchmark_row");
+
+        int index = parent.indexOfChild(aboutRow);
+        parent.addView(divider, index + 1, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 1));
+        parent.addView(row, index + 2, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+    }
+
+    private LinearLayout createTopLevelActionRow(String title, String summary,
+                                                 int iconRes, Runnable action) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(dp(72));
+        row.setPadding(dp(16), dp(14), dp(16), dp(14));
+        row.setBackgroundResource(resolveAttr(android.R.attr.selectableItemBackground));
+
+        row.addView(createIconBubble(iconRes));
+
+        LinearLayout texts = new LinearLayout(this);
+        texts.setOrientation(LinearLayout.VERTICAL);
+        texts.setGravity(Gravity.CENTER_VERTICAL);
+        texts.setPadding(0, 0, dp(12), 0);
+        texts.setLayoutParams(new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView titleView = new TextView(this);
+        titleView.setText(title);
+        titleView.setTextSize(16);
+        titleView.setTextColor(ContextCompat.getColor(this, R.color.colorOnSurface));
+        texts.addView(titleView);
+        TextView summaryView = new TextView(this);
+        summaryView.setText(summary);
+        summaryView.setTextSize(14);
+        summaryView.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
+        LinearLayout.LayoutParams summaryParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        summaryParams.topMargin = dp(4);
+        texts.addView(summaryView, summaryParams);
+        row.addView(texts);
+
+        if (action != null) {
+            row.setOnClickListener(v -> action.run());
+            attachPressMicroInteraction(row);
+        }
+        return row;
+    }
+
+    private ImageView createIconBubble(int iconRes) {
+        ImageView icon = new ImageView(this);
+        ThemeEngine.Palette palette = ThemeEngine.homePalette(this);
+        GradientDrawable background = new GradientDrawable();
+        background.setShape(GradientDrawable.RECTANGLE);
+        background.setCornerRadius(dp(12));
+        background.setColor(palette.accentSoft);
+        icon.setBackground(background);
+        icon.setImageResource(iconRes);
+        icon.setImageTintList(ColorStateList.valueOf(palette.accent));
+        icon.setPadding(dp(10), dp(10), dp(10), dp(10));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(42), dp(42));
+        params.setMarginEnd(dp(14));
+        icon.setLayoutParams(params);
+        return icon;
+    }
+
+    private MaterialCardView createPolishedCard() {
+        MaterialCardView card = new MaterialCardView(this);
+        card.setRadius(dp(8));
+        card.setCardElevation(dp(1));
+        card.setUseCompatPadding(false);
+        card.setCardBackgroundColor(ContextCompat.getColor(this, R.color.settings_card_background));
+        card.setStrokeWidth(dp(1));
+        card.setStrokeColor(ThemeEngine.homePalette(this).accentSoft);
+        return card;
+    }
+
+    private void styleSettingsCards(View view) {
+        if (view == null) {
+            return;
+        }
+        if (view instanceof MaterialCardView) {
+            MaterialCardView card = (MaterialCardView) view;
+            card.setRadius(dp(8));
+            card.setCardElevation(dp(1));
+            card.setStrokeWidth(dp(1));
+            card.setStrokeColor(ThemeEngine.homePalette(this).accentSoft);
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                styleSettingsCards(group.getChildAt(i));
+            }
+        }
+    }
+
+    private void applyTopLevelRowIcons() {
+        setRowIcon(R.id.setting_search_engine, R.drawable.ic_search);
+        setRowIcon(R.id.setting_homepage, R.drawable.ic_home);
+        setRowIcon(R.id.setting_notifications, R.drawable.ic_settings);
+        setRowIcon(R.id.setting_external_links, R.drawable.ic_globe);
+        setRowIcon(R.id.setting_ad_blocking, R.drawable.ic_security);
+        setRowIcon(R.id.setting_cookie_banners, R.drawable.ic_security);
+        setRowIcon(R.id.setting_strip_tracking_params, R.drawable.ic_security);
+        setRowIcon(R.id.setting_https_only, R.drawable.ic_lock);
+        setRowIcon(R.id.setting_do_not_track, R.drawable.ic_security);
+        setRowIcon(R.id.setting_save_history, R.drawable.ic_history);
+        setRowIcon(R.id.setting_clear_data, R.drawable.ic_clear);
+        setRowIcon(R.id.setting_cookie_manager, R.drawable.ic_globe);
+        setRowIcon(R.id.setting_site_permissions, R.drawable.ic_settings);
+        setRowIcon(R.id.setting_prevent_screenshots, R.drawable.ic_lock);
+        setRowIcon(R.id.setting_terms_of_use, R.drawable.ic_file);
+        setRowIcon(R.id.setting_privacy_policy, R.drawable.ic_security);
+        setRowIcon(R.id.setting_ip_infringement, R.drawable.ic_file);
+        setRowIcon(R.id.setting_data_compliance, R.drawable.ic_file);
+        setRowIcon(R.id.setting_tabs_and_groups, R.drawable.ic_tabs);
+        setRowIcon(R.id.setting_media, R.drawable.ic_video);
+        setRowIcon(R.id.setting_appearance, R.drawable.ic_settings);
+        setRowIcon(R.id.setting_new_tab_page, R.drawable.ic_home);
+        setRowIcon(R.id.setting_accessibility_subpage, R.drawable.ic_text);
+        setRowIcon(R.id.setting_languages, R.drawable.ic_translate);
+        setRowIcon(R.id.setting_home_privacy_stats, R.drawable.ic_security);
+        setRowIcon(R.id.setting_home_quick_access, R.drawable.ic_bookmarks);
+        setRowIcon(R.id.setting_text_size, R.drawable.ic_text);
+        setRowIcon(R.id.setting_downloads_folder, R.drawable.ic_download);
+        setRowIcon(R.id.setting_download_wifi_only, R.drawable.ic_download);
+        setRowIcon(R.id.setting_download_bandwidth_limit, R.drawable.ic_speed);
+        setRowIcon(R.id.setting_javascript, R.drawable.ic_globe);
+        setRowIcon(R.id.setting_block_popups, R.drawable.ic_security);
+        setRowIcon(R.id.setting_open_links_new_tab, R.drawable.ic_tabs);
+        setRowIcon(R.id.setting_user_agent, R.drawable.ic_globe);
+        setRowIcon(R.id.setting_user_styles, R.drawable.ic_text);
+        setRowIcon(R.id.setting_doh, R.drawable.ic_security);
+        setRowIcon(R.id.setting_remote_debugging, R.drawable.ic_settings);
+        setRowIcon(R.id.setting_help_feedback, R.drawable.ic_help);
+        setRowIcon(R.id.setting_about, R.drawable.ic_help);
+    }
+
+    private void setRowIcon(int rowId, int iconRes) {
+        TextView title = findFirstTextView(findViewById(rowId));
+        if (title == null) {
+            return;
+        }
+        Drawable icon = ContextCompat.getDrawable(this, iconRes);
+        if (icon == null) {
+            return;
+        }
+        icon = DrawableCompat.wrap(icon.mutate());
+        DrawableCompat.setTint(icon, ThemeEngine.homePalette(this).accent);
+        icon.setBounds(0, 0, dp(20), dp(20));
+        title.setCompoundDrawablesRelative(icon, null, null, null);
+        title.setCompoundDrawablePadding(dp(10));
+    }
+
+    private TextView findFirstTextView(View view) {
+        if (view instanceof TextView) {
+            return (TextView) view;
+        }
+        if (!(view instanceof ViewGroup)) {
+            return null;
+        }
+        ViewGroup group = (ViewGroup) view;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            TextView match = findFirstTextView(group.getChildAt(i));
+            if (match != null) {
+                return match;
+            }
+        }
+        return null;
+    }
+
+    private void applyRowMicroInteractions(View view) {
+        if (view == null) {
+            return;
+        }
+        if (view.getId() != View.NO_ID) {
+            try {
+                String name = getResources().getResourceEntryName(view.getId());
+                if (name != null && name.startsWith("setting_")) {
+                    attachPressMicroInteraction(view);
+                }
+            } catch (RuntimeException ignored) {
+            }
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                applyRowMicroInteractions(group.getChildAt(i));
+            }
+        }
+    }
+
+    private void attachPressMicroInteraction(View row) {
+        row.setOnTouchListener((view, event) -> {
+            if (!view.isEnabled()) {
+                return false;
+            }
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                view.animate()
+                        .scaleX(0.985f)
+                        .scaleY(0.985f)
+                        .alpha(0.94f)
+                        .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                        .setDuration(90)
+                        .start();
+            } else if (event.getAction() == MotionEvent.ACTION_UP
+                    || event.getAction() == MotionEvent.ACTION_CANCEL) {
+                view.animate()
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .alpha(1f)
+                        .setInterpolator(new android.view.animation.OvershootInterpolator(1.2f))
+                        .setDuration(160)
+                        .start();
+            }
+            return false;
+        });
+    }
+
+    private void applyAdvancedVisibility() {
+        boolean visible = areAdvancedSettingsVisible();
+        for (int rowId : ADVANCED_ROW_IDS) {
+            setRowWithDividerVisibility(rowId, visible);
+        }
+    }
+
+    private boolean areAdvancedSettingsVisible() {
+        return prefs != null && prefs.getBoolean(
+                SettingsKeys.PREF_SETTINGS_ADVANCED_VISIBLE, false);
+    }
+
+    private void setRowWithDividerVisibility(int rowId, boolean visible) {
+        View row = findViewById(rowId);
+        if (row == null) {
+            return;
+        }
+        int visibility = visible ? View.VISIBLE : View.GONE;
+        row.setVisibility(visibility);
+        if (!(row.getParent() instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup parent = (ViewGroup) row.getParent();
+        int index = parent.indexOfChild(row);
+        if (index > 0) {
+            View previous = parent.getChildAt(index - 1);
+            if (previous.getId() == View.NO_ID) {
+                previous.setVisibility(visibility);
+            }
+        }
+    }
+
+    private NestedScrollView findNestedScrollView(View view) {
+        if (view instanceof NestedScrollView) {
+            return (NestedScrollView) view;
+        }
+        if (!(view instanceof ViewGroup)) {
+            return null;
+        }
+        ViewGroup group = (ViewGroup) view;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            NestedScrollView match = findNestedScrollView(group.getChildAt(i));
+            if (match != null) {
+                return match;
+            }
+        }
+        return null;
+    }
+
+    private int resolveAttr(int attr) {
+        TypedValue typedValue = new TypedValue();
+        getTheme().resolveAttribute(attr, typedValue, true);
+        return typedValue.resourceId;
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
     private void initializeViews() {

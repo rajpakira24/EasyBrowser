@@ -90,6 +90,7 @@ public final class SettingsKeys {
     public static final String PREF_WALLPAPER_FAVORITES_ONLY = "wallpaper_favorites_only";
     public static final String PREF_WALLPAPER_OFFLINE_PACK = "wallpaper_offline_pack";
     public static final String PREF_COLLAPSED_TAB_GROUPS = "collapsed_tab_groups";
+    public static final String PREF_SETTINGS_ADVANCED_VISIBLE = "settings_advanced_visible";
 
     public static final String PREF_MENU_NEW_TAB = "menu_action_new_tab";
     public static final String PREF_MENU_NEW_PRIVATE_TAB = "menu_action_new_private_tab";

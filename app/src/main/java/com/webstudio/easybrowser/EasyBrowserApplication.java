@@ -5,6 +5,7 @@ import android.app.Application;
 import android.content.Context;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.os.UserManager;
 
 import androidx.appcompat.app.AppCompatDelegate;
@@ -16,6 +17,12 @@ import com.webstudio.easybrowser.utils.SettingsKeys;
 import com.webstudio.easybrowser.managers.AppNotificationChannels;
 
 public class EasyBrowserApplication extends Application {
+    private static final long PROCESS_START_ELAPSED_REALTIME = SystemClock.elapsedRealtime();
+
+    public static long getProcessStartElapsedRealtime() {
+        return PROCESS_START_ELAPSED_REALTIME;
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();

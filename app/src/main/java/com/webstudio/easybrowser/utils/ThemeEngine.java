@@ -1,10 +1,13 @@
 package com.webstudio.easybrowser.utils;
 
+import android.app.WallpaperColors;
+import android.app.WallpaperManager;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
+import android.os.Build;
 import android.view.Menu;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -15,6 +18,9 @@ import androidx.preference.PreferenceManager;
 
 import com.webstudio.easybrowser.R;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public final class ThemeEngine {
     private ThemeEngine() {
     }
@@ -24,8 +30,11 @@ public final class ThemeEngine {
         String preset = prefs.getString(SettingsKeys.PREF_THEME_COLOR_PRESET, "blue");
         String pack = prefs.getString(SettingsKeys.PREF_THEME_PACK, "default");
         boolean wallpaperSync = prefs.getBoolean(SettingsKeys.PREF_THEME_WALLPAPER_SYNC, false);
-        Palette palette = wallpaperSync ? wallpaperPalette(prefs) : presetPalette(preset);
-        return applyPack(palette, pack, wallpaperSync);
+        Palette dynamicPalette = "material_you".equals(pack) ? systemWallpaperPalette(context) : null;
+        Palette palette = dynamicPalette != null
+                ? dynamicPalette
+                : (wallpaperSync ? wallpaperPalette(prefs) : presetPalette(preset));
+        return applyPack(palette, pack, wallpaperSync || dynamicPalette != null);
     }
 
     public static int settingsChromeColor(Context context) {
@@ -153,6 +162,54 @@ public final class ThemeEngine {
                 0xFFE05B7A
         };
         return paletteFromAccent(autoAccents[Math.floorMod(dayBucket, autoAccents.length)]);
+    }
+
+    private static Palette systemWallpaperPalette(Context context) {
+        if (context == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.O_MR1) {
+            return null;
+        }
+        try {
+            WallpaperManager wallpaperManager = WallpaperManager.getInstance(context);
+            WallpaperColors colors = wallpaperManager.getWallpaperColors(WallpaperManager.FLAG_SYSTEM);
+            if (colors == null) {
+                return null;
+            }
+            List<Integer> candidates = new ArrayList<>();
+            addWallpaperColor(candidates, colors.getPrimaryColor());
+            addWallpaperColor(candidates, colors.getSecondaryColor());
+            addWallpaperColor(candidates, colors.getTertiaryColor());
+            if (candidates.isEmpty()) {
+                return null;
+            }
+            return paletteFromAccent(bestDynamicAccent(candidates));
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static void addWallpaperColor(List<Integer> colors, Color color) {
+        if (color != null) {
+            colors.add(color.toArgb());
+        }
+    }
+
+    private static int bestDynamicAccent(List<Integer> colors) {
+        int best = colors.get(0) | 0xFF000000;
+        float bestScore = -1f;
+        float[] hsv = new float[3];
+        for (int color : colors) {
+            int opaque = color | 0xFF000000;
+            Color.colorToHSV(opaque, hsv);
+            float saturation = hsv[1];
+            float value = hsv[2];
+            float balancedBrightness = 1f - Math.min(1f, Math.abs(value - 0.62f) / 0.62f);
+            float score = saturation * 0.72f + balancedBrightness * 0.28f;
+            if (score > bestScore) {
+                bestScore = score;
+                best = opaque;
+            }
+        }
+        return best;
     }
 
     private static int collectionAccent(String collection) {

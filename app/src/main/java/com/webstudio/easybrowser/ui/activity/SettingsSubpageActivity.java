@@ -1,6 +1,7 @@
 package com.webstudio.easybrowser.ui.activity;
 
 import android.Manifest;
+import android.app.ActivityManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -10,7 +11,9 @@ import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Debug;
 import android.os.Environment;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.text.InputType;
 import android.text.TextUtils;
@@ -47,6 +50,7 @@ import com.google.android.material.switchmaterial.SwitchMaterial;
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.webstudio.easybrowser.BuildConfig;
+import com.webstudio.easybrowser.EasyBrowserApplication;
 import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.managers.PrivacyStatsManager;
 import com.webstudio.easybrowser.utils.ScreenshotProtection;
@@ -96,6 +100,7 @@ public class SettingsSubpageActivity extends AppCompatActivity {
     public static final String PAGE_PRIVACY_POLICY = "privacy_policy";
     public static final String PAGE_IP_INFRINGEMENT = "ip_infringement";
     public static final String PAGE_DATA_COMPLIANCE = "data_compliance";
+    public static final String PAGE_PERFORMANCE = "performance";
 
     private SharedPreferences prefs;
     private LinearLayout content;
@@ -264,6 +269,9 @@ public class SettingsSubpageActivity extends AppCompatActivity {
             case PAGE_SHIELDS:
                 buildShieldsPage();
                 break;
+            case PAGE_PERFORMANCE:
+                buildPerformancePage();
+                break;
             case PAGE_TERMS_OF_USE:
                 buildTermsOfUsePage();
                 break;
@@ -313,6 +321,8 @@ public class SettingsSubpageActivity extends AppCompatActivity {
                 return R.string.downloads;
             case PAGE_SHIELDS:
                 return R.string.shields;
+            case PAGE_PERFORMANCE:
+                return R.string.performance_benchmark;
             case PAGE_TERMS_OF_USE:
                 return R.string.terms_of_use;
             case PAGE_PRIVACY_POLICY:
@@ -1049,6 +1059,10 @@ public class SettingsSubpageActivity extends AppCompatActivity {
         LinearLayout colors = addCard();
         addThemeColorPreviewRow(colors);
         addThemePackPreviewRow(colors);
+        if ("material_you".equals(prefs.getString(SettingsKeys.PREF_THEME_PACK, "default"))) {
+            addInfoRow(colors, R.string.theme_material_you_dynamic,
+                    R.string.theme_material_you_dynamic_summary);
+        }
         addSwitchRow(colors, R.string.theme_wallpaper_sync,
                 R.string.theme_wallpaper_sync_summary,
                 SettingsKeys.PREF_THEME_WALLPAPER_SYNC, false,
@@ -1620,6 +1634,68 @@ public class SettingsSubpageActivity extends AppCompatActivity {
                 SettingsKeys.PREF_ADDRESS_BAR_POSITION, "bottom", null);
     }
 
+    private void buildPerformancePage() {
+        addParagraph(R.string.performance_benchmark_summary);
+
+        LinearLayout live = addCard();
+        addStaticRow(live, getString(R.string.performance_process_startup),
+                formatDuration(SystemClock.elapsedRealtime()
+                        - EasyBrowserApplication.getProcessStartElapsedRealtime()), null);
+        addStaticRow(live, getString(R.string.performance_process_memory),
+                getProcessMemorySummary(), null);
+        addStaticRow(live, getString(R.string.performance_heap_usage),
+                getHeapUsageSummary(), null);
+        addStaticRow(live, getString(R.string.performance_build),
+                getString(R.string.performance_build_summary,
+                        BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE,
+                        BuildConfig.DEBUG ? "debug" : "release"), null);
+
+        LinearLayout actions = addCard();
+        addStaticRow(actions, getString(R.string.performance_refresh),
+                getString(R.string.performance_refresh_summary), this::buildPage);
+        addStaticRow(actions, getString(R.string.performance_compare_title),
+                getString(R.string.performance_compare_summary), null);
+    }
+
+    private String getProcessMemorySummary() {
+        ActivityManager activityManager = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
+        if (activityManager == null) {
+            return getString(R.string.performance_unavailable);
+        }
+        Debug.MemoryInfo[] infos = activityManager.getProcessMemoryInfo(
+                new int[]{android.os.Process.myPid()});
+        if (infos == null || infos.length == 0) {
+            return getString(R.string.performance_unavailable);
+        }
+        Debug.MemoryInfo info = infos[0];
+        return getString(R.string.performance_memory_format,
+                kbToMb(info.getTotalPss()),
+                kbToMb(info.getTotalPrivateDirty()));
+    }
+
+    private String getHeapUsageSummary() {
+        Runtime runtime = Runtime.getRuntime();
+        long usedBytes = runtime.totalMemory() - runtime.freeMemory();
+        return getString(R.string.performance_heap_format,
+                bytesToMb(usedBytes),
+                bytesToMb(runtime.maxMemory()));
+    }
+
+    private String formatDuration(long millis) {
+        if (millis < 1000L) {
+            return getString(R.string.performance_duration_ms, millis);
+        }
+        return getString(R.string.performance_duration_seconds, millis / 1000f);
+    }
+
+    private float kbToMb(int kilobytes) {
+        return kilobytes / 1024f;
+    }
+
+    private float bytesToMb(long bytes) {
+        return bytes / 1024f / 1024f;
+    }
+
     private void addPermissionChoiceRow(LinearLayout card, int titleRes, String prefKey) {
         addChoiceRow(card, titleRes, R.string.default_permission_summary,
                 prefKey, SettingsKeys.VALUE_ASK,
@@ -1757,6 +1833,7 @@ public class SettingsSubpageActivity extends AppCompatActivity {
             TextView chevron = createValue(">");
             row.addView(chevron);
             row.setOnClickListener(v -> action.run());
+            attachPressMicroInteraction(row);
         }
         addRow(card, row);
     }
@@ -1785,6 +1862,7 @@ public class SettingsSubpageActivity extends AppCompatActivity {
         });
         row.addView(toggle);
         row.setOnClickListener(v -> toggle.toggle());
+        attachPressMicroInteraction(row);
         addRow(card, row);
     }
 
@@ -1848,6 +1926,7 @@ public class SettingsSubpageActivity extends AppCompatActivity {
         row.addView(createValue(">"));
         row.setOnClickListener(v -> showChoiceDialog(titleRes, key, defaultValue,
                 labelResIds, values, valueView, onChanged));
+        attachPressMicroInteraction(row);
         addRow(card, row);
     }
 
@@ -2176,6 +2255,7 @@ public class SettingsSubpageActivity extends AppCompatActivity {
             }
             buildPage();
         });
+        attachPressMicroInteraction(row);
         addRow(card, row);
     }
 
@@ -2200,6 +2280,33 @@ public class SettingsSubpageActivity extends AppCompatActivity {
         row.setMinimumHeight(dp(64));
         row.setBackgroundResource(resolveAttr(android.R.attr.selectableItemBackground));
         return row;
+    }
+
+    private void attachPressMicroInteraction(View row) {
+        row.setOnTouchListener((view, event) -> {
+            if (!view.isEnabled()) {
+                return false;
+            }
+            if (event.getAction() == android.view.MotionEvent.ACTION_DOWN) {
+                view.animate()
+                        .scaleX(0.985f)
+                        .scaleY(0.985f)
+                        .alpha(0.94f)
+                        .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                        .setDuration(90)
+                        .start();
+            } else if (event.getAction() == android.view.MotionEvent.ACTION_UP
+                    || event.getAction() == android.view.MotionEvent.ACTION_CANCEL) {
+                view.animate()
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .alpha(1f)
+                        .setInterpolator(new android.view.animation.OvershootInterpolator(1.2f))
+                        .setDuration(160)
+                        .start();
+            }
+            return false;
+        });
     }
 
     private LinearLayout createTextColumn() {
