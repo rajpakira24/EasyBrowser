@@ -17,7 +17,19 @@ public final class SettingsKeys {
 
     public static final String PREF_BACKGROUND_PLAY_ENABLED = "background_play_enabled";
     public static final String PREF_DESKTOP_SITE_DEFAULT = "desktop_site_default";
+    public static final String PREF_HOMEPAGE = "homepage";
+    public static final String PREF_SEARCH_ENGINE_URL = "search_engine_url";
+    public static final String PREF_CUSTOM_SEARCH_ENGINES = "custom_search_engines";
+    public static final String PREF_USER_AGENT_PRESET = "user_agent_preset";
+    public static final String PREF_USER_AGENT_CUSTOM_STRING = "user_agent_custom_string";
     public static final String PREF_THEME_MODE = "theme_mode";
+    public static final String PREF_THEME_COLOR_PRESET = "theme_color_preset";
+    public static final String PREF_THEME_PACK = "theme_pack";
+    public static final String PREF_THEME_WALLPAPER_SYNC = "theme_wallpaper_sync";
+    public static final String PREF_STARTUP_MODE = "startup_mode";
+    public static final String PREF_BROWSER_CRASH_RESTORE_PENDING =
+            "browser_crash_restore_pending";
+    public static final String PREF_TAB_LAYOUT_MODE = "tab_layout_mode";
     public static final String PREF_ADDRESS_BAR_POSITION = "address_bar_position";
     public static final String PREF_BOTTOM_NAVIGATION_ENABLED = "bottom_navigation_enabled";
     public static final String PREF_SHOW_TAB_UNDO = "show_tab_undo";
@@ -39,6 +51,45 @@ public final class SettingsKeys {
             "download_progress_notifications";
     public static final String PREF_DOWNLOAD_COMPLETION_NOTIFICATIONS =
             "download_completion_notifications";
+    public static final String PREF_BROWSER_ALERT_NOTIFICATIONS =
+            "browser_alert_notifications";
+    public static final String PREF_PRIVACY_NOTIFICATIONS =
+            "privacy_notifications";
+    public static final String PREF_WEATHER_NOTIFICATIONS =
+            "weather_notifications";
+    public static final String PREF_REWARDS_NOTIFICATIONS =
+            "rewards_notifications";
+    public static final String PREF_AI_NOTIFICATIONS =
+            "ai_notifications";
+    public static final String PREF_UPDATE_NOTIFICATIONS =
+            "update_notifications";
+    public static final String PREF_NOTIFICATION_PERMISSION_REQUESTED =
+            "notification_permission_requested";
+
+    public static final String PREF_SHOW_PRIVACY_STATS = "show_privacy_stats";
+    public static final String PREF_SHOW_QUICK_ACCESS = "show_quick_access";
+    public static final String PREF_SHOW_WEATHER_WIDGET = "show_weather_widget";
+    public static final String PREF_WEATHER_LOCATION_NAME = "weather_location_name";
+    public static final String PREF_WEATHER_LATITUDE = "weather_latitude";
+    public static final String PREF_WEATHER_LONGITUDE = "weather_longitude";
+    public static final String PREF_WEATHER_UNITS = "weather_units";
+    public static final String PREF_WEATHER_USE_CURRENT_LOCATION =
+            "weather_use_current_location";
+    public static final String PREF_WEATHER_LOCATION_PERMISSION_REQUESTED =
+            "weather_location_permission_requested";
+    public static final String PREF_WEATHER_PRECISE_LOCATION_PERMISSION_REQUESTED =
+            "weather_precise_location_permission_requested";
+
+    public static final String PREF_WALLPAPER_MODE = "wallpaper_mode";
+    public static final String PREF_WALLPAPER_COLLECTION = "wallpaper_collection";
+    public static final String PREF_WALLPAPER_USER_URI = "wallpaper_user_uri";
+    public static final String PREF_WALLPAPER_USER_URIS = "wallpaper_user_uris";
+    public static final String PREF_WALLPAPER_BLUR = "wallpaper_blur";
+    public static final String PREF_WALLPAPER_OVERLAY = "wallpaper_overlay";
+    public static final String PREF_WALLPAPER_FAVORITES = "wallpaper_favorites";
+    public static final String PREF_WALLPAPER_FAVORITES_ONLY = "wallpaper_favorites_only";
+    public static final String PREF_WALLPAPER_OFFLINE_PACK = "wallpaper_offline_pack";
+    public static final String PREF_COLLAPSED_TAB_GROUPS = "collapsed_tab_groups";
 
     public static final String PREF_MENU_NEW_TAB = "menu_action_new_tab";
     public static final String PREF_MENU_NEW_PRIVATE_TAB = "menu_action_new_private_tab";

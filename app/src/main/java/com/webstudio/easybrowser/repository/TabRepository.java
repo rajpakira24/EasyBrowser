@@ -568,6 +568,8 @@ public class TabRepository {
             tab.setLastAccessed(entity.getLastAccessed());
             tab.setPosition(entity.getPosition());
             tab.setPinned(entity.isPinned());
+            tab.setLocked(entity.isLocked());
+            tab.setScrollY(entity.getScrollY());
             tab.setFaviconUri(entity.getFaviconPath() != null
                     ? entity.getFaviconPath()
                     : entity.getFavicon());
@@ -616,6 +618,8 @@ public class TabRepository {
         entity.setLastAccessed(tab.getLastAccessed());
         entity.setPosition(tab.getPosition());
         entity.setPinned(tab.isPinned());
+        entity.setLocked(tab.isLocked());
+        entity.setScrollY(tab.getScrollY());
         return entity;
     }
 

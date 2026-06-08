@@ -45,6 +45,7 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
     private static final int MENU_DELETE = 3;
     private static final int MENU_COLOR = 4;
     private static final int MENU_CLOSE_GROUP = 5;
+    private static final int MENU_TOGGLE_COLLAPSE = 6;
 
     public interface Listener {
         void onOpenGroup(TabGroup group, View sourceView);
@@ -55,6 +56,7 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
         void onMoveTabToGroup(Tab tab, TabGroup targetGroup);
         void onCreateGroupFromTabs(Tab firstTab, Tab secondTab);
         void onCloseGroup(TabGroup group);
+        void onToggleGroupCollapsed(TabGroup group);
         void onCloseTab(Tab tab);
         void onGroupLongClick(TabGroup group);
         void onTabLongClick(Tab tab, View anchor);
@@ -88,6 +90,7 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
     private final List<DisplayItem> items = new ArrayList<>();
     private final Set<String> selectedGroupIds = new HashSet<>();
     private final Set<String> selectedTabIds = new HashSet<>();
+    private final Set<String> collapsedGroupIds = new HashSet<>();
     private boolean gridMode = true;
     private boolean showGroupCloseButton;
 
@@ -133,6 +136,19 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
 
     public void setShowGroupCloseButton(boolean showGroupCloseButton) {
         this.showGroupCloseButton = showGroupCloseButton;
+        notifyDataSetChanged();
+    }
+
+    public void setCollapsedGroupIds(Set<String> groupIds) {
+        Set<String> nextIds = new HashSet<>();
+        if (groupIds != null) {
+            nextIds.addAll(groupIds);
+        }
+        if (collapsedGroupIds.equals(nextIds)) {
+            return;
+        }
+        collapsedGroupIds.clear();
+        collapsedGroupIds.addAll(nextIds);
         notifyDataSetChanged();
     }
 
@@ -297,6 +313,7 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
             String titleSummary = buildTitleSummary(group.getTabs());
             boolean hasCustomTitle = !TextUtils.isEmpty(group.getGroupName())
                     && !defaultGroupTitle.equals(group.getGroupName());
+            boolean collapsed = collapsedGroupIds.contains(group.getGroupId());
             binding.tabCount.setText(hasCustomTitle ? groupTitle + " - " + countText : countText);
             binding.groupCard.setContentDescription(TextUtils.isEmpty(titleSummary)
                     ? groupTitle + ", " + countText
@@ -305,21 +322,25 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
             binding.groupCard.setCardBackgroundColor(
                     cardBackgroundForGroup(itemView.getContext(), group.getGroupColor()));
             applyGroupTextColors();
-            configureGroupCollage(count, group.getGroupColor());
-            bindPreview(binding.preview1, binding.favicon1, binding.title1, group.getTabs(), 0);
-            bindPreview(binding.preview2, binding.favicon2, binding.title2, group.getTabs(), 1);
-            bindPreview(binding.preview3, binding.favicon3, binding.title3, group.getTabs(), 2);
-            if (count == 3) {
-                clearEmptyImageOnlyPreview(binding.preview4);
+            if (collapsed) {
+                binding.moreCount.setVisibility(View.GONE);
             } else {
-                bindImageOnlyPreview(binding.preview4, group.getTabs(), 3);
+                configureGroupCollage(count, group.getGroupColor());
+                bindPreview(binding.preview1, binding.favicon1, binding.title1, group.getTabs(), 0);
+                bindPreview(binding.preview2, binding.favicon2, binding.title2, group.getTabs(), 1);
+                bindPreview(binding.preview3, binding.favicon3, binding.title3, group.getTabs(), 2);
+                if (count == 3) {
+                    clearEmptyImageOnlyPreview(binding.preview4);
+                } else {
+                    bindImageOnlyPreview(binding.preview4, group.getTabs(), 3);
+                }
+                int extra = count - 4;
+                binding.moreCount.setVisibility(extra > 0 ? View.VISIBLE : View.GONE);
+                if (extra > 0) {
+                    binding.moreCount.setText("+" + extra);
+                }
             }
-            int extra = count - 4;
-            binding.moreCount.setVisibility(extra > 0 ? View.VISIBLE : View.GONE);
-            if (extra > 0) {
-                binding.moreCount.setText("+" + extra);
-            }
-            applyMode(selectedGroupIds.contains(group.getGroupId()), group.getGroupColor());
+            applyMode(selectedGroupIds.contains(group.getGroupId()), group.getGroupColor(), collapsed);
             bindGroupOpenTargets(group);
             bindGroupLongPressTargets(group);
             binding.pinnedIcon.setVisibility(View.GONE);
@@ -359,7 +380,7 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
             bindStandalonePreview(tab);
             binding.moreCount.setVisibility(View.GONE);
             applyMode(selectedTabIds.contains(tab.getId()), ContextCompat.getColor(
-                    itemView.getContext(), R.color.tab_manager_text_secondary));
+                    itemView.getContext(), R.color.tab_manager_text_secondary), false);
             bindTabOpenTargets(tab);
             bindTabLongPressTargets(tab);
             binding.pinnedIcon.setVisibility(tab.isPinned() ? View.VISIBLE : View.GONE);
@@ -569,10 +590,11 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
             cell.setLayoutParams(params);
         }
 
-        private void applyMode(boolean selected, int color) {
+        private void applyMode(boolean selected, int color, boolean collapsed) {
             ViewGroup.LayoutParams previewParams = binding.previewGrid.getLayoutParams();
-            previewParams.height = dp(gridMode ? 190 : 142);
+            previewParams.height = dp(collapsed ? 0 : (gridMode ? 190 : 142));
             binding.previewGrid.setLayoutParams(previewParams);
+            binding.previewGrid.setVisibility(collapsed ? View.GONE : View.VISIBLE);
             binding.groupCard.setStrokeColor(selected ? color : Color.TRANSPARENT);
             binding.groupCard.setStrokeWidth(selected ? dp(3) : 0);
         }
@@ -703,6 +725,10 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
             menu.getMenu().add(Menu.NONE, MENU_OPEN, Menu.NONE, R.string.open_group);
             menu.getMenu().add(Menu.NONE, MENU_RENAME, Menu.NONE, R.string.rename_group);
             menu.getMenu().add(Menu.NONE, MENU_COLOR, Menu.NONE, R.string.change_group_color);
+            menu.getMenu().add(Menu.NONE, MENU_TOGGLE_COLLAPSE, Menu.NONE,
+                    collapsedGroupIds.contains(group.getGroupId())
+                            ? R.string.expand_group
+                            : R.string.collapse_group);
             menu.getMenu().add(Menu.NONE, MENU_CLOSE_GROUP, Menu.NONE, R.string.close_group);
             menu.getMenu().add(Menu.NONE, MENU_DELETE, Menu.NONE, R.string.delete_group);
             menu.setOnMenuItemClickListener(item -> {
@@ -714,6 +740,9 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
                     return true;
                 } else if (item.getItemId() == MENU_COLOR) {
                     listener.onChangeGroupColor(group);
+                    return true;
+                } else if (item.getItemId() == MENU_TOGGLE_COLLAPSE) {
+                    listener.onToggleGroupCollapsed(group);
                     return true;
                 } else if (item.getItemId() == MENU_CLOSE_GROUP) {
                     listener.onCloseGroup(group);

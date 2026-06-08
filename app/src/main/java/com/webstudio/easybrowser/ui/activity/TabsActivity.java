@@ -27,6 +27,8 @@ import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.adapters.TabsAdapter;
 import com.webstudio.easybrowser.models.Tab;
 import com.webstudio.easybrowser.utils.ScreenshotProtection;
+import com.webstudio.easybrowser.utils.TabActionContract;
+import com.webstudio.easybrowser.utils.ThemeEngine;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -56,6 +58,7 @@ public class TabsActivity extends AppCompatActivity implements TabsAdapter.OnTab
     public static final String EXTRA_TAB_CREATED_AT = "tab_created_at";
     public static final String EXTRA_TAB_LAST_ACCESSED = "tab_last_accessed";
     public static final String EXTRA_TAB_PINNED_STATES = "tab_pinned_states";
+    public static final String EXTRA_TAB_LOCKED_STATES = "tab_locked_states";
     public static final String RESULT_TAB_GROUP_IDS = "tab_group_ids";
     public static final String RESULT_TAB_GROUP_NAMES = "tab_group_names";
 
@@ -109,6 +112,7 @@ public class TabsActivity extends AppCompatActivity implements TabsAdapter.OnTab
         ArrayList<String> parentIds = intent.getStringArrayListExtra(EXTRA_TAB_PARENT_IDS);
         boolean[] privateStates = intent.getBooleanArrayExtra(EXTRA_TAB_PRIVATE_STATES);
         boolean[] pinnedStates = intent.getBooleanArrayExtra(EXTRA_TAB_PINNED_STATES);
+        boolean[] lockedStates = intent.getBooleanArrayExtra(EXTRA_TAB_LOCKED_STATES);
         currentTabId = intent.getStringExtra(EXTRA_CURRENT_TAB_ID);
         if (ids == null || titles == null || urls == null || privateStates == null) {
             return;
@@ -123,6 +127,7 @@ public class TabsActivity extends AppCompatActivity implements TabsAdapter.OnTab
                 tab.setParentTabId(parentIds.get(i));
             }
             tab.setPinned(pinnedStates != null && i < pinnedStates.length && pinnedStates[i]);
+            tab.setLocked(lockedStates != null && i < lockedStates.length && lockedStates[i]);
             tabs.add(tab);
         }
     }
@@ -145,6 +150,8 @@ public class TabsActivity extends AppCompatActivity implements TabsAdapter.OnTab
             }
             return false;
         });
+        ThemeEngine.applyChrome(this, toolbar);
+        tabCount.setTextColor(ThemeEngine.foregroundFor(ThemeEngine.settingsChromeColor(this)));
     }
 
     private void setupRecyclerView() {
@@ -371,6 +378,11 @@ public class TabsActivity extends AppCompatActivity implements TabsAdapter.OnTab
 
     @Override
     public void onCloseTab(Tab tab) {
+        if (tab != null && tab.isLocked()) {
+            Toast.makeText(this, R.string.locked_tab_close_blocked, Toast.LENGTH_SHORT).show();
+            refreshTabs();
+            return;
+        }
         closedTabIds.add(tab.getId());
         tabs.remove(tab);
         if (tab.getId().equals(currentTabId)) {
@@ -552,6 +564,7 @@ public class TabsActivity extends AppCompatActivity implements TabsAdapter.OnTab
 
     private void setTabsResult() {
         Intent result = new Intent();
+        result.putExtra(TabActionContract.EXTRA_ACTIONS, createResultActionsPayload());
         result.putStringArrayListExtra(RESULT_CLOSED_TAB_IDS, closedTabIds);
         if (selectedTabId != null) {
             result.putExtra(RESULT_SELECTED_TAB_ID, selectedTabId);
@@ -574,6 +587,26 @@ public class TabsActivity extends AppCompatActivity implements TabsAdapter.OnTab
         }
         setResult(RESULT_OK, result);
         resultSet = true;
+    }
+
+    private String createResultActionsPayload() {
+        ArrayList<TabActionContract.Action> actions = new ArrayList<>();
+        if (!closedTabIds.isEmpty()) {
+            actions.add(TabActionContract.closeTabs(closedTabIds));
+        }
+        if (restoreUrl != null && !restoreUrl.trim().isEmpty()) {
+            actions.add(TabActionContract.restoreUrl(restoreUrl, false));
+        }
+        if (createPrivateTab != null) {
+            actions.add(TabActionContract.createTab(createPrivateTab, null, null, 0));
+        }
+        if (groupsChanged) {
+            actions.add(TabActionContract.groupsChanged());
+        }
+        if (selectedTabId != null && !selectedTabId.trim().isEmpty()) {
+            actions.add(TabActionContract.selectTab(selectedTabId));
+        }
+        return TabActionContract.serialize(actions);
     }
 
     @Override

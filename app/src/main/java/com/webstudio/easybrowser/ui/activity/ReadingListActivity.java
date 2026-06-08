@@ -17,6 +17,7 @@ import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.adapters.ReadingListAdapter;
 import com.webstudio.easybrowser.models.ReadingListItem;
 import com.webstudio.easybrowser.repository.ReadingListRepository;
+import com.webstudio.easybrowser.utils.ThemeEngine;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -45,6 +46,7 @@ public class ReadingListActivity extends AppCompatActivity implements ReadingLis
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
             getSupportActionBar().setTitle(R.string.reading_list);
         }
+        ThemeEngine.applyChrome(this, toolbar);
     }
 
     private void initializeViews() {

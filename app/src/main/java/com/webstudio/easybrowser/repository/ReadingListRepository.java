@@ -9,7 +9,6 @@ import com.webstudio.easybrowser.models.ReadingListItem;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 
 public class ReadingListRepository {
     private final AppDatabase database;
@@ -17,7 +16,7 @@ public class ReadingListRepository {
 
     public ReadingListRepository(Context context) {
         database = AppDatabase.getInstance(context);
-        executor = Executors.newSingleThreadExecutor();
+        executor = AppDatabase.getDatabaseExecutor();
     }
 
     public interface ReadingListCallback {

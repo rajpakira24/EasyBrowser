@@ -1,6 +1,7 @@
 package com.webstudio.easybrowser.ui.activity;
 
 import android.content.Intent;
+import android.content.res.ColorStateList;
 import android.os.Build;
 import android.os.Bundle;
 import android.transition.AutoTransition;
@@ -18,7 +19,6 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.content.ContextCompat;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.preference.PreferenceManager;
 import androidx.recyclerview.widget.DefaultItemAnimator;
@@ -37,9 +37,12 @@ import com.webstudio.easybrowser.models.Tab;
 import com.webstudio.easybrowser.models.TabGroup;
 import com.webstudio.easybrowser.repository.BookmarkRepository;
 import com.webstudio.easybrowser.repository.TabRepository;
+import com.webstudio.easybrowser.utils.AppSettings;
 import com.webstudio.easybrowser.utils.SystemBarUtils;
 import com.webstudio.easybrowser.utils.ScreenshotProtection;
 import com.webstudio.easybrowser.utils.SettingsKeys;
+import com.webstudio.easybrowser.utils.TabActionContract;
+import com.webstudio.easybrowser.utils.ThemeEngine;
 import com.webstudio.easybrowser.utils.UrlUtils;
 
 import java.util.ArrayList;
@@ -65,10 +68,13 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
     public static final String RESULT_REORDERED_PRIVATE_TAB_IDS = "reordered_private_tab_ids";
     public static final String RESULT_PINNED_TAB_IDS = "pinned_tab_ids";
     public static final String RESULT_UNPINNED_TAB_IDS = "unpinned_tab_ids";
+    public static final String RESULT_LOCKED_TAB_IDS = "locked_tab_ids";
+    public static final String RESULT_UNLOCKED_TAB_IDS = "unlocked_tab_ids";
 
     private ActivityTabManagerBinding binding;
     private TabGroupsViewModel viewModel;
     private BookmarkRepository bookmarkRepository;
+    private AppSettings appSettings;
     private TabGroupAdapter adapter;
     private ItemTouchHelper overviewItemTouchHelper;
     private ActivityResultLauncher<Intent> groupTabsLauncher;
@@ -87,6 +93,8 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
     private final ArrayList<String> reorderedPrivateTabIds = new ArrayList<>();
     private final ArrayList<String> pinnedTabIds = new ArrayList<>();
     private final ArrayList<String> unpinnedTabIds = new ArrayList<>();
+    private final ArrayList<String> lockedTabIds = new ArrayList<>();
+    private final ArrayList<String> unlockedTabIds = new ArrayList<>();
     private final Map<String, PendingClosedTab> pendingClosedTabs = new LinkedHashMap<>();
     private final Set<String> selectedGroupIds = new LinkedHashSet<>();
     private final Set<String> selectedTabIds = new LinkedHashSet<>();
@@ -132,6 +140,9 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
         setContentView(binding.getRoot());
         applyTabManagerSystemBars();
         currentTabId = getIntent().getStringExtra(TabsActivity.EXTRA_CURRENT_TAB_ID);
+        appSettings = new AppSettings(this);
+        gridMode = !"list".equals(PreferenceManager.getDefaultSharedPreferences(this)
+                .getString(SettingsKeys.PREF_TAB_LAYOUT_MODE, "grid"));
         restoreRuntimeTabsFromIntent(getIntent());
         viewModel = new ViewModelProvider(this).get(TabGroupsViewModel.class);
         bookmarkRepository = new BookmarkRepository(this);
@@ -140,6 +151,7 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
         setupSelectionBar();
         setupRecycler();
         setupSearch();
+        applyTabManagerThemeChrome();
         binding.fabNewTab.setOnClickListener(this::showNewTabMenu);
         binding.fabNewTab.setOnLongClickListener(v -> {
             showFabLongPressMenu(v);
@@ -150,8 +162,30 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
     }
 
     private void applyTabManagerSystemBars() {
-        int background = ContextCompat.getColor(this, R.color.tab_manager_background);
-        SystemBarUtils.apply(this, background, background);
+        int chrome = ThemeEngine.settingsChromeColor(this);
+        SystemBarUtils.apply(this, chrome, chrome, ThemeEngine.useDarkSystemBarIcons(chrome));
+    }
+
+    private void applyTabManagerThemeChrome() {
+        ThemeEngine.Palette palette = ThemeEngine.homePalette(this);
+        int chrome = ThemeEngine.settingsChromeColor(this);
+        int foreground = ThemeEngine.foregroundFor(chrome);
+        applyTabManagerSystemBars();
+        binding.topBar.setBackgroundColor(chrome);
+        binding.selectionBar.setBackgroundColor(chrome);
+        binding.backButton.setColorFilter(foreground);
+        binding.viewToggle.setColorFilter(foreground);
+        binding.privateSegment.setColorFilter(foreground);
+        binding.selectionClose.setColorFilter(foreground);
+        binding.regularTabCount.setTextColor(foreground);
+        binding.selectionCount.setTextColor(foreground);
+        binding.actionMove.setTextColor(foreground);
+        binding.actionMerge.setTextColor(foreground);
+        binding.actionDelete.setTextColor(foreground);
+        binding.actionArchive.setTextColor(foreground);
+        binding.fabNewTab.setBackgroundTintList(ColorStateList.valueOf(palette.accent));
+        binding.fabNewTab.setImageTintList(
+                ColorStateList.valueOf(ThemeEngine.foregroundFor(palette.accent)));
     }
 
     private void setupActivityResult() {
@@ -175,6 +209,7 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
                     appendGroupMutations(data);
                     appendReorderedPrivateTabs(data);
                     appendPinMutations(data);
+                    appendLockMutations(data);
                     if (data.hasExtra(TabsActivity.RESULT_CREATE_PRIVATE_TAB)) {
                         createPrivateTab = data.getBooleanExtra(TabsActivity.RESULT_CREATE_PRIVATE_TAB, false);
                         createTabGroupId = data.getStringExtra(GroupTabsActivity.EXTRA_GROUP_ID);
@@ -248,6 +283,7 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
         ArrayList<String> parentIds = intent.getStringArrayListExtra(TabsActivity.EXTRA_TAB_PARENT_IDS);
         boolean[] privateStates = intent.getBooleanArrayExtra(TabsActivity.EXTRA_TAB_PRIVATE_STATES);
         boolean[] pinnedStates = intent.getBooleanArrayExtra(TabsActivity.EXTRA_TAB_PINNED_STATES);
+        boolean[] lockedStates = intent.getBooleanArrayExtra(TabsActivity.EXTRA_TAB_LOCKED_STATES);
         int[] groupColors = intent.getIntArrayExtra(TabsActivity.EXTRA_TAB_GROUP_COLORS);
         int[] positions = intent.getIntArrayExtra(TabsActivity.EXTRA_TAB_POSITIONS);
         long[] createdAt = intent.getLongArrayExtra(TabsActivity.EXTRA_TAB_CREATED_AT);
@@ -275,6 +311,7 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
             }
             tab.setPosition(positions != null && i < positions.length ? positions[i] : i);
             tab.setPinned(pinnedStates != null && i < pinnedStates.length && pinnedStates[i]);
+            tab.setLocked(lockedStates != null && i < lockedStates.length && lockedStates[i]);
             if (createdAt != null && i < createdAt.length && createdAt[i] > 0) {
                 tab.setCreatedAt(createdAt[i]);
             }
@@ -316,10 +353,11 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
         adapter = new TabGroupAdapter(this);
         binding.groupsRecycler.setAdapter(adapter);
         DefaultItemAnimator itemAnimator = new DefaultItemAnimator();
-        itemAnimator.setAddDuration(160);
-        itemAnimator.setRemoveDuration(160);
-        itemAnimator.setMoveDuration(180);
-        itemAnimator.setChangeDuration(120);
+        itemAnimator.setAddDuration(220);
+        itemAnimator.setRemoveDuration(180);
+        itemAnimator.setMoveDuration(220);
+        itemAnimator.setChangeDuration(180);
+        itemAnimator.setSupportsChangeAnimations(true);
         binding.groupsRecycler.setItemAnimator(itemAnimator);
         overviewItemTouchHelper = new ItemTouchHelper(new ItemTouchHelper.SimpleCallback(
                 ItemTouchHelper.UP | ItemTouchHelper.DOWN | ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT,
@@ -389,6 +427,7 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
             }
         });
         overviewItemTouchHelper.attachToRecyclerView(binding.groupsRecycler);
+        adapter.setCollapsedGroupIds(appSettings.getCollapsedGroupIds());
         updateLayoutManager();
         updateViewToggleIcon();
         binding.viewToggle.setOnClickListener(v -> {
@@ -396,6 +435,10 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
             TransitionManager.beginDelayedTransition(binding.groupsRecycler);
             updateLayoutManager();
             adapter.setGridMode(gridMode);
+            PreferenceManager.getDefaultSharedPreferences(this)
+                    .edit()
+                    .putString(SettingsKeys.PREF_TAB_LAYOUT_MODE, gridMode ? "grid" : "list")
+                    .apply();
             updateViewToggleIcon();
         });
     }
@@ -443,6 +486,7 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
             currentStandaloneTabs.clear();
             currentStandaloneTabs.addAll(overview.standaloneTabs);
             beginOverviewTransitionIfNeeded();
+            adapter.setCollapsedGroupIds(appSettings.getCollapsedGroupIds());
             adapter.submitOverview(overview.groups, overview.standaloneTabs);
             adapter.setGridMode(gridMode);
             adapter.setSelectedIds(selectedGroupIds, selectedTabIds);
@@ -459,6 +503,7 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
             currentStandaloneTabs.clear();
             currentStandaloneTabs.addAll(overview.standaloneTabs);
             beginOverviewTransitionIfNeeded();
+            adapter.setCollapsedGroupIds(appSettings.getCollapsedGroupIds());
             adapter.submitOverview(overview.groups, overview.standaloneTabs);
             adapter.setGridMode(gridMode);
             adapter.setSelectedIds(selectedGroupIds, selectedTabIds);
@@ -986,20 +1031,36 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
                 .setMessage(getString(R.string.delete_group_confirm, name))
                 .setNegativeButton(R.string.cancel, null)
                 .setPositiveButton(R.string.delete, (dialog, which) -> {
-                    for (Tab tab : group.getTabs()) {
+                    ArrayList<Tab> closableTabs = getClosableTabs(group.getTabs());
+                    if (closableTabs.isEmpty()) {
+                        Toast.makeText(this, R.string.locked_tab_close_blocked, Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    if (closableTabs.size() < group.getTabs().size()) {
+                        Toast.makeText(this, R.string.locked_tab_close_blocked, Toast.LENGTH_SHORT).show();
+                    }
+                    for (Tab tab : closableTabs) {
                         addClosedTabId(tab.getId());
                     }
                     requestOverviewAnimation();
                     if (group.isPrivate()) {
-                        removeRuntimeTabs(group.getTabs());
+                        removeRuntimeTabs(closableTabs);
                         groupsChanged = true;
                         refreshCounts();
                         loadGroups();
                         return;
                     }
-                    viewModel.deleteGroup(group.getGroupId(), () -> {
+                    if (closableTabs.size() == group.getTabs().size()) {
+                        viewModel.deleteGroup(group.getGroupId(), () -> {
+                            groupsChanged = true;
+                            Toast.makeText(this, R.string.group_deleted, Toast.LENGTH_SHORT).show();
+                            loadGroups();
+                        });
+                        return;
+                    }
+                    viewModel.deleteTabs(getTabIds(closableTabs), () -> {
                         groupsChanged = true;
-                        Toast.makeText(this, R.string.group_deleted, Toast.LENGTH_SHORT).show();
+                        refreshCounts();
                         loadGroups();
                     });
                 })
@@ -1076,6 +1137,22 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
     @Override
     public void onCloseGroup(TabGroup group) {
         onDeleteGroup(group);
+    }
+
+    @Override
+    public void onToggleGroupCollapsed(TabGroup group) {
+        if (group == null) {
+            return;
+        }
+        boolean collapsed = !appSettings.isGroupCollapsed(group.getGroupId());
+        appSettings.setGroupCollapsed(group.getGroupId(), collapsed);
+        Transition transition = new AutoTransition();
+        transition.setDuration(collapsed ? 180 : 220);
+        TransitionManager.beginDelayedTransition(binding.groupsRecycler, transition);
+        adapter.setCollapsedGroupIds(appSettings.getCollapsedGroupIds());
+        Toast.makeText(this,
+                collapsed ? R.string.group_collapsed : R.string.group_expanded,
+                Toast.LENGTH_SHORT).show();
     }
 
     @Override
@@ -1163,16 +1240,22 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
     private void showTabActionMenu(Tab tab, View anchor) {
         PopupMenu menu = new PopupMenu(this, anchor);
         addTabMenuItem(menu, 1, R.string.add_tab_to_group, R.drawable.ic_view_grid);
+        addTabMenuItem(menu, 7, R.string.duplicate_tab, R.drawable.ic_duplicate_tab);
         addTabMenuItem(menu, 2, R.string.add_to_bookmarks, R.drawable.ic_bookmark_border);
         addTabMenuItem(menu, 3, R.string.share, R.drawable.ic_share);
         addTabMenuItem(menu, 4, tab.isPinned() ? R.string.unpin_tab : R.string.pin_tab,
                 R.drawable.ic_pin);
+        addTabMenuItem(menu, 8, tab.isLocked() ? R.string.unlock_tab : R.string.lock_tab,
+                R.drawable.ic_lock);
         addTabMenuItem(menu, 5, R.string.select_tab, R.drawable.ic_edit);
         addTabMenuItem(menu, 6, R.string.close_tab_sentence, R.drawable.ic_close);
         forceShowMenuIcons(menu);
         menu.setOnMenuItemClickListener(item -> {
             if (item.getItemId() == 1) {
                 onAddTabToGroup(tab);
+                return true;
+            } else if (item.getItemId() == 7) {
+                onDuplicateTab(tab);
                 return true;
             } else if (item.getItemId() == 2) {
                 onBookmarkTab(tab);
@@ -1182,6 +1265,9 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
                 return true;
             } else if (item.getItemId() == 4) {
                 onPinTab(tab);
+                return true;
+            } else if (item.getItemId() == 8) {
+                setTabLocked(tab, !tab.isLocked());
                 return true;
             } else if (item.getItemId() == 5) {
                 selectSingleTab(tab);
@@ -1274,6 +1360,48 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
         }));
     }
 
+    private void setTabLocked(Tab tab, boolean locked) {
+        if (tab == null) {
+            return;
+        }
+        Tab runtimeTab = findRuntimeTab(tab.getId());
+        Tab changedTab = runtimeTab != null ? runtimeTab : tab;
+        changedTab.setLocked(locked);
+        recordLockedMutation(changedTab);
+        groupsChanged = true;
+        requestOverviewAnimation();
+        if (tab.isPrivate()) {
+            loadGroups();
+            Toast.makeText(this,
+                    locked ? R.string.tab_locked : R.string.tab_unlocked,
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+        viewModel.saveTab(changedTab, () -> {
+            loadGroups();
+            Toast.makeText(this,
+                    locked ? R.string.tab_locked : R.string.tab_unlocked,
+                    Toast.LENGTH_SHORT).show();
+        });
+    }
+
+    private void recordLockedMutation(Tab tab) {
+        if (tab == null) {
+            return;
+        }
+        if (tab.isLocked()) {
+            unlockedTabIds.remove(tab.getId());
+            if (!lockedTabIds.contains(tab.getId())) {
+                lockedTabIds.add(tab.getId());
+            }
+        } else {
+            lockedTabIds.remove(tab.getId());
+            if (!unlockedTabIds.contains(tab.getId())) {
+                unlockedTabIds.add(tab.getId());
+            }
+        }
+    }
+
     private int firstUnpinnedIndex(List<Tab> tabs) {
         if (tabs == null) {
             return 0;
@@ -1305,6 +1433,10 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
 
     private void closeTab(Tab tab, boolean refresh) {
         if (tab == null) {
+            return;
+        }
+        if (tab.isLocked()) {
+            Toast.makeText(this, R.string.locked_tab_close_blocked, Toast.LENGTH_SHORT).show();
             return;
         }
         if (refresh) {
@@ -1564,6 +1696,58 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
         }
     }
 
+    private ArrayList<Tab> getClosableTabs(List<Tab> tabs) {
+        ArrayList<Tab> closableTabs = new ArrayList<>();
+        if (tabs == null) {
+            return closableTabs;
+        }
+        for (Tab tab : tabs) {
+            if (tab != null && !tab.isLocked()) {
+                closableTabs.add(tab);
+            }
+        }
+        return closableTabs;
+    }
+
+    private ArrayList<String> getTabIds(List<Tab> tabs) {
+        ArrayList<String> ids = new ArrayList<>();
+        if (tabs == null) {
+            return ids;
+        }
+        for (Tab tab : tabs) {
+            if (tab != null) {
+                addUniqueTabId(ids, tab.getId());
+            }
+        }
+        return ids;
+    }
+
+    private void addUniqueTabId(ArrayList<String> tabIds, String tabId) {
+        if (tabId != null && !tabIds.contains(tabId)) {
+            tabIds.add(tabId);
+        }
+    }
+
+    private boolean isTabLocked(String tabId) {
+        Tab runtimeTab = findRuntimeTab(tabId);
+        if (runtimeTab != null) {
+            return runtimeTab.isLocked();
+        }
+        for (Tab tab : currentStandaloneTabs) {
+            if (tabId != null && tabId.equals(tab.getId())) {
+                return tab.isLocked();
+            }
+        }
+        for (TabGroup group : currentGroups) {
+            for (Tab tab : group.getTabs()) {
+                if (tabId != null && tabId.equals(tab.getId())) {
+                    return tab.isLocked();
+                }
+            }
+        }
+        return false;
+    }
+
     private void removeRuntimeTab(String tabId) {
         if (tabId == null) {
             return;
@@ -1725,6 +1909,34 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
         appendPinMutationIds(data.getStringArrayListExtra(RESULT_UNPINNED_TAB_IDS), false);
     }
 
+    private void appendLockMutations(Intent data) {
+        appendLockMutationIds(data.getStringArrayListExtra(RESULT_LOCKED_TAB_IDS), true);
+        appendLockMutationIds(data.getStringArrayListExtra(RESULT_UNLOCKED_TAB_IDS), false);
+    }
+
+    private void appendLockMutationIds(List<String> tabIds, boolean locked) {
+        if (tabIds == null || tabIds.isEmpty()) {
+            return;
+        }
+        for (String tabId : tabIds) {
+            if (locked) {
+                unlockedTabIds.remove(tabId);
+                if (!lockedTabIds.contains(tabId)) {
+                    lockedTabIds.add(tabId);
+                }
+            } else {
+                lockedTabIds.remove(tabId);
+                if (!unlockedTabIds.contains(tabId)) {
+                    unlockedTabIds.add(tabId);
+                }
+            }
+            Tab runtimeTab = findRuntimeTab(tabId);
+            if (runtimeTab != null) {
+                runtimeTab.setLocked(locked);
+            }
+        }
+    }
+
     private void appendPinMutationIds(List<String> tabIds, boolean pinned) {
         if (tabIds == null || tabIds.isEmpty()) {
             return;
@@ -1759,6 +1971,7 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
         ArrayList<String> parentIds = new ArrayList<>();
         boolean[] privateStates = new boolean[tabs.size()];
         boolean[] pinnedStates = new boolean[tabs.size()];
+        boolean[] lockedStates = new boolean[tabs.size()];
         int[] groupColors = new int[tabs.size()];
         int[] positions = new int[tabs.size()];
         long[] createdAt = new long[tabs.size()];
@@ -1775,6 +1988,7 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
             parentIds.add(tab.getParentTabId() != null ? tab.getParentTabId() : "");
             privateStates[i] = tab.isPrivate();
             pinnedStates[i] = tab.isPinned();
+            lockedStates[i] = tab.isLocked();
             groupColors[i] = tab.getGroupColor();
             positions[i] = tab.getPosition();
             createdAt[i] = tab.getCreatedAt();
@@ -1790,6 +2004,7 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
                 .putStringArrayListExtra(TabsActivity.EXTRA_TAB_PARENT_IDS, parentIds)
                 .putExtra(TabsActivity.EXTRA_TAB_PRIVATE_STATES, privateStates)
                 .putExtra(TabsActivity.EXTRA_TAB_PINNED_STATES, pinnedStates)
+                .putExtra(TabsActivity.EXTRA_TAB_LOCKED_STATES, lockedStates)
                 .putExtra(TabsActivity.EXTRA_TAB_GROUP_COLORS, groupColors)
                 .putExtra(TabsActivity.EXTRA_TAB_POSITIONS, positions)
                 .putExtra(TabsActivity.EXTRA_TAB_CREATED_AT, createdAt)
@@ -1901,13 +2116,26 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
         if (allTabIds.isEmpty()) {
             return;
         }
+        ArrayList<String> closableIds = new ArrayList<>();
+        for (String tabId : allTabIds) {
+            if (!isTabLocked(tabId)) {
+                closableIds.add(tabId);
+            }
+        }
+        if (closableIds.isEmpty()) {
+            Toast.makeText(this, R.string.locked_tab_close_blocked, Toast.LENGTH_SHORT).show();
+            return;
+        }
         new MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.close_all_tabs)
                 .setMessage(R.string.close_all_tabs_confirm)
                 .setNegativeButton(R.string.cancel, null)
                 .setPositiveButton(R.string.close_all_tabs, (dialog, which) -> {
+                    if (closableIds.size() < allTabIds.size()) {
+                        Toast.makeText(this, R.string.locked_tab_close_blocked, Toast.LENGTH_SHORT).show();
+                    }
                     closedTabIds.clear();
-                    closedTabIds.addAll(allTabIds);
+                    closedTabIds.addAll(closableIds);
                     groupsChanged = true;
                     finishWithResult();
                 })
@@ -1918,22 +2146,52 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
         if (!isSelectionMode()) {
             return;
         }
+        ArrayList<String> selectedGroupIdsToDelete = new ArrayList<>();
+        ArrayList<String> selectedTabIdsToDelete = new ArrayList<>();
+        ArrayList<Tab> privateTabsToRemove = new ArrayList<>();
+        boolean skippedLockedTabs = false;
         for (TabGroup group : getSelectedGroups()) {
-            for (Tab tab : group.getTabs()) {
-                addClosedTabId(tab.getId());
+            ArrayList<Tab> closableTabs = getClosableTabs(group.getTabs());
+            if (closableTabs.size() < group.getTabs().size()) {
+                skippedLockedTabs = true;
             }
+            if (closableTabs.isEmpty()) {
+                continue;
+            }
+            boolean deleteWholeGroup = closableTabs.size() == group.getTabs().size();
+            for (Tab tab : closableTabs) {
+                addClosedTabId(tab.getId());
+                if (!deleteWholeGroup) {
+                    addUniqueTabId(selectedTabIdsToDelete, tab.getId());
+                }
+            }
+            if (deleteWholeGroup) {
+                addUniqueTabId(selectedGroupIdsToDelete, group.getGroupId());
+            }
+            privateTabsToRemove.addAll(closableTabs);
         }
         for (String selectedTabId : selectedTabIds) {
+            if (isTabLocked(selectedTabId)) {
+                skippedLockedTabs = true;
+                continue;
+            }
             addClosedTabId(selectedTabId);
+            addUniqueTabId(selectedTabIdsToDelete, selectedTabId);
+            Tab selectedTab = findRuntimeTab(selectedTabId);
+            if (selectedTab != null) {
+                privateTabsToRemove.add(selectedTab);
+            }
+        }
+        if (selectedGroupIdsToDelete.isEmpty() && selectedTabIdsToDelete.isEmpty()) {
+            Toast.makeText(this, R.string.locked_tab_close_blocked, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (skippedLockedTabs) {
+            Toast.makeText(this, R.string.locked_tab_close_blocked, Toast.LENGTH_SHORT).show();
         }
         requestOverviewAnimation();
         if (privateMode) {
-            for (TabGroup group : getSelectedGroups()) {
-                removeRuntimeTabs(group.getTabs());
-            }
-            for (String selectedTabId : selectedTabIds) {
-                removeRuntimeTab(selectedTabId);
-            }
+            removeRuntimeTabs(privateTabsToRemove);
             groupsChanged = true;
             clearSelection();
             refreshCounts();
@@ -1946,16 +2204,16 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
             refreshCounts();
             loadGroups();
         };
-        if (!selectedGroupIds.isEmpty()) {
-            viewModel.deleteGroups(new ArrayList<>(selectedGroupIds), () -> {
-                if (!selectedTabIds.isEmpty()) {
-                    viewModel.deleteTabs(new ArrayList<>(selectedTabIds), afterDelete);
+        if (!selectedGroupIdsToDelete.isEmpty()) {
+            viewModel.deleteGroups(selectedGroupIdsToDelete, () -> {
+                if (!selectedTabIdsToDelete.isEmpty()) {
+                    viewModel.deleteTabs(selectedTabIdsToDelete, afterDelete);
                 } else {
                     afterDelete.run();
                 }
             });
         } else {
-            viewModel.deleteTabs(new ArrayList<>(selectedTabIds), afterDelete);
+            viewModel.deleteTabs(selectedTabIdsToDelete, afterDelete);
         }
     }
 
@@ -2081,6 +2339,7 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
 
     private void setTabsResult() {
         Intent result = new Intent();
+        result.putExtra(TabActionContract.EXTRA_ACTIONS, createResultActionsPayload());
         result.putStringArrayListExtra(TabsActivity.RESULT_CLOSED_TAB_IDS, closedTabIds);
         result.putExtra(RESULT_GROUPS_CHANGED, groupsChanged);
         if (selectedTabId != null) {
@@ -2120,11 +2379,91 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
         if (!unpinnedTabIds.isEmpty()) {
             result.putStringArrayListExtra(RESULT_UNPINNED_TAB_IDS, unpinnedTabIds);
         }
+        if (!lockedTabIds.isEmpty()) {
+            result.putStringArrayListExtra(RESULT_LOCKED_TAB_IDS, lockedTabIds);
+        }
+        if (!unlockedTabIds.isEmpty()) {
+            result.putStringArrayListExtra(RESULT_UNLOCKED_TAB_IDS, unlockedTabIds);
+        }
         if (!restoredInactiveTabIds.isEmpty()) {
             result.putStringArrayListExtra(InactiveTabsActivity.RESULT_RESTORED_TAB_IDS, restoredInactiveTabIds);
         }
         setResult(RESULT_OK, result);
         resultSet = true;
+    }
+
+    private String createResultActionsPayload() {
+        ArrayList<TabActionContract.Action> actions = new ArrayList<>();
+        if (!closedTabIds.isEmpty()) {
+            actions.add(TabActionContract.closeTabs(closedTabIds));
+        }
+        if (!restoredInactiveTabIds.isEmpty()) {
+            actions.add(TabActionContract.restoreInactiveTabs(restoredInactiveTabIds));
+        }
+        if (createPrivateTab != null) {
+            actions.add(TabActionContract.createTab(createPrivateTab,
+                    createTabGroupId,
+                    createTabGroupName,
+                    createTabGroupColor));
+        }
+        if (restoreUrl != null) {
+            actions.add(TabActionContract.restoreUrl(restoreUrl, restorePrivateTab));
+        }
+        if (!createdPrivateGroupIds.isEmpty()) {
+            int cursor = 0;
+            int count = Math.min(Math.min(createdPrivateGroupIds.size(),
+                            createdPrivateGroupTabCounts.size()),
+                    Math.min(createdPrivateGroupNames.size(), createdPrivateGroupColors.size()));
+            for (int i = 0; i < count; i++) {
+                int tabCount = Math.max(0, createdPrivateGroupTabCounts.get(i));
+                if (cursor + tabCount > createdPrivateGroupTabIds.size()) {
+                    break;
+                }
+                ArrayList<String> groupTabIds = new ArrayList<>();
+                for (int tabIndex = 0; tabIndex < tabCount; tabIndex++) {
+                    groupTabIds.add(createdPrivateGroupTabIds.get(cursor + tabIndex));
+                }
+                cursor += tabCount;
+                actions.add(TabActionContract.createPrivateGroup(
+                        createdPrivateGroupIds.get(i),
+                        createdPrivateGroupNames.get(i),
+                        createdPrivateGroupColors.get(i),
+                        groupTabIds));
+            }
+        }
+        if (!groupMutationTabIds.isEmpty()) {
+            int count = Math.min(Math.min(groupMutationTabIds.size(), groupMutationGroupIds.size()),
+                    Math.min(groupMutationGroupNames.size(), groupMutationGroupColors.size()));
+            for (int i = 0; i < count; i++) {
+                actions.add(TabActionContract.setGroup(
+                        groupMutationTabIds.get(i),
+                        groupMutationGroupIds.get(i),
+                        groupMutationGroupNames.get(i),
+                        groupMutationGroupColors.get(i)));
+            }
+        }
+        if (!reorderedPrivateTabIds.isEmpty()) {
+            actions.add(TabActionContract.reorderPrivateTabs(reorderedPrivateTabIds));
+        }
+        if (!pinnedTabIds.isEmpty()) {
+            actions.add(TabActionContract.setPinned(pinnedTabIds, true));
+        }
+        if (!unpinnedTabIds.isEmpty()) {
+            actions.add(TabActionContract.setPinned(unpinnedTabIds, false));
+        }
+        if (!lockedTabIds.isEmpty()) {
+            actions.add(TabActionContract.setLocked(lockedTabIds, true));
+        }
+        if (!unlockedTabIds.isEmpty()) {
+            actions.add(TabActionContract.setLocked(unlockedTabIds, false));
+        }
+        if (groupsChanged) {
+            actions.add(TabActionContract.groupsChanged());
+        }
+        if (selectedTabId != null) {
+            actions.add(TabActionContract.selectTab(selectedTabId));
+        }
+        return TabActionContract.serialize(actions);
     }
 
     @Override

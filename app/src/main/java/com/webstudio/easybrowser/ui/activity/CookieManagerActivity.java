@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat;
 import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.managers.RuntimeManager;
 import com.webstudio.easybrowser.repository.HistoryRepository;
+import com.webstudio.easybrowser.utils.ThemeEngine;
 
 import org.mozilla.geckoview.GeckoRuntime;
 import org.mozilla.geckoview.StorageController;
@@ -42,6 +43,7 @@ public class CookieManagerActivity extends AppCompatActivity {
         toolbar.setTitle(R.string.cookie_manager);
         toolbar.setNavigationIcon(R.drawable.ic_arrow_back);
         toolbar.setNavigationOnClickListener(v -> finish());
+        ThemeEngine.applyChrome(this, toolbar);
         root.addView(toolbar, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(56)));
 

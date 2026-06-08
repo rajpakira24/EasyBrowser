@@ -3,6 +3,7 @@ package com.webstudio.easybrowser.ui.activity;
 import android.app.Dialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Build;
@@ -10,6 +11,7 @@ import android.os.Bundle;
 import androidx.preference.PreferenceManager;
 import android.provider.Settings;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -33,6 +35,7 @@ import com.webstudio.easybrowser.repository.HistoryRepository;
 import com.webstudio.easybrowser.utils.ScreenshotProtection;
 import com.webstudio.easybrowser.utils.SettingsKeys;
 import com.webstudio.easybrowser.utils.SystemBarUtils;
+import com.webstudio.easybrowser.utils.ThemeEngine;
 import com.webstudio.easybrowser.utils.UrlUtils;
 
 import org.json.JSONArray;
@@ -65,6 +68,7 @@ public class SettingsActivity extends AppCompatActivity {
     private SwitchMaterial switchHomePrivacyStats;
     private SwitchMaterial switchHomeQuickAccess;
     private SwitchMaterial switchDownloadWifiOnly;
+    private Toolbar toolbar;
 
     private LinearLayout settingSearchEngine;
     private LinearLayout settingHomepage;
@@ -100,31 +104,27 @@ public class SettingsActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
-        applySystemBars();
 
         setupToolbar();
         initializeViews();
+        applyThemedChrome();
         initializeRepositories();
         setupListeners();
         loadSettings();
+        hideDuplicateSettingsRows();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        applyThemedChrome();
         if (prefs != null) {
             loadSettings();
         }
     }
 
-    private void applySystemBars() {
-        SystemBarUtils.apply(this,
-                ContextCompat.getColor(this, R.color.app_bar_background),
-                ContextCompat.getColor(this, R.color.browser_chrome_background));
-    }
-
     private void setupToolbar() {
-        Toolbar toolbar = findViewById(R.id.toolbar);
+        toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
         if (getSupportActionBar() != null) {
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
@@ -136,6 +136,76 @@ public class SettingsActivity extends AppCompatActivity {
             DrawableCompat.setTint(navigationIcon,
                     ContextCompat.getColor(this, R.color.app_bar_foreground));
             toolbar.setNavigationIcon(navigationIcon);
+        }
+    }
+
+    private void applyThemedChrome() {
+        int appBarColor = ThemeEngine.settingsChromeColor(this);
+        int foreground = ThemeEngine.foregroundFor(appBarColor);
+        if (toolbar != null) {
+            toolbar.setBackgroundColor(appBarColor);
+            toolbar.setTitleTextColor(foreground);
+            Drawable navigationIcon = toolbar.getNavigationIcon();
+            if (navigationIcon != null) {
+                navigationIcon = DrawableCompat.wrap(navigationIcon.mutate());
+                DrawableCompat.setTint(navigationIcon, foreground);
+                toolbar.setNavigationIcon(navigationIcon);
+            }
+        }
+        SystemBarUtils.apply(this,
+                appBarColor,
+                appBarColor,
+                ThemeEngine.useDarkSystemBarIcons(appBarColor));
+        tintSettingsTree(findViewById(android.R.id.content), ThemeEngine.homePalette(this).accent);
+        tintSwitches();
+    }
+
+    private void tintSettingsTree(View view, int accent) {
+        if (view == null) {
+            return;
+        }
+        if (view instanceof TextView) {
+            TextView text = (TextView) view;
+            Typeface typeface = text.getTypeface();
+            int textSizeSp = Math.round(text.getTextSize()
+                    / getResources().getDisplayMetrics().scaledDensity);
+            if (typeface != null && typeface.isBold() && textSizeSp <= 14) {
+                text.setTextColor(accent);
+            }
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                tintSettingsTree(group.getChildAt(i), accent);
+            }
+        }
+    }
+
+    private void tintSwitches() {
+        SwitchMaterial[] switches = new SwitchMaterial[]{
+                switchDoNotTrack,
+                switchJavascript,
+                switchRemoteDebugging,
+                switchSaveHistory,
+                switchBlockPopups,
+                switchOpenLinksNewTab,
+                switchCookieBanners,
+                switchStripTrackingParams,
+                switchHttpsOnly,
+                switchPreventScreenshots,
+                switchHomePrivacyStats,
+                switchHomeQuickAccess,
+                switchDownloadWifiOnly,
+                switchAutoClearOnExit,
+                switchAutoClearCookies,
+                switchAutoClearCache,
+                switchAutoClearHistory
+        };
+        for (SwitchMaterial switchMaterial : switches) {
+            if (switchMaterial != null) {
+                switchMaterial.setThumbTintList(ThemeEngine.switchThumbTint(this));
+                switchMaterial.setTrackTintList(ThemeEngine.switchTrackTint(this));
+            }
         }
     }
 
@@ -319,10 +389,10 @@ public class SettingsActivity extends AppCompatActivity {
         });
 
         switchHomePrivacyStats.setOnCheckedChangeListener((buttonView, isChecked) ->
-                prefs.edit().putBoolean("show_privacy_stats", isChecked).apply());
+                prefs.edit().putBoolean(SettingsKeys.PREF_SHOW_PRIVACY_STATS, isChecked).apply());
 
         switchHomeQuickAccess.setOnCheckedChangeListener((buttonView, isChecked) ->
-                prefs.edit().putBoolean("show_quick_access", isChecked).apply());
+                prefs.edit().putBoolean(SettingsKeys.PREF_SHOW_QUICK_ACCESS, isChecked).apply());
 
         switchDownloadWifiOnly.setOnCheckedChangeListener((buttonView, isChecked) -> {
             prefs.edit().putBoolean(SettingsKeys.PREF_DOWNLOAD_WIFI_ONLY, isChecked).apply();
@@ -353,23 +423,88 @@ public class SettingsActivity extends AppCompatActivity {
         }
     }
 
+    private void hideDuplicateSettingsRows() {
+        int[] duplicateRows = new int[]{
+                R.id.setting_cookie_banners,
+                R.id.setting_strip_tracking_params,
+                R.id.setting_https_only,
+                R.id.setting_do_not_track,
+                R.id.setting_home_privacy_stats,
+                R.id.setting_home_quick_access,
+                R.id.setting_text_size,
+                R.id.setting_download_wifi_only,
+                R.id.setting_download_bandwidth_limit,
+                R.id.setting_javascript,
+                R.id.setting_block_popups
+        };
+        for (int rowId : duplicateRows) {
+            View row = findViewById(rowId);
+            if (row != null) {
+                row.setVisibility(View.GONE);
+            }
+        }
+        View root = findViewById(android.R.id.content);
+        if (root instanceof ViewGroup) {
+            cleanHiddenSettingDividers((ViewGroup) root);
+        }
+    }
+
+    private void cleanHiddenSettingDividers(ViewGroup group) {
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View child = group.getChildAt(i);
+            if (child instanceof ViewGroup) {
+                cleanHiddenSettingDividers((ViewGroup) child);
+            }
+        }
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View child = group.getChildAt(i);
+            if (isDivider(child)) {
+                child.setVisibility(hasVisibleContentSibling(group, i, -1)
+                        && hasVisibleContentSibling(group, i, 1)
+                        ? View.VISIBLE : View.GONE);
+            }
+        }
+    }
+
+    private boolean hasVisibleContentSibling(ViewGroup group, int index, int direction) {
+        for (int i = index + direction; i >= 0 && i < group.getChildCount(); i += direction) {
+            View sibling = group.getChildAt(i);
+            if (isDivider(sibling)) {
+                continue;
+            }
+            return sibling.getVisibility() != View.GONE;
+        }
+        return false;
+    }
+
+    private boolean isDivider(View view) {
+        ViewGroup.LayoutParams params = view.getLayoutParams();
+        int dividerMaxHeight = Math.max(1,
+                Math.round(getResources().getDisplayMetrics().density));
+        return view.getId() == View.NO_ID
+                && params != null
+                && params.height > 0
+                && params.height <= dividerMaxHeight
+                && !(view instanceof ViewGroup);
+    }
+
     private void loadSettings() {
         // Load search engine
-        String searchEngine = prefs.getString("search_engine_url", UrlUtils.DEFAULT_SEARCH_ENGINE);
+        String searchEngine = prefs.getString(SettingsKeys.PREF_SEARCH_ENGINE_URL,
+                UrlUtils.DEFAULT_SEARCH_ENGINE);
         if (searchEngine == null || searchEngine.trim().isEmpty()) {
             searchEngine = UrlUtils.DEFAULT_SEARCH_ENGINE;
-            prefs.edit().putString("search_engine_url", searchEngine).apply();
+            prefs.edit().putString(SettingsKeys.PREF_SEARCH_ENGINE_URL, searchEngine).apply();
         }
         String searchEngineName = getSearchEngineName(searchEngine);
         searchEngineValue.setText(searchEngineName);
 
         // Load homepage
-        String homepage = prefs.getString("homepage", UrlUtils.DEFAULT_HOMEPAGE);
+        String homepage = prefs.getString(SettingsKeys.PREF_HOMEPAGE, UrlUtils.DEFAULT_HOMEPAGE);
         homepageValue.setText(homepage);
 
         int textSize = prefs.getInt("text_size_percent", 100);
         textSizeValue.setText(getString(R.string.text_size_percent, textSize));
-        updateAdBlockingValue();
         updateDownloadBandwidthLimitValue();
 
         // Load switches
@@ -383,15 +518,14 @@ public class SettingsActivity extends AppCompatActivity {
         switchStripTrackingParams.setChecked(prefs.getBoolean("strip_tracking_params", true));
         switchHttpsOnly.setChecked(prefs.getBoolean("https_only", true));
         switchPreventScreenshots.setChecked(ScreenshotProtection.isEnabled(this));
-        switchHomePrivacyStats.setChecked(prefs.getBoolean("show_privacy_stats", true));
-        switchHomeQuickAccess.setChecked(prefs.getBoolean("show_quick_access", true));
+        switchHomePrivacyStats.setChecked(prefs.getBoolean(
+                SettingsKeys.PREF_SHOW_PRIVACY_STATS, true));
+        switchHomeQuickAccess.setChecked(prefs.getBoolean(
+                SettingsKeys.PREF_SHOW_QUICK_ACCESS, true));
         switchDownloadWifiOnly.setChecked(prefs.getBoolean(
                 SettingsKeys.PREF_DOWNLOAD_WIFI_ONLY, false));
 
-        // Load downloads folder
-        String folder = prefs.getString(SettingsKeys.PREF_DOWNLOADS_FOLDER_CUSTOM, "");
-        textDownloadsFolder.setText(folder.isEmpty()
-                ? getString(R.string.downloads_folder_default) : folder);
+        textDownloadsFolder.setText(R.string.downloads_page_summary);
 
         updateUserAgentValue();
 
@@ -422,7 +556,7 @@ public class SettingsActivity extends AppCompatActivity {
             allUrls[builtinNames.length + i] = customUrls.get(i);
         }
 
-        String currentEngine = prefs.getString("search_engine_url", builtinUrls[0]);
+        String currentEngine = prefs.getString(SettingsKeys.PREF_SEARCH_ENGINE_URL, builtinUrls[0]);
         int checkedItem = 0;
         for (int i = 0; i < allUrls.length; i++) {
             if (allUrls[i].equals(currentEngine)) { checkedItem = i; break; }
@@ -431,7 +565,8 @@ public class SettingsActivity extends AppCompatActivity {
         new MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.default_search_engine)
                 .setSingleChoiceItems(allNames, checkedItem, (dialog, which) -> {
-                    prefs.edit().putString("search_engine_url", allUrls[which]).apply();
+                    prefs.edit().putString(SettingsKeys.PREF_SEARCH_ENGINE_URL,
+                            allUrls[which]).apply();
                     searchEngineValue.setText(getSearchEngineName(allUrls[which]));
                     dialog.dismiss();
                 })
@@ -468,13 +603,15 @@ public class SettingsActivity extends AppCompatActivity {
                         return;
                     }
                     try {
-                        String json = prefs.getString("custom_search_engines", "[]");
+                        String json = prefs.getString(SettingsKeys.PREF_CUSTOM_SEARCH_ENGINES,
+                                "[]");
                         JSONArray arr = new JSONArray(json);
                         JSONObject obj = new JSONObject();
                         obj.put("name", name);
                         obj.put("url", url);
                         arr.put(obj);
-                        prefs.edit().putString("custom_search_engines", arr.toString()).apply();
+                        prefs.edit().putString(SettingsKeys.PREF_CUSTOM_SEARCH_ENGINES,
+                                arr.toString()).apply();
                         Toast.makeText(this, R.string.custom_engine_saved, Toast.LENGTH_SHORT).show();
                     } catch (JSONException ignored) {}
                 })
@@ -484,7 +621,8 @@ public class SettingsActivity extends AppCompatActivity {
 
     private void loadCustomSearchEngines(List<String> names, List<String> urls) {
         try {
-            JSONArray arr = new JSONArray(prefs.getString("custom_search_engines", "[]"));
+            JSONArray arr = new JSONArray(prefs.getString(
+                    SettingsKeys.PREF_CUSTOM_SEARCH_ENGINES, "[]"));
             for (int i = 0; i < arr.length(); i++) {
                 JSONObject obj = arr.getJSONObject(i);
                 names.add(obj.optString("name", "Custom"));
@@ -498,7 +636,8 @@ public class SettingsActivity extends AppCompatActivity {
         TextInputLayout inputLayout = dialogView.findViewById(R.id.homepage_input_layout);
         TextInputEditText editText = dialogView.findViewById(R.id.homepage_input);
 
-        String currentHomepage = prefs.getString("homepage", UrlUtils.DEFAULT_HOMEPAGE);
+        String currentHomepage = prefs.getString(SettingsKeys.PREF_HOMEPAGE,
+                UrlUtils.DEFAULT_HOMEPAGE);
         editText.setText(currentHomepage);
 
         AlertDialog dialog = new MaterialAlertDialogBuilder(this)
@@ -508,7 +647,7 @@ public class SettingsActivity extends AppCompatActivity {
                     String homepage = editText.getText().toString().trim();
                     if (!homepage.isEmpty()) {
                         homepage = UrlUtils.getUrlOrSearchUrl(this, homepage);
-                        prefs.edit().putString("homepage", homepage).apply();
+                        prefs.edit().putString(SettingsKeys.PREF_HOMEPAGE, homepage).apply();
                         homepageValue.setText(homepage);
                     }
                 })
@@ -804,7 +943,8 @@ public class SettingsActivity extends AppCompatActivity {
         if (url.contains("startpage.com")) return "Startpage";
         // Check custom engines
         try {
-            JSONArray arr = new JSONArray(prefs.getString("custom_search_engines", "[]"));
+            JSONArray arr = new JSONArray(prefs.getString(
+                    SettingsKeys.PREF_CUSTOM_SEARCH_ENGINES, "[]"));
             for (int i = 0; i < arr.length(); i++) {
                 JSONObject obj = arr.getJSONObject(i);
                 if (url.equals(obj.optString("url"))) return obj.optString("name", "Custom");
@@ -822,7 +962,7 @@ public class SettingsActivity extends AppCompatActivity {
                 getString(R.string.ua_custom)
         };
         String[] values = {"mobile", "desktop", "iphone", "ipad", "custom"};
-        String current = prefs.getString("user_agent_preset", "mobile");
+        String current = prefs.getString(SettingsKeys.PREF_USER_AGENT_PRESET, "mobile");
         int checked = 0;
         for (int i = 0; i < values.length; i++) {
             if (values[i].equals(current)) { checked = i; break; }
@@ -834,7 +974,8 @@ public class SettingsActivity extends AppCompatActivity {
                         dialog.dismiss();
                         showCustomUaStringDialog();
                     } else {
-                        prefs.edit().putString("user_agent_preset", values[which]).apply();
+                        prefs.edit().putString(SettingsKeys.PREF_USER_AGENT_PRESET,
+                                values[which]).apply();
                         updateUserAgentValue();
                         dialog.dismiss();
                     }
@@ -846,7 +987,7 @@ public class SettingsActivity extends AppCompatActivity {
     private void showCustomUaStringDialog() {
         android.widget.EditText input = new android.widget.EditText(this);
         input.setHint(getString(R.string.ua_custom_hint));
-        input.setText(prefs.getString("user_agent_custom_string", ""));
+        input.setText(prefs.getString(SettingsKeys.PREF_USER_AGENT_CUSTOM_STRING, ""));
         int pad = (int) (16 * getResources().getDisplayMetrics().density);
         input.setPadding(pad, pad, pad, pad);
 
@@ -856,8 +997,8 @@ public class SettingsActivity extends AppCompatActivity {
                 .setPositiveButton(R.string.save, (d, w) -> {
                     String ua = input.getText().toString().trim();
                     prefs.edit()
-                            .putString("user_agent_preset", "custom")
-                            .putString("user_agent_custom_string", ua)
+                            .putString(SettingsKeys.PREF_USER_AGENT_PRESET, "custom")
+                            .putString(SettingsKeys.PREF_USER_AGENT_CUSTOM_STRING, ua)
                             .apply();
                     updateUserAgentValue();
                 })
@@ -866,13 +1007,13 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     private void updateUserAgentValue() {
-        String preset = prefs.getString("user_agent_preset", "mobile");
+        String preset = prefs.getString(SettingsKeys.PREF_USER_AGENT_PRESET, "mobile");
         switch (preset) {
             case "desktop": userAgentValue.setText(R.string.ua_desktop); break;
             case "iphone":  userAgentValue.setText(R.string.ua_iphone); break;
             case "ipad":    userAgentValue.setText(R.string.ua_ipad); break;
             case "custom":
-                String ua = prefs.getString("user_agent_custom_string", "");
+                String ua = prefs.getString(SettingsKeys.PREF_USER_AGENT_CUSTOM_STRING, "");
                 userAgentValue.setText(ua.isEmpty() ? getString(R.string.ua_custom) : ua);
                 break;
             default:        userAgentValue.setText(R.string.ua_mobile); break;
@@ -1044,7 +1185,8 @@ public class SettingsActivity extends AppCompatActivity {
         new MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.about_easy_browser)
                 .setMessage(getString(R.string.about_easy_browser_message,
-                        BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE))
+                        BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE,
+                        getString(R.string.release_codename)))
                 .setPositiveButton(android.R.string.ok, null)
                 .show();
     }

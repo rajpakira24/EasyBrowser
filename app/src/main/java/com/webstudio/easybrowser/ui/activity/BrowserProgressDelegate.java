@@ -1,11 +1,7 @@
 package com.webstudio.easybrowser.ui.activity;
 
 import android.view.View;
-import android.widget.ImageButton;
-
 import androidx.annotation.NonNull;
-
-import com.webstudio.easybrowser.R;
 
 import org.mozilla.geckoview.GeckoSession;
 
@@ -35,13 +31,12 @@ class BrowserProgressDelegate implements GeckoSession.ProgressDelegate {
     @Override
     public void onSecurityChange(@NonNull GeckoSession session,
                                  @NonNull GeckoSession.ProgressDelegate.SecurityInformation securityInfo) {
-        activity.lastSecurityInfo = securityInfo;
+        if (session != activity.session) {
+            return;
+        }
         activity.runOnUiThread(() -> {
-            ImageButton securityButton = activity.findViewById(R.id.btn_security);
-            if (securityInfo.isSecure) {
-                securityButton.setImageResource(R.drawable.ic_security);
-            } else {
-                securityButton.setImageResource(R.drawable.ic_security_warning);
+            if (session == activity.session) {
+                activity.onPageSecurityChanged(securityInfo);
             }
         });
     }

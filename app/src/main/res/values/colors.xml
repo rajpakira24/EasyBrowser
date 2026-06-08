@@ -79,6 +79,9 @@
     <!-- Security Colors -->
     <color name="secure_connection">#0F4C75</color>
     <color name="insecure_connection">#460B6A</color>
+    <color name="smart_shield_safe">#1F8A5B</color>
+    <color name="smart_shield_moderate">#B98900</color>
+    <color name="smart_shield_warning">#B3261E</color>
 
     <!-- Transparency -->
     <color name="black_overlay">#66313851</color>

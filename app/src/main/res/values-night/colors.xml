@@ -65,6 +65,9 @@
     <color name="tab_unselected">#9AA8AC</color>
     <color name="secure_connection">#64D3AD</color>
     <color name="insecure_connection">#FF7A5C</color>
+    <color name="smart_shield_safe">#64D3AD</color>
+    <color name="smart_shield_moderate">#F7C948</color>
+    <color name="smart_shield_warning">#FF7A5C</color>
     <color name="black_overlay">#991B262C</color>
     <color name="white_overlay">#33FAFAFA</color>
 

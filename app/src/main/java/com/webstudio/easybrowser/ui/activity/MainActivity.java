@@ -1,14 +1,23 @@
 package com.webstudio.easybrowser.ui.activity;
 
+import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.RenderEffect;
+import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 
 import androidx.preference.PreferenceManager;
@@ -37,20 +46,34 @@ import androidx.appcompat.widget.Toolbar;
 import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import com.airbnb.lottie.LottieAnimationView;
+import com.airbnb.lottie.LottieDrawable;
 import com.bumptech.glide.Glide;
+import com.bumptech.glide.load.engine.DiskCacheStrategy;
+import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.textfield.TextInputEditText;
 import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.adapters.QuickAccessAdapter;
 import com.webstudio.easybrowser.managers.AnalyticsManager;
+import com.webstudio.easybrowser.managers.AppShortcutManager;
 import com.webstudio.easybrowser.managers.PrivacyStatsManager;
+import com.webstudio.easybrowser.managers.WeatherAlertManager;
 import com.webstudio.easybrowser.models.QuickAccessItem;
+import com.webstudio.easybrowser.models.WeatherSnapshot;
 import com.webstudio.easybrowser.repository.QuickAccessRepository;
 import com.webstudio.easybrowser.repository.TabRepository;
+import com.webstudio.easybrowser.repository.WeatherRepository;
+import com.webstudio.easybrowser.utils.AppSettings;
 import com.webstudio.easybrowser.utils.HomeBackgroundProvider;
 import com.webstudio.easybrowser.utils.SearchSuggestionProvider;
+import com.webstudio.easybrowser.utils.SettingsKeys;
 import com.webstudio.easybrowser.utils.SystemBarUtils;
+import com.webstudio.easybrowser.utils.TabActionContract;
+import com.webstudio.easybrowser.utils.ThemeEngine;
+import com.webstudio.easybrowser.utils.WeatherAnimationMapper;
 import com.webstudio.easybrowser.utils.UrlUtils;
 
 import com.webstudio.easybrowser.adapters.SuggestionsAdapter;
@@ -58,6 +81,7 @@ import com.webstudio.easybrowser.adapters.SuggestionsAdapter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 import org.json.JSONArray;
 
@@ -66,6 +90,8 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
     private static final int HOME_SEARCH_MIN_BOTTOM_MARGIN_DP = 118;
     private static final int HOME_PHOTO_CREDIT_GAP_DP = 18;
     private static final int HOME_SCROLL_BOTTOM_GAP_DP = 28;
+    private static final long HOME_ENTRANCE_DURATION_MS = 360L;
+    private static final long HOME_ENTRANCE_STAGGER_MS = 65L;
 
     private EditText urlInput;
     private ImageButton micButton;
@@ -73,21 +99,32 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
     private ImageButton clearButton;
     private ImageButton searchButton;
     private RecyclerView quickAccessRecycler;
+    private View weatherWidget;
+    private LottieAnimationView weatherIcon;
+    private TextView weatherLocation;
+    private TextView weatherCondition;
+    private TextView weatherTemperature;
     private View privacyStatsCard;
     private TextView quickAccessTitle;
     private TextView protectedPagesStat;
     private TextView blockedItemsStat;
     private TextView timeSavedStat;
     private ImageView homeBackgroundImage;
+    private View homeBackgroundScrim;
     private TextView photoCredit;
     private View homeContentContainer;
     private View homeSearchBar;
     private BottomNavigationView bottomNav;
     private QuickAccessRepository quickAccessRepository;
     private TabRepository tabRepository;
+    private WeatherRepository weatherRepository;
     private QuickAccessAdapter quickAccessAdapter;
     private HomeBackgroundProvider.Photo currentHomePhoto;
+    private String appliedWallpaperKey;
+    private boolean homeWallpaperOfflinePack;
+    private boolean homeEntranceAnimated;
     private ActivityResultLauncher<Intent> tabManagerLauncher;
+    private ActivityResultLauncher<String> notificationPermissionLauncher;
     private final SharedPreferences.OnSharedPreferenceChangeListener privacyStatsListener =
             (sharedPreferences, key) -> {
                 if (PrivacyStatsManager.isStatsKey(key)) {
@@ -101,9 +138,7 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        SystemBarUtils.apply(this,
-                ContextCompat.getColor(this, R.color.home_background),
-                ContextCompat.getColor(this, R.color.home_panel_background));
+        applyHomeSystemBars();
 
         initializeRepositories();
         initializeViews();
@@ -111,14 +146,24 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         setupUrlInput();
         setupQuickAccess();
         setupTabManagerLauncher();
+        setupNotificationPermissionLauncher();
         setupBottomNavigation();
         setupHomeBottomChromeSpacing();
         setupClickListeners();
         setupSpeechRecognition();
+        requestNotificationPermissionIfNeeded();
         setupHomeBackground();
+        applyHomeTheme();
+        setupWeatherWidget();
         applyHomeSectionVisibility();
         updatePrivacyStats();
+        runHomeEntranceAnimation();
         handleIncomingIntent(getIntent());
+    }
+
+    private void applyHomeSystemBars() {
+        int chrome = ThemeEngine.homeChromeColor(this);
+        SystemBarUtils.apply(this, chrome, chrome, ThemeEngine.useDarkSystemBarIcons(chrome));
     }
 
     @Override
@@ -131,9 +176,13 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
     @Override
     protected void onResume() {
         super.onResume();
+        applyHomeSystemBars();
         PreferenceManager.getDefaultSharedPreferences(this)
                 .registerOnSharedPreferenceChangeListener(privacyStatsListener);
+        setupHomeBackground();
+        applyHomeTheme();
         applyHomeSectionVisibility();
+        updateWeatherWidget(false);
         updatePrivacyStats();
         updateTabCountIcon();
         reloadQuickAccess();
@@ -153,12 +202,18 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         clearButton = findViewById(R.id.btn_clear);
         searchButton = findViewById(R.id.btn_search);
         quickAccessRecycler = findViewById(R.id.quick_access_recycler);
+        weatherWidget = findViewById(R.id.weather_widget);
+        weatherIcon = findViewById(R.id.weather_icon);
+        weatherLocation = findViewById(R.id.weather_location);
+        weatherCondition = findViewById(R.id.weather_condition);
+        weatherTemperature = findViewById(R.id.weather_temperature);
         privacyStatsCard = findViewById(R.id.privacy_stats_card);
         quickAccessTitle = findViewById(R.id.quick_access_title);
         protectedPagesStat = findViewById(R.id.stat_protected_pages);
         blockedItemsStat = findViewById(R.id.stat_blocked_items);
         timeSavedStat = findViewById(R.id.stat_time_saved);
         homeBackgroundImage = findViewById(R.id.home_background_image);
+        homeBackgroundScrim = findViewById(R.id.home_background_scrim);
         photoCredit = findViewById(R.id.home_photo_credit);
         homeContentContainer = findViewById(R.id.home_content_container);
         homeSearchBar = findViewById(R.id.home_edge_search_bar);
@@ -169,6 +224,7 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
     private void initializeRepositories() {
         quickAccessRepository = new QuickAccessRepository(this);
         tabRepository = new TabRepository(this);
+        weatherRepository = new WeatherRepository(this);
     }
 
     private void setupToolbar() {
@@ -196,6 +252,9 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         if (intent == null) {
             return;
         }
+        if (handleAppShortcutIntent(intent)) {
+            return;
+        }
 
         String input = null;
         if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
@@ -215,6 +274,38 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         if (input != null && !input.trim().isEmpty()) {
             handleUrlInput(input);
         }
+    }
+
+    private boolean handleAppShortcutIntent(Intent intent) {
+        String action = intent.getAction();
+        String legacyAction = intent.getStringExtra("action");
+        if (AppShortcutManager.ACTION_WIDGETS.equals(action)
+                || "widgets".equals(legacyAction)) {
+            Intent dashboardIntent = new Intent(this, WidgetsDashboardActivity.class)
+                    .setAction(AppShortcutManager.ACTION_WIDGETS)
+                    .putExtra(AppShortcutManager.EXTRA_FROM_APP_SHORTCUT, true);
+            startActivity(dashboardIntent);
+            return true;
+        }
+        if (AppShortcutManager.ACTION_NEW_PRIVATE_TAB.equals(action)
+                || "private_tab".equals(legacyAction)) {
+            openShortcutBrowser(AppShortcutManager.ACTION_NEW_PRIVATE_TAB, true);
+            return true;
+        }
+        if (AppShortcutManager.ACTION_NEW_TAB.equals(action)
+                || "new_tab".equals(legacyAction)) {
+            openShortcutBrowser(AppShortcutManager.ACTION_NEW_TAB, false);
+            return true;
+        }
+        return false;
+    }
+
+    private void openShortcutBrowser(String action, boolean privateTab) {
+        Intent browserIntent = new Intent(this, BrowserActivity.class)
+                .setAction(action)
+                .putExtra(AppShortcutManager.EXTRA_FROM_APP_SHORTCUT, true)
+                .putExtra(privateTab ? "private_tab" : "new_tab", true);
+        startActivity(browserIntent);
     }
 
     private void setupUrlInput() {
@@ -303,15 +394,68 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         });
     }
 
+    private void setupWeatherWidget() {
+        if (weatherWidget == null) {
+            return;
+        }
+        weatherWidget.setOnClickListener(v ->
+                startActivity(new Intent(MainActivity.this, WeatherActivity.class)));
+        if (!PreferenceManager.getDefaultSharedPreferences(this)
+                .getBoolean(SettingsKeys.PREF_SHOW_WEATHER_WIDGET, true)) {
+            return;
+        }
+        WeatherSnapshot cached = weatherRepository.getCachedSnapshot();
+        if (cached != null) {
+            showWeatherSnapshot(cached);
+        }
+        updateWeatherWidget(false);
+    }
+
     private void setupHomeBackground() {
-        currentHomePhoto = HomeBackgroundProvider.nextPhoto();
+        AppSettings settings = new AppSettings(this);
+        String wallpaperMode = settings.getWallpaperMode();
+        String userWallpaperUri = settings.getWallpaperUserUri();
+        String collection = settings.getWallpaperCollection();
+        int dayBucket = getWallpaperDayBucket();
+        int blur = settings.getWallpaperBlur();
+        int overlay = settings.getWallpaperOverlay();
+        boolean favoritesOnly = settings.isWallpaperFavoritesOnly();
+        boolean offlinePack = settings.isWallpaperOfflinePackEnabled();
+        Set<String> favoriteIds = settings.getWallpaperFavoriteIds();
+        Set<String> preferredPhotoIds = favoritesOnly ? favoriteIds : null;
+        String wallpaperKey = wallpaperMode + ":"
+                + ("user".equals(wallpaperMode)
+                ? userWallpaperUri
+                : collection + ":" + dayBucket)
+                + ":b" + blur + ":o" + overlay
+                + ":fav" + (favoritesOnly ? favoriteIds.hashCode() : 0)
+                + ":offline" + offlinePack;
+        if (wallpaperKey.equals(appliedWallpaperKey)) {
+            return;
+        }
+        appliedWallpaperKey = wallpaperKey;
+        homeWallpaperOfflinePack = offlinePack;
+        applyHomeWallpaperEffects(blur, overlay);
+        if ("user".equals(wallpaperMode)
+                && userWallpaperUri != null && !userWallpaperUri.trim().isEmpty()) {
+            currentHomePhoto = null;
+            if (homeBackgroundImage != null) {
+                loadHomeBackground(Uri.parse(userWallpaperUri));
+            }
+            if (photoCredit != null) {
+                photoCredit.setText(R.string.wallpaper_user_image);
+                photoCredit.setOnClickListener(null);
+            }
+            return;
+        }
+
+        currentHomePhoto = HomeBackgroundProvider.photoForDailyMode(
+                wallpaperMode, collection, dayBucket, preferredPhotoIds);
         if (homeBackgroundImage != null) {
-            Glide.with(this)
-                    .load(currentHomePhoto.getImageUrl())
-                    .placeholder(R.drawable.bg_home_photo_scrim)
-                    .error(R.drawable.bg_home_photo_scrim)
-                    .centerCrop()
-                    .into(homeBackgroundImage);
+            loadHomeBackground(currentHomePhoto.getImageUrl());
+        }
+        if (offlinePack) {
+            prefetchHomeWallpaperPack(wallpaperMode, collection, preferredPhotoIds);
         }
         if (photoCredit != null) {
             photoCredit.setText(currentHomePhoto.getCreditText());
@@ -319,13 +463,273 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         }
     }
 
+    private void loadHomeBackground(Object source) {
+        if (homeBackgroundImage == null) {
+            return;
+        }
+        Glide.with(this)
+                .load(source)
+                .diskCacheStrategy(homeWallpaperOfflinePack
+                        ? DiskCacheStrategy.ALL
+                        : DiskCacheStrategy.AUTOMATIC)
+                .placeholder(R.drawable.bg_home_photo_scrim)
+                .error(R.drawable.bg_home_photo_scrim)
+                .centerCrop()
+                .transition(DrawableTransitionOptions.withCrossFade(450))
+                .into(homeBackgroundImage);
+    }
+
+    private void prefetchHomeWallpaperPack(String mode, String collection, Set<String> preferredPhotoIds) {
+        for (HomeBackgroundProvider.Photo photo :
+                HomeBackgroundProvider.photosForMode(mode, collection, preferredPhotoIds)) {
+            Glide.with(this)
+                    .load(photo.getImageUrl())
+                    .diskCacheStrategy(DiskCacheStrategy.ALL)
+                    .preload();
+        }
+    }
+
+    private void runHomeEntranceAnimation() {
+        if (homeEntranceAnimated) {
+            return;
+        }
+        homeEntranceAnimated = true;
+        View[] stagedViews = new View[]{
+                privacyStatsCard,
+                quickAccessTitle,
+                quickAccessRecycler,
+                weatherWidget,
+                photoCredit
+        };
+        for (View view : stagedViews) {
+            prepareHomeEntranceView(view);
+        }
+        if (homeSearchBar != null) {
+            homeSearchBar.setAlpha(0f);
+            homeSearchBar.setScaleX(0.92f);
+            homeSearchBar.setTranslationY(dp(14));
+        }
+        if (homeContentContainer != null) {
+            homeContentContainer.post(() -> {
+                for (int i = 0; i < stagedViews.length; i++) {
+                    animateHomeEntranceView(stagedViews[i], i * HOME_ENTRANCE_STAGGER_MS);
+                }
+                if (homeSearchBar != null) {
+                    homeSearchBar.animate()
+                            .alpha(1f)
+                            .scaleX(1f)
+                            .translationY(0f)
+                            .setStartDelay(HOME_ENTRANCE_STAGGER_MS)
+                            .setDuration(HOME_ENTRANCE_DURATION_MS)
+                            .start();
+                }
+            });
+        }
+    }
+
+    private void prepareHomeEntranceView(View view) {
+        if (view == null || view.getVisibility() != View.VISIBLE) {
+            return;
+        }
+        view.setAlpha(0f);
+        view.setTranslationY(dp(12));
+    }
+
+    private void animateHomeEntranceView(View view, long delayMs) {
+        if (view == null || view.getVisibility() != View.VISIBLE) {
+            return;
+        }
+        view.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setStartDelay(delayMs)
+                .setDuration(HOME_ENTRANCE_DURATION_MS)
+                .start();
+    }
+
+    private void applyHomeWallpaperEffects(int blur, int overlay) {
+        if (homeBackgroundScrim != null) {
+            homeBackgroundScrim.setBackground(createHomeScrim(overlay));
+        }
+        if (homeBackgroundImage == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            return;
+        }
+        if (blur <= 0) {
+            homeBackgroundImage.setRenderEffect(null);
+            return;
+        }
+        float radius = Math.min(24, Math.max(0, blur));
+        homeBackgroundImage.setRenderEffect(RenderEffect.createBlurEffect(
+                radius, radius, Shader.TileMode.CLAMP));
+    }
+
+    private GradientDrawable createHomeScrim(int overlay) {
+        int alpha = Math.round(255f * Math.min(80, Math.max(0, overlay)) / 100f);
+        int topAlpha = Math.min(230, alpha + 28);
+        int bottomAlpha = Math.min(245, alpha + 52);
+        return new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{
+                        Color.argb(topAlpha, 8, 17, 28),
+                        Color.argb(alpha, 8, 17, 28),
+                        Color.argb(bottomAlpha, 8, 17, 28)
+                });
+    }
+
+    private GradientDrawable createRoundedDrawable(int color, int radius) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(color);
+        drawable.setCornerRadius(radius);
+        return drawable;
+    }
+
+    private int getWallpaperDayBucket() {
+        java.util.Calendar now = java.util.Calendar.getInstance();
+        return now.get(java.util.Calendar.YEAR) * 1000
+                + now.get(java.util.Calendar.DAY_OF_YEAR);
+    }
+
+    private int getIntPreference(SharedPreferences prefs, String key, int defaultValue) {
+        try {
+            return prefs.getInt(key, defaultValue);
+        } catch (ClassCastException ignored) {
+            return defaultValue;
+        }
+    }
+
+    private void applyHomeTheme() {
+        ThemeEngine.Palette palette = ThemeEngine.homePalette(this);
+        if (homeSearchBar != null) {
+            homeSearchBar.setBackground(createRoundedDrawable(palette.searchBackground, dp(27)));
+        }
+        if (securityButton != null) {
+            securityButton.setBackground(createRoundedDrawable(
+                    palette.searchIconBackground, dp(20)));
+            securityButton.setColorFilter(palette.onSurface);
+        }
+        tintHomeButton(micButton, palette.onSurface);
+        tintHomeButton(clearButton, palette.onSurface);
+        tintHomeButton(searchButton, palette.onSurface);
+        if (urlInput != null) {
+            urlInput.setTextColor(palette.onSurface);
+            urlInput.setHintTextColor(palette.onSurfaceMuted);
+        }
+        if (privacyStatsCard instanceof MaterialCardView) {
+            MaterialCardView card = (MaterialCardView) privacyStatsCard;
+            card.setCardBackgroundColor(palette.panelBackground);
+            card.setStrokeColor(palette.panelBorder);
+        }
+        if (weatherWidget instanceof MaterialCardView) {
+            MaterialCardView card = (MaterialCardView) weatherWidget;
+            card.setCardBackgroundColor(palette.panelStrongBackground);
+            card.setStrokeColor(palette.panelBorder);
+            card.setStrokeWidth(dp(1));
+            card.setCardElevation(dp(3));
+        }
+        if (quickAccessTitle != null) {
+            quickAccessTitle.setTextColor(palette.onSurface);
+        }
+        if (protectedPagesStat != null) {
+            protectedPagesStat.setTextColor(palette.accent);
+        }
+        if (blockedItemsStat != null) {
+            blockedItemsStat.setTextColor(palette.accentSoft);
+        }
+        if (timeSavedStat != null) {
+            timeSavedStat.setTextColor(palette.accent);
+        }
+        if (bottomNav != null) {
+            bottomNav.setBackgroundColor(palette.panelStrongBackground);
+            ColorStateList navColors = createNavColorStateList(palette);
+            bottomNav.setItemIconTintList(navColors);
+            bottomNav.setItemTextColor(navColors);
+            bottomNav.setItemRippleColor(ColorStateList.valueOf(palette.accentSoft));
+        }
+    }
+
+    private void tintHomeButton(ImageButton button, int color) {
+        if (button != null) {
+            button.setColorFilter(color);
+        }
+    }
+
+    private ColorStateList createNavColorStateList(ThemeEngine.Palette palette) {
+        return new ColorStateList(
+                new int[][]{
+                        new int[]{android.R.attr.state_checked},
+                        new int[]{}
+                },
+                new int[]{
+                        palette.accent,
+                        palette.onSurfaceMuted
+                });
+    }
+
     private void applyHomeSectionVisibility() {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
-        boolean showPrivacyStats = prefs.getBoolean("show_privacy_stats", true);
-        boolean showQuickAccess = prefs.getBoolean("show_quick_access", true);
+        boolean showPrivacyStats = prefs.getBoolean(SettingsKeys.PREF_SHOW_PRIVACY_STATS, true);
+        boolean showQuickAccess = prefs.getBoolean(SettingsKeys.PREF_SHOW_QUICK_ACCESS, true);
+        boolean showWeather = prefs.getBoolean(SettingsKeys.PREF_SHOW_WEATHER_WIDGET, true);
+        if (weatherWidget != null) {
+            weatherWidget.setVisibility(showWeather ? View.VISIBLE : View.GONE);
+        }
         privacyStatsCard.setVisibility(showPrivacyStats ? View.VISIBLE : View.GONE);
         quickAccessTitle.setVisibility(showQuickAccess ? View.VISIBLE : View.GONE);
         quickAccessRecycler.setVisibility(showQuickAccess ? View.VISIBLE : View.GONE);
+    }
+
+    private void updateWeatherWidget(boolean forceRefresh) {
+        if (weatherWidget == null || weatherWidget.getVisibility() != View.VISIBLE) {
+            return;
+        }
+        weatherRepository.getWeather(forceRefresh, new WeatherRepository.WeatherCallback() {
+            @Override
+            public void onWeatherLoaded(WeatherSnapshot snapshot, boolean fromCache) {
+                runOnUiThread(() -> {
+                    showWeatherSnapshot(snapshot);
+                    if (!fromCache) {
+                        WeatherAlertManager.maybeNotify(MainActivity.this,
+                                snapshot, weatherRepository.getUnits());
+                    }
+                });
+            }
+
+            @Override
+            public void onWeatherError(Exception error, WeatherSnapshot cachedSnapshot) {
+                runOnUiThread(() -> {
+                    if (cachedSnapshot != null) {
+                        showWeatherSnapshot(cachedSnapshot);
+                    } else {
+                        weatherLocation.setText(R.string.weather_unavailable);
+                        weatherCondition.setText(R.string.weather_summary);
+                        weatherTemperature.setText("--");
+                        setWeatherWidgetAnimation(null);
+                        weatherWidget.setContentDescription(getString(R.string.weather_unavailable));
+                    }
+                });
+            }
+        });
+    }
+
+    private void showWeatherSnapshot(WeatherSnapshot snapshot) {
+        String units = weatherRepository.getUnits();
+        weatherLocation.setText(snapshot.getLocationName());
+        weatherCondition.setText(snapshot.getCondition());
+        weatherTemperature.setText(snapshot.formatTemperature(units));
+        setWeatherWidgetAnimation(snapshot);
+        if (weatherWidget != null) {
+            weatherWidget.setContentDescription(snapshot.getLocationName() + ", "
+                    + snapshot.getCondition() + ", " + snapshot.formatTemperature(units));
+        }
+    }
+
+    private void setWeatherWidgetAnimation(WeatherSnapshot snapshot) {
+        if (weatherIcon == null) {
+            return;
+        }
+        weatherIcon.setAnimation(WeatherAnimationMapper.animationFor(snapshot, false));
+        weatherIcon.setRepeatCount(LottieDrawable.INFINITE);
+        weatherIcon.setRepeatMode(LottieDrawable.RESTART);
+        weatherIcon.playAnimation();
     }
 
     private void updatePrivacyStats() {
@@ -381,6 +785,37 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
                 });
     }
 
+    private void setupNotificationPermissionLauncher() {
+        notificationPermissionLauncher = registerForActivityResult(
+                new ActivityResultContracts.RequestPermission(),
+                granted -> PreferenceManager.getDefaultSharedPreferences(this)
+                        .edit()
+                        .putBoolean(SettingsKeys.PREF_NOTIFICATION_PERMISSION_REQUESTED, true)
+                        .apply());
+    }
+
+    private void requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+                || notificationPermissionLauncher == null) {
+            return;
+        }
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        if (prefs.getBoolean(SettingsKeys.PREF_NOTIFICATION_PERMISSION_REQUESTED, false)) {
+            return;
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                == PackageManager.PERMISSION_GRANTED) {
+            prefs.edit()
+                    .putBoolean(SettingsKeys.PREF_NOTIFICATION_PERMISSION_REQUESTED, true)
+                    .apply();
+            return;
+        }
+        prefs.edit()
+                .putBoolean(SettingsKeys.PREF_NOTIFICATION_PERMISSION_REQUESTED, true)
+                .apply();
+        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
+    }
+
     private void launchTabManager() {
         Intent intent = new Intent(this, TabManagerActivity.class);
         String currentTabId = PreferenceManager.getDefaultSharedPreferences(this)
@@ -396,6 +831,9 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
     }
 
     private void handleTabManagerResult(Intent data) {
+        if (handleTabActionResult(data.getStringExtra(TabActionContract.EXTRA_ACTIONS))) {
+            return;
+        }
         if (data.hasExtra(TabsActivity.RESULT_CREATE_PRIVATE_TAB)) {
             boolean isPrivate = data.getBooleanExtra(TabsActivity.RESULT_CREATE_PRIVATE_TAB, false);
             startActivity(new Intent(this, BrowserActivity.class)
@@ -419,6 +857,41 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
                     .apply();
             startActivity(new Intent(this, BrowserActivity.class));
         }
+    }
+
+    private boolean handleTabActionResult(String payload) {
+        List<TabActionContract.Action> actions = TabActionContract.parse(payload);
+        if (actions.isEmpty()) {
+            return false;
+        }
+        for (TabActionContract.Action action : actions) {
+            if (TabActionContract.TYPE_CREATE_TAB.equals(action.getType())) {
+                startActivity(new Intent(this, BrowserActivity.class)
+                        .putExtra(action.isPrivate() ? "private_tab" : "new_tab", true));
+                return true;
+            }
+            if (TabActionContract.TYPE_RESTORE_URL.equals(action.getType())) {
+                String url = action.getUrl();
+                if (!url.trim().isEmpty()) {
+                    startActivity(new Intent(this, BrowserActivity.class)
+                            .putExtra("url", url)
+                            .putExtra("new_tab", true));
+                    return true;
+                }
+            }
+            if (TabActionContract.TYPE_SELECT_TAB.equals(action.getType())) {
+                String tabId = action.getTabId();
+                if (!tabId.trim().isEmpty()) {
+                    PreferenceManager.getDefaultSharedPreferences(this)
+                            .edit()
+                            .putString(TabsActivity.EXTRA_CURRENT_TAB_ID, tabId)
+                            .apply();
+                    startActivity(new Intent(this, BrowserActivity.class));
+                    return true;
+                }
+            }
+        }
+        return true;
     }
 
     private void setupHomeBottomChromeSpacing() {

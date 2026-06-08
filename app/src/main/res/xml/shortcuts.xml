@@ -1,15 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
     <shortcut
+        android:shortcutId="widgets"
+        android:enabled="true"
+        android:icon="@drawable/ic_view_grid"
+        android:shortcutShortLabel="@string/shortcut_widgets_short"
+        android:shortcutLongLabel="@string/shortcut_widgets_long">
+        <intent
+            android:action="com.webstudio.easybrowser.action.WIDGETS"
+            android:targetPackage="com.webstudio.easybrowser"
+            android:targetClass="com.webstudio.easybrowser.ui.activity.MainActivity">
+            <extra
+                android:name="action"
+                android:value="widgets" />
+        </intent>
+    </shortcut>
+
+    <shortcut
         android:shortcutId="new_tab"
         android:enabled="true"
         android:icon="@drawable/ic_add"
-        android:shortcutShortLabel="@string/new_tab"
-        android:shortcutLongLabel="@string/new_tab">
+        android:shortcutShortLabel="@string/shortcut_new_tab_short"
+        android:shortcutLongLabel="@string/shortcut_new_tab_long">
         <intent
-            android:action="android.intent.action.VIEW"
+            android:action="com.webstudio.easybrowser.action.NEW_TAB"
             android:targetPackage="com.webstudio.easybrowser"
-            android:targetClass="com.webstudio.easybrowser.ui.activity.BrowserActivity">
+            android:targetClass="com.webstudio.easybrowser.ui.activity.MainActivity">
             <extra
                 android:name="action"
                 android:value="new_tab" />
@@ -19,13 +35,13 @@
     <shortcut
         android:shortcutId="private_tab"
         android:enabled="true"
-        android:icon="@drawable/ic_add"
-        android:shortcutShortLabel="@string/new_private_tab"
-        android:shortcutLongLabel="@string/new_private_tab">
+        android:icon="@drawable/ic_incognito"
+        android:shortcutShortLabel="@string/shortcut_private_tab_short"
+        android:shortcutLongLabel="@string/shortcut_private_tab_long">
         <intent
-            android:action="android.intent.action.VIEW"
+            android:action="com.webstudio.easybrowser.action.NEW_PRIVATE_TAB"
             android:targetPackage="com.webstudio.easybrowser"
-            android:targetClass="com.webstudio.easybrowser.ui.activity.BrowserActivity">
+            android:targetClass="com.webstudio.easybrowser.ui.activity.MainActivity">
             <extra
                 android:name="action"
                 android:value="private_tab" />

@@ -33,6 +33,8 @@ public class TabEntity {
     private long lastAccessed;
     private int position;
     private boolean pinned;
+    private boolean locked;
+    private int scrollY;
 
     public TabEntity(@NonNull String tabId, String groupId, String title, String url) {
         this.tabId = tabId;
@@ -137,5 +139,21 @@ public class TabEntity {
 
     public void setPinned(boolean pinned) {
         this.pinned = pinned;
+    }
+
+    public boolean isLocked() {
+        return locked;
+    }
+
+    public void setLocked(boolean locked) {
+        this.locked = locked;
+    }
+
+    public int getScrollY() {
+        return scrollY;
+    }
+
+    public void setScrollY(int scrollY) {
+        this.scrollY = Math.max(0, scrollY);
     }
 }

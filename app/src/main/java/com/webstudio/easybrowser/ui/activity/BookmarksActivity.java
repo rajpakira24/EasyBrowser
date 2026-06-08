@@ -27,6 +27,7 @@ import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.adapters.BookmarksAdapter;
 import com.webstudio.easybrowser.models.Bookmark;
 import com.webstudio.easybrowser.repository.BookmarkRepository;
+import com.webstudio.easybrowser.utils.ThemeEngine;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -64,6 +65,7 @@ public class BookmarksActivity extends AppCompatActivity implements BookmarksAda
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
             getSupportActionBar().setTitle(R.string.bookmarks);
         }
+        ThemeEngine.applyChrome(this, toolbar);
     }
 
     private void initializeViews() {

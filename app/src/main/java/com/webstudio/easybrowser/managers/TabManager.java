@@ -22,6 +22,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +34,7 @@ public class TabManager {
     // If the serialized tab state exceeds this size, session history is dropped to stay
     // within SharedPreferences limits (XML file read entirely into memory on load).
     private static final int MAX_PERSIST_BYTES = 256 * 1024;
+    private static final long SCROLL_PERSIST_INTERVAL_MS = 1200L;
 
     public static class ClosedTab {
         public final String id;
@@ -48,20 +50,23 @@ public class TabManager {
         public final long lastAccessed;
         public final int position;
         public final boolean pinned;
+        public final int scrollY;
+        public final boolean locked;
         public final String parentTabId;
         public final String sessionState;
         public final List<String> groupTabIds;
 
         public ClosedTab(String title, String url) {
             this(null, title, url, null, null, false, null, null, 0,
-                    0, 0, 0, false, null, null, new ArrayList<>());
+                    0, 0, 0, false, 0, false, null, null, new ArrayList<>());
         }
 
         private ClosedTab(String id, String title, String url, String faviconUri,
                           String thumbnailPath, boolean isPrivate, String groupId,
                           String groupName, int groupColor, long createdAt,
-                          long lastAccessed, int position, boolean pinned, String parentTabId,
-                          String sessionState, List<String> groupTabIds) {
+                          long lastAccessed, int position, boolean pinned, int scrollY,
+                          boolean locked, String parentTabId, String sessionState,
+                          List<String> groupTabIds) {
             this.id = id;
             this.title = title;
             this.url = url;
@@ -75,6 +80,8 @@ public class TabManager {
             this.lastAccessed = lastAccessed;
             this.position = position;
             this.pinned = pinned;
+            this.scrollY = scrollY;
+            this.locked = locked;
             this.parentTabId = parentTabId;
             this.sessionState = sessionState;
             this.groupTabIds = groupTabIds != null ? new ArrayList<>(groupTabIds) : new ArrayList<>();
@@ -92,6 +99,7 @@ public class TabManager {
     private SharedPreferences prefs;
     private TabRepository tabRepository;
     private boolean restoredTabs;
+    private long lastScrollPersistAt;
 
     public interface OnTabChangeListener {
         void onTabChanged(Tab tab);
@@ -108,11 +116,15 @@ public class TabManager {
         this.prefs = PreferenceManager.getDefaultSharedPreferences(context);
         this.tabRepository = new TabRepository(context);
 
-        restoredTabs = restoreTabsFromRoom();
-        if (!restoredTabs) {
-            restoredTabs = restoreLegacyTabs();
-            if (restoredTabs) {
-                persistTabs();
+        if (shouldOpenHomepageOnStartup()) {
+            restoredTabs = false;
+        } else {
+            restoredTabs = restoreTabsFromRoom();
+            if (!restoredTabs) {
+                restoredTabs = restoreLegacyTabs();
+                if (restoredTabs) {
+                    persistTabs();
+                }
             }
         }
         if (!restoredTabs) {
@@ -121,6 +133,15 @@ public class TabManager {
             listener.onTabChanged(currentTab);
             listener.onTabCountChanged(tabs.size());
         }
+    }
+
+    private boolean shouldOpenHomepageOnStartup() {
+        return "homepage".equals(prefs.getString(SettingsKeys.PREF_STARTUP_MODE, "restore_all"));
+    }
+
+    private boolean shouldRestoreLastSessionOnly() {
+        return "restore_last_session".equals(
+                prefs.getString(SettingsKeys.PREF_STARTUP_MODE, "restore_all"));
     }
 
     public void setOnTabChangeListener(OnTabChangeListener listener) {
@@ -202,7 +223,7 @@ public class TabManager {
 
     private GeckoSession createSession(boolean isPrivate) {
         boolean javascriptEnabled = prefs.getBoolean("javascript_enabled", true);
-        String uaPreset = prefs.getString("user_agent_preset", "mobile");
+        String uaPreset = prefs.getString(SettingsKeys.PREF_USER_AGENT_PRESET, "mobile");
         boolean desktopDefault = prefs.getBoolean(SettingsKeys.PREF_DESKTOP_SITE_DEFAULT, false);
 
         GeckoSessionSettings.Builder builder = new GeckoSessionSettings.Builder()
@@ -229,7 +250,7 @@ public class TabManager {
             session.getSettings().setUserAgentOverride(
                     "Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1");
         } else if ("custom".equals(uaPreset)) {
-            String customUa = prefs.getString("user_agent_custom_string", "");
+            String customUa = prefs.getString(SettingsKeys.PREF_USER_AGENT_CUSTOM_STRING, "");
             if (!customUa.isEmpty()) session.getSettings().setUserAgentOverride(customUa);
         }
 
@@ -273,6 +294,7 @@ public class TabManager {
             tab.setThumbnailPath(persisted.getThumbnailPath());
             tab.setPosition(persisted.getPosition());
             tab.setPinned(persisted.isPinned());
+            tab.setLocked(persisted.isLocked());
             changed = true;
         }
         stateStore.loadRegularState(regularTabs, groups, state.getActiveRegularTabId());
@@ -374,6 +396,9 @@ public class TabManager {
 
     public synchronized ClosedTab closeTab(Tab tab) {
         if (tab != null) {
+            if (tab.isLocked()) {
+                return null;
+            }
             ClosedTab closedTab = snapshotClosedTab(tab);
             if (!tab.isPrivate() && tab.getUrl() != null && !tab.getUrl().trim().isEmpty()
                     && !"about:blank".equals(tab.getUrl())) {
@@ -487,6 +512,9 @@ public class TabManager {
         if (currentTab == null) {
             return null;
         }
+        if (currentTab.isLocked()) {
+            return null;
+        }
         Tab previousTab = popPreviousTab();
         if (previousTab == null) {
             return null;
@@ -550,6 +578,8 @@ public class TabManager {
         restored.setLastAccessed(System.currentTimeMillis());
         restored.setPosition(closedTab.position);
         restored.setPinned(closedTab.pinned);
+        restored.setScrollY(closedTab.scrollY);
+        restored.setLocked(closedTab.locked);
         restored.setParentTabId(closedTab.parentTabId);
         restored.setSessionState(closedTab.sessionState);
         restored.setInitialLoadPending(true);
@@ -604,6 +634,8 @@ public class TabManager {
                 tab.getLastAccessed(),
                 tab.getPosition(),
                 tab.isPinned(),
+                tab.getScrollY(),
+                tab.isLocked(),
                 tab.getParentTabId(),
                 tab.getSessionState(),
                 groupTabIds);
@@ -682,6 +714,16 @@ public class TabManager {
         }
     }
 
+    public synchronized void setTabLocked(String tabId, boolean locked) {
+        Tab tab = findTabById(tabId);
+        if (tab == null || tab.isLocked() == locked) {
+            return;
+        }
+        tab.setLocked(locked);
+        persistTabs();
+        notifyTabMetadataChanged(tab);
+    }
+
     public void updateTabTitle(Tab tab, String title) {
         if (tab != null && tabs.contains(tab)) {
             tab.setTitle(title);
@@ -699,6 +741,27 @@ public class TabManager {
             if (tab.getSession() == session) {
                 tab.setSessionState(sessionState);
                 persistTabs();
+                break;
+            }
+        }
+    }
+
+    public void updateTabScrollPosition(GeckoSession session, int scrollY, boolean forcePersist) {
+        if (session == null) {
+            return;
+        }
+        int sanitizedScrollY = Math.max(0, scrollY);
+        for (Tab tab : tabs) {
+            if (tab.getSession() == session) {
+                if (tab.getScrollY() == sanitizedScrollY && !forcePersist) {
+                    return;
+                }
+                tab.setScrollY(sanitizedScrollY);
+                long now = System.currentTimeMillis();
+                if (forcePersist || now - lastScrollPersistAt >= SCROLL_PERSIST_INTERVAL_MS) {
+                    lastScrollPersistAt = now;
+                    persistTabs();
+                }
                 break;
             }
         }
@@ -870,12 +933,19 @@ public class TabManager {
                 runtimeTab.setLastAccessed(storedTab.getLastAccessed());
                 runtimeTab.setPosition(storedTab.getPosition());
                 runtimeTab.setPinned(storedTab.isPinned());
+                runtimeTab.setScrollY(storedTab.getScrollY());
+                runtimeTab.setLocked(storedTab.isLocked());
                 runtimeTab.setFaviconUri(storedTab.getFaviconUri());
                 restoreSessionState(runtimeTab, session);
                 restoredRegularTabs.add(runtimeTab);
         }
         if (restoredRegularTabs.isEmpty()) {
             return false;
+        }
+        if (shouldRestoreLastSessionOnly()) {
+            restoredRegularTabs = keepOnlyLastSessionTab(restoredRegularTabs, currentTabId);
+            groups = Collections.emptyList();
+            currentTabId = restoredRegularTabs.isEmpty() ? null : restoredRegularTabs.get(0).getId();
         }
         stateStore.loadRegularState(restoredRegularTabs, groups, currentTabId);
         syncMirrorFromState();
@@ -940,14 +1010,22 @@ public class TabManager {
                 String parentId = item.optString("parent_id", null);
                 if (parentId != null && !parentId.isEmpty()) tab.setParentTabId(parentId);
                 tab.setPinned(item.optBoolean("pinned", false));
+                tab.setScrollY(item.optInt("scroll_y", 0));
+                tab.setLocked(item.optBoolean("locked", false));
                 tab.setPosition(restoredRegularTabs.size());
                 restoredRegularTabs.add(tab);
             }
             if (restoredRegularTabs.isEmpty()) {
                 return false;
             }
+            List<TabGroup> groups = new ArrayList<>(restoredGroups.values());
+            if (shouldRestoreLastSessionOnly()) {
+                restoredRegularTabs = keepOnlyLastSessionTab(restoredRegularTabs, currentTabId);
+                groups = Collections.emptyList();
+                currentTabId = restoredRegularTabs.isEmpty() ? null : restoredRegularTabs.get(0).getId();
+            }
             stateStore.loadRegularState(restoredRegularTabs,
-                    new ArrayList<>(restoredGroups.values()), currentTabId);
+                    groups, currentTabId);
             syncMirrorFromState();
             return true;
         } catch (Exception e) {
@@ -990,6 +1068,42 @@ public class TabManager {
             }
         }
         tab.setInitialLoadPending(true);
+    }
+
+    private List<Tab> keepOnlyLastSessionTab(List<Tab> restoredTabs, String currentTabId) {
+        if (restoredTabs == null || restoredTabs.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Tab selected = null;
+        if (currentTabId != null) {
+            for (Tab tab : restoredTabs) {
+                if (currentTabId.equals(tab.getId())) {
+                    selected = tab;
+                    break;
+                }
+            }
+        }
+        if (selected == null) {
+            for (Tab tab : restoredTabs) {
+                if (selected == null || tab.getLastAccessed() > selected.getLastAccessed()) {
+                    selected = tab;
+                }
+            }
+        }
+        List<Tab> result = new ArrayList<>();
+        if (selected != null) {
+            selected.setPosition(0);
+            selected.setGroupId(null);
+            selected.setGroupName(null);
+            selected.setGroupColor(0);
+            result.add(selected);
+        }
+        for (Tab tab : restoredTabs) {
+            if (tab != selected && tab.getSession() != null && tab.getSession().isOpen()) {
+                tab.getSession().close();
+            }
+        }
+        return result;
     }
 
     private String createStableGroupId(String groupName) {

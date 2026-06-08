@@ -1,6 +1,7 @@
 package com.webstudio.easybrowser.ui.activity;
 
 import android.content.Intent;
+import android.content.res.ColorStateList;
 import android.os.Bundle;
 import android.view.Menu;
 import android.view.View;
@@ -10,7 +11,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.content.ContextCompat;
 import androidx.preference.PreferenceManager;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -24,6 +24,7 @@ import com.webstudio.easybrowser.repository.TabRepository;
 import com.webstudio.easybrowser.utils.SystemBarUtils;
 import com.webstudio.easybrowser.utils.ScreenshotProtection;
 import com.webstudio.easybrowser.utils.SettingsKeys;
+import com.webstudio.easybrowser.utils.ThemeEngine;
 import com.webstudio.easybrowser.utils.UrlUtils;
 
 import java.util.ArrayList;
@@ -68,8 +69,8 @@ public class InactiveTabsActivity extends AppCompatActivity implements TabGroupA
     }
 
     private void applySystemBars() {
-        int background = ContextCompat.getColor(this, R.color.tab_manager_background);
-        SystemBarUtils.apply(this, background, background);
+        int chrome = ThemeEngine.settingsChromeColor(this);
+        SystemBarUtils.apply(this, chrome, chrome, ThemeEngine.useDarkSystemBarIcons(chrome));
     }
 
     private void initializeViews() {
@@ -83,6 +84,7 @@ public class InactiveTabsActivity extends AppCompatActivity implements TabGroupA
         recyclerView = findViewById(R.id.inactive_recycler);
         closeAllButton = findViewById(R.id.close_all_button);
 
+        applyInactiveThemeChrome(backButton, menuButton, infoClose);
         backButton.setOnClickListener(v -> finish());
         menuButton.setOnClickListener(this::showOverflowMenu);
         infoClose.setOnClickListener(v -> infoCard.setVisibility(View.GONE));
@@ -93,6 +95,33 @@ public class InactiveTabsActivity extends AppCompatActivity implements TabGroupA
         adapter.setShowGroupCloseButton(true);
         recyclerView.setLayoutManager(new GridLayoutManager(this, 2));
         recyclerView.setAdapter(adapter);
+    }
+
+    private void applyInactiveThemeChrome(ImageButton backButton, ImageButton menuButton,
+                                          ImageButton infoClose) {
+        ThemeEngine.Palette palette = ThemeEngine.homePalette(this);
+        int chrome = ThemeEngine.settingsChromeColor(this);
+        int foreground = ThemeEngine.foregroundFor(chrome);
+        View topBar = findViewById(R.id.top_bar);
+        if (topBar != null) {
+            topBar.setBackgroundColor(chrome);
+        }
+        tintTopButton(backButton, foreground);
+        tintTopButton(menuButton, foreground);
+        tintTopButton(infoClose, palette.accent);
+        if (titleText != null) {
+            titleText.setTextColor(foreground);
+        }
+        if (closeAllButton != null) {
+            closeAllButton.setBackgroundTintList(ColorStateList.valueOf(palette.accent));
+            closeAllButton.setTextColor(ThemeEngine.foregroundFor(palette.accent));
+        }
+    }
+
+    private void tintTopButton(ImageButton button, int color) {
+        if (button != null) {
+            button.setColorFilter(color);
+        }
     }
 
     private void restoreTabsFromIntent(Intent intent) {
@@ -511,6 +540,7 @@ public class InactiveTabsActivity extends AppCompatActivity implements TabGroupA
     @Override public void onChangeGroupColor(TabGroup group) {}
     @Override public void onMoveTabToGroup(Tab tab, TabGroup targetGroup) {}
     @Override public void onCreateGroupFromTabs(Tab firstTab, Tab secondTab) {}
+    @Override public void onToggleGroupCollapsed(TabGroup group) {}
     @Override public void onAddTabToGroup(Tab tab) {}
     @Override public void onRemoveTabFromGroup(Tab tab) {}
     @Override public void onBookmarkTab(Tab tab) {}

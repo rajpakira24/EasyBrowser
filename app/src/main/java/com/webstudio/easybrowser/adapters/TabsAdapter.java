@@ -380,6 +380,9 @@ public class TabsAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             card.setStrokeColor(ContextCompat.getColor(itemView.getContext(),
                     isCurrent ? R.color.colorPrimary : R.color.border_color));
             card.setStrokeWidth(isCurrent ? 3 : 1);
+            closeBtn.setImageResource(tab.isLocked() ? R.drawable.ic_lock : R.drawable.ic_close);
+            closeBtn.setContentDescription(itemView.getContext().getString(
+                    tab.isLocked() ? R.string.tab_locked : R.string.close_tab));
 
             if (tab.getFavicon() != null) {
                 Glide.with(favicon).load(tab.getFavicon())
@@ -450,6 +453,9 @@ public class TabsAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             card.setStrokeColor(ContextCompat.getColor(itemView.getContext(),
                     isCurrent ? R.color.colorPrimary : R.color.border_color));
             card.setStrokeWidth(isCurrent ? 3 : 1);
+            closeBtn.setImageResource(tab.isLocked() ? R.drawable.ic_lock : R.drawable.ic_close);
+            closeBtn.setContentDescription(itemView.getContext().getString(
+                    tab.isLocked() ? R.string.tab_locked : R.string.close_tab));
 
             if (tab.getFavicon() != null) {
                 Glide.with(favicon).load(tab.getFavicon())

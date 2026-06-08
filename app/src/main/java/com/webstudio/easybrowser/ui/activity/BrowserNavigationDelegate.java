@@ -36,6 +36,8 @@ class BrowserNavigationDelegate implements GeckoSession.NavigationDelegate {
             if (url != null && !url.equals("about:blank")) {
                 activity.updateUrlInputForUrl(url);
                 activity.currentUrl = url;
+                activity.lastSecurityInfo = null;
+                activity.updateSmartShieldIndicator();
                 activity.updateBookmarkStatus();
                 applyPerSiteZoom(url);
                 Tab tab = activity.tabManager != null ? activity.tabManager.getCurrentTab() : null;

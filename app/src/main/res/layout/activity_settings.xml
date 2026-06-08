@@ -190,7 +190,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="@string/ad_blocking"
+                            android:text="@string/shields"
                             android:textSize="16sp" />
 
                         <TextView
@@ -198,6 +198,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
+                            android:text="@string/shields_page_summary"
                             android:textColor="?android:textColorSecondary"
                             android:textSize="14sp" />
                     </LinearLayout>
@@ -1114,7 +1115,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="@string/downloads_folder"
+                            android:text="@string/downloads"
                             android:textSize="16sp" />
 
                         <TextView
@@ -1122,7 +1123,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
-                            android:text="@string/downloads_folder_default"
+                            android:text="@string/downloads_page_summary"
                             android:textColor="?android:textColorSecondary"
                             android:textSize="14sp" />
                     </LinearLayout>

@@ -202,6 +202,10 @@ public class GroupTabsAdapter extends ListAdapter<Tab, GroupTabsAdapter.ViewHold
                 listener.onTabLongClick(tab, v, this);
                 return true;
             });
+            int closeIcon = tab.isLocked() ? R.drawable.ic_lock : R.drawable.ic_close;
+            int closeDescription = tab.isLocked() ? R.string.lock_tab : R.string.close_tab;
+            binding.closeButton.setImageResource(closeIcon);
+            binding.closeButton.setContentDescription(itemView.getContext().getString(closeDescription));
             binding.closeButton.setOnClickListener(v -> listener.onCloseTab(tab));
             binding.overflowButton.setOnClickListener(v -> {
                 if (selectionMode) {
@@ -237,7 +241,9 @@ public class GroupTabsAdapter extends ListAdapter<Tab, GroupTabsAdapter.ViewHold
                     ? activeColor
                     : borderColor);
             binding.tabCard.setStrokeWidth(tab.getId().equals(currentTabId) ? dp(2) : dp(1));
-            binding.overflowButton.setImageResource(R.drawable.ic_close);
+            binding.overflowButton.setImageResource(tab.isLocked() ? R.drawable.ic_lock : R.drawable.ic_close);
+            binding.overflowButton.setContentDescription(itemView.getContext().getString(
+                    tab.isLocked() ? R.string.lock_tab : R.string.close_tab));
             binding.overflowButton.setColorFilter(secondaryTextColor);
             binding.overflowButton.setBackground(null);
             binding.overflowButton.setPadding(dp(10), dp(10), dp(10), dp(10));

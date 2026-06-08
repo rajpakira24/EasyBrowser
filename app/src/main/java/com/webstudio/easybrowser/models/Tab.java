@@ -23,11 +23,13 @@ public class Tab {
     private long lastAccessed;
     private int position;
     private boolean pinned;
+    private boolean locked;
     private boolean canGoBack;
     private boolean canGoForward;
     private boolean closeOnBackToPreviousTab;
     private String sessionState;
     private String parentTabId;
+    private int scrollY;
 
     public Tab(GeckoSession session, String title, String url) {
         this(UUID.randomUUID().toString(), session, title, url, false);
@@ -165,6 +167,14 @@ public class Tab {
         this.pinned = pinned;
     }
 
+    public boolean isLocked() {
+        return locked;
+    }
+
+    public void setLocked(boolean locked) {
+        this.locked = locked;
+    }
+
     public boolean canGoBack() {
         return canGoBack;
     }
@@ -203,5 +213,13 @@ public class Tab {
 
     public void setParentTabId(String parentTabId) {
         this.parentTabId = parentTabId;
+    }
+
+    public int getScrollY() {
+        return scrollY;
+    }
+
+    public void setScrollY(int scrollY) {
+        this.scrollY = Math.max(0, scrollY);
     }
 }

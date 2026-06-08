@@ -20,6 +20,7 @@ import com.webstudio.easybrowser.adapters.HistoryAdapter;
 import com.webstudio.easybrowser.models.HistoryItem;
 import com.webstudio.easybrowser.repository.HistoryRepository;
 import com.webstudio.easybrowser.utils.ScreenshotProtection;
+import com.webstudio.easybrowser.utils.ThemeEngine;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -57,6 +58,7 @@ public class HistoryActivity extends AppCompatActivity implements HistoryAdapter
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
             getSupportActionBar().setTitle(R.string.history);
         }
+        ThemeEngine.applyChrome(this, toolbar);
     }
 
     private void initializeViews() {

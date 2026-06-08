@@ -29,6 +29,7 @@ import com.google.gson.JsonParser;
 import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.managers.AnalyticsManager;
 import com.webstudio.easybrowser.managers.RuntimeManager;
+import com.webstudio.easybrowser.utils.ThemeEngine;
 
 import org.mozilla.geckoview.GeckoResult;
 import org.mozilla.geckoview.Image;
@@ -145,7 +146,7 @@ public class ExtensionsActivity extends AppCompatActivity {
         toolbar.setTitle(R.string.extensions);
         toolbar.setNavigationIcon(R.drawable.ic_arrow_back);
         toolbar.setNavigationOnClickListener(v -> finish());
-        toolbar.setBackgroundColor(ContextCompat.getColor(this, R.color.colorSurface));
+        ThemeEngine.applyChrome(this, toolbar);
         screen.addView(toolbar, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(56)));
@@ -181,7 +182,7 @@ public class ExtensionsActivity extends AppCompatActivity {
         LinearLayout tabs = new LinearLayout(this);
         tabs.setOrientation(LinearLayout.HORIZONTAL);
         tabs.setPadding(dp(12), dp(10), dp(12), dp(6));
-        tabs.setBackgroundColor(ContextCompat.getColor(this, R.color.colorSurface));
+        tabs.setBackgroundColor(ThemeEngine.settingsChromeColor(this));
 
         installedTab = createTabButton(R.string.extension_tab_installed, SECTION_INSTALLED);
         recommendedTab = createTabButton(R.string.extension_tab_recommended, SECTION_RECOMMENDED);
@@ -343,10 +344,9 @@ public class ExtensionsActivity extends AppCompatActivity {
     }
 
     private void updateTabButton(MaterialButton button, boolean selected) {
-        int background = ContextCompat.getColor(this,
-                selected ? R.color.colorPrimary : R.color.search_bar_background);
-        int foreground = ContextCompat.getColor(this,
-                selected ? R.color.colorOnPrimary : R.color.colorOnSurface);
+        ThemeEngine.Palette palette = ThemeEngine.homePalette(this);
+        int background = selected ? palette.accent : palette.searchBackground;
+        int foreground = selected ? ThemeEngine.foregroundFor(background) : palette.onSurface;
         button.setBackgroundTintList(android.content.res.ColorStateList.valueOf(background));
         button.setTextColor(foreground);
     }

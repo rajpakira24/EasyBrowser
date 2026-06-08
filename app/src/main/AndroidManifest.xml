@@ -81,11 +81,6 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
-
-            <!-- Shortcuts support -->
-            <meta-data
-                android:name="android.app.shortcuts"
-                android:resource="@xml/shortcuts" />
         </activity>
 
         <!-- Browser Activity -->
@@ -129,6 +124,11 @@
             android:name=".ui.activity.SettingsSubpageActivity"
             android:exported="false"
             android:parentActivityName=".ui.activity.SettingsActivity" />
+
+        <activity
+            android:name=".ui.activity.WallpaperCropActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.activity.SettingsSubpageActivity" />
 
         <!-- Bookmarks Activity -->
         <activity
@@ -177,6 +177,16 @@
             android:name=".ui.activity.UserStylesActivity"
             android:exported="false"
             android:parentActivityName=".ui.activity.BrowserActivity" />
+
+        <activity
+            android:name=".ui.activity.WeatherActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.activity.MainActivity" />
+
+        <activity
+            android:name=".ui.activity.WidgetsDashboardActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.activity.MainActivity" />
 
         <!-- File provider for sharing files -->
         <provider

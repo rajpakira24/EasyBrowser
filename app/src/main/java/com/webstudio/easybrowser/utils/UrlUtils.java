@@ -125,7 +125,7 @@ public class UrlUtils {
 
     public static String getSearchUrl(Context context, String query) {
         String searchEngineUrl = PreferenceManager.getDefaultSharedPreferences(context)
-                .getString("search_engine_url", DEFAULT_SEARCH_ENGINE);
+                .getString(SettingsKeys.PREF_SEARCH_ENGINE_URL, DEFAULT_SEARCH_ENGINE);
         if (searchEngineUrl == null || searchEngineUrl.trim().isEmpty()) {
             searchEngineUrl = DEFAULT_SEARCH_ENGINE;
         }
@@ -137,7 +137,7 @@ public class UrlUtils {
 
     public static String getHomepageUrl(Context context) {
         String homepage = PreferenceManager.getDefaultSharedPreferences(context)
-                .getString("homepage", DEFAULT_HOMEPAGE);
+                .getString(SettingsKeys.PREF_HOMEPAGE, DEFAULT_HOMEPAGE);
         if ("https://www.google.com".equals(homepage)) {
             homepage = DEFAULT_HOMEPAGE;
         }
@@ -149,7 +149,7 @@ public class UrlUtils {
 
     public static String getNewTabPageUrl(Context context) {
         boolean showQuickAccess = PreferenceManager.getDefaultSharedPreferences(context)
-                .getBoolean("show_quick_access", true);
+                .getBoolean(SettingsKeys.PREF_SHOW_QUICK_ACCESS, true);
         String appName = escapeHtml(context.getString(R.string.app_name));
         String subtitle = escapeHtml(context.getString(R.string.home_chrome_style_subtitle));
         String hint = escapeHtml(context.getString(R.string.search_or_type_url));
@@ -426,7 +426,7 @@ public class UrlUtils {
         path = path != null ? path.toLowerCase() : "";
 
         String configuredSearchEngine = PreferenceManager.getDefaultSharedPreferences(context)
-                .getString("search_engine_url", DEFAULT_SEARCH_ENGINE);
+                .getString(SettingsKeys.PREF_SEARCH_ENGINE_URL, DEFAULT_SEARCH_ENGINE);
         Uri searchUri = Uri.parse(configuredSearchEngine);
         String searchHost = searchUri.getHost();
         String searchPath = searchUri.getPath();

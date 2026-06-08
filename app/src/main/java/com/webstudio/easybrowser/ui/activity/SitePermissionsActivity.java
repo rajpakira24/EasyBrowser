@@ -16,6 +16,7 @@ import androidx.preference.PreferenceManager;
 
 import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.managers.RuntimeManager;
+import com.webstudio.easybrowser.utils.ThemeEngine;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -46,6 +47,7 @@ public class SitePermissionsActivity extends AppCompatActivity {
         toolbar.setTitle(R.string.site_permissions);
         toolbar.setNavigationIcon(R.drawable.ic_arrow_back);
         toolbar.setNavigationOnClickListener(v -> finish());
+        ThemeEngine.applyChrome(this, toolbar);
         root.addView(toolbar, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(56)));
 
@@ -175,6 +177,28 @@ public class SitePermissionsActivity extends AppCompatActivity {
         } catch (Exception ignored) {
         }
         return false;
+    }
+
+    public static List<String> getPermissionsForHost(SharedPreferences prefs, String host) {
+        List<String> permissions = new ArrayList<>();
+        if (prefs == null || host == null) {
+            return permissions;
+        }
+        String json = prefs.getString(PREF_GRANTED_PERMISSIONS, "[]");
+        try {
+            JSONArray arr = new JSONArray(json);
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject obj = arr.getJSONObject(i);
+                if (host.equals(obj.optString("host"))) {
+                    String type = obj.optString("type");
+                    if (type != null && !type.trim().isEmpty() && !permissions.contains(type)) {
+                        permissions.add(type);
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return permissions;
     }
 
     public static void recordPermission(SharedPreferences prefs, String host, String type) {

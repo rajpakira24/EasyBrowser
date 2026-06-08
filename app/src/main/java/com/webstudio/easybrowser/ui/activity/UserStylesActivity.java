@@ -20,6 +20,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.adapters.UserStylesAdapter;
+import com.webstudio.easybrowser.utils.ThemeEngine;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -52,6 +53,7 @@ public class UserStylesActivity extends AppCompatActivity {
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
             getSupportActionBar().setTitle(R.string.user_styles);
         }
+        ThemeEngine.applyChrome(this, toolbar);
     }
 
     private void initializeViews() {

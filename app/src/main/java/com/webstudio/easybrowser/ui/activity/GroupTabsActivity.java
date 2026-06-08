@@ -82,6 +82,8 @@ public class GroupTabsActivity extends AppCompatActivity implements GroupTabsAda
     private static final int TAB_MENU_PIN = 23;
     private static final int TAB_MENU_SELECT = 24;
     private static final int TAB_MENU_CLOSE = 25;
+    private static final int TAB_MENU_DUPLICATE = 26;
+    private static final int TAB_MENU_LOCK = 27;
 
     private ActivityGroupTabsBinding binding;
     private GroupTabsViewModel viewModel;
@@ -100,6 +102,8 @@ public class GroupTabsActivity extends AppCompatActivity implements GroupTabsAda
     private final ArrayList<String> reorderedPrivateTabIds = new ArrayList<>();
     private final ArrayList<String> pinnedTabIds = new ArrayList<>();
     private final ArrayList<String> unpinnedTabIds = new ArrayList<>();
+    private final ArrayList<String> lockedTabIds = new ArrayList<>();
+    private final ArrayList<String> unlockedTabIds = new ArrayList<>();
     private final List<Tab> runtimeTabs = new ArrayList<>();
     private final List<Tab> currentTabs = new ArrayList<>();
     private final Set<String> selectedIds = new LinkedHashSet<>();
@@ -361,6 +365,11 @@ public class GroupTabsActivity extends AppCompatActivity implements GroupTabsAda
 
     @Override
     public void onCloseTab(Tab tab) {
+        if (tab != null && tab.isLocked()) {
+            Toast.makeText(this, R.string.locked_tab_close_blocked, Toast.LENGTH_SHORT).show();
+            loadTabs();
+            return;
+        }
         requestTabListAnimation();
         addClosedTabId(tab.getId());
         selectedIds.remove(tab.getId());
@@ -429,6 +438,33 @@ public class GroupTabsActivity extends AppCompatActivity implements GroupTabsAda
             loadTabs();
             Toast.makeText(this,
                     pinned ? R.string.tab_pinned : R.string.tab_unpinned,
+                    Toast.LENGTH_SHORT).show();
+        });
+    }
+
+    private void onLockTab(Tab tab) {
+        if (tab == null) {
+            return;
+        }
+        boolean locked = !tab.isLocked();
+        tab.setLocked(locked);
+        recordLockedMutation(tab, locked);
+        groupsChanged = true;
+        if (privateGroup) {
+            Tab runtimeTab = findRuntimeTab(tab.getId());
+            if (runtimeTab != null) {
+                runtimeTab.setLocked(locked);
+            }
+            loadTabs();
+            Toast.makeText(this,
+                    locked ? R.string.tab_locked : R.string.tab_unlocked,
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+        viewModel.saveTab(tab, () -> {
+            loadTabs();
+            Toast.makeText(this,
+                    locked ? R.string.tab_locked : R.string.tab_unlocked,
                     Toast.LENGTH_SHORT).show();
         });
     }
@@ -636,16 +672,22 @@ public class GroupTabsActivity extends AppCompatActivity implements GroupTabsAda
         PopupMenu menu = new PopupMenu(this, anchor);
         activeTabActionMenu = menu;
         addTabMenuItem(menu, TAB_MENU_MOVE_TO_GROUP, R.string.move_tab_to_group, R.drawable.ic_view_grid);
+        addTabMenuItem(menu, TAB_MENU_DUPLICATE, R.string.duplicate_tab, R.drawable.ic_duplicate_tab);
         addTabMenuItem(menu, TAB_MENU_BOOKMARK, R.string.add_to_bookmarks, R.drawable.ic_bookmark_border);
         addTabMenuItem(menu, TAB_MENU_SHARE, R.string.share, R.drawable.ic_share);
         addTabMenuItem(menu, TAB_MENU_PIN, tab.isPinned() ? R.string.unpin_tab : R.string.pin_tab,
                 R.drawable.ic_pin);
+        addTabMenuItem(menu, TAB_MENU_LOCK, tab.isLocked() ? R.string.unlock_tab : R.string.lock_tab,
+                R.drawable.ic_lock);
         addTabMenuItem(menu, TAB_MENU_SELECT, R.string.select_tab, R.drawable.ic_edit);
         addTabMenuItem(menu, TAB_MENU_CLOSE, R.string.close_tab_sentence, R.drawable.ic_close);
         forceShowMenuIcons(menu);
         menu.setOnMenuItemClickListener(item -> {
             if (item.getItemId() == TAB_MENU_MOVE_TO_GROUP) {
                 onMoveTab(tab);
+                return true;
+            } else if (item.getItemId() == TAB_MENU_DUPLICATE) {
+                onDuplicateTab(tab);
                 return true;
             } else if (item.getItemId() == TAB_MENU_BOOKMARK) {
                 bookmarkTab(tab);
@@ -655,6 +697,9 @@ public class GroupTabsActivity extends AppCompatActivity implements GroupTabsAda
                 return true;
             } else if (item.getItemId() == TAB_MENU_PIN) {
                 onPinTab(tab);
+                return true;
+            } else if (item.getItemId() == TAB_MENU_LOCK) {
+                onLockTab(tab);
                 return true;
             } else if (item.getItemId() == TAB_MENU_SELECT) {
                 selectSingleTab(tab);
@@ -798,13 +843,28 @@ public class GroupTabsActivity extends AppCompatActivity implements GroupTabsAda
             Toast.makeText(this, R.string.select_tabs_first, Toast.LENGTH_SHORT).show();
             return;
         }
-        requestTabListAnimation();
+        ArrayList<Tab> closableTabs = new ArrayList<>();
         for (Tab tab : tabs) {
+            if (tab != null && !tab.isLocked()) {
+                closableTabs.add(tab);
+            }
+        }
+        if (closableTabs.isEmpty()) {
+            Toast.makeText(this, R.string.locked_tab_close_blocked, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (closableTabs.size() < tabs.size()) {
+            Toast.makeText(this, R.string.locked_tab_close_blocked, Toast.LENGTH_SHORT).show();
+        }
+        requestTabListAnimation();
+        ArrayList<String> closableIds = new ArrayList<>();
+        for (Tab tab : closableTabs) {
             addClosedTabId(tab.getId());
+            closableIds.add(tab.getId());
         }
         groupsChanged = true;
         if (privateGroup) {
-            for (Tab tab : tabs) {
+            for (Tab tab : closableTabs) {
                 removeRuntimeTab(tab.getId());
             }
             normalizeRuntimeGroup(groupId);
@@ -812,7 +872,7 @@ public class GroupTabsActivity extends AppCompatActivity implements GroupTabsAda
             loadTabs();
             return;
         }
-        viewModel.deleteTabs(new ArrayList<>(selectedIds), () -> {
+        viewModel.deleteTabs(closableIds, () -> {
             clearSelection();
             loadTabs();
         });
@@ -1346,6 +1406,7 @@ public class GroupTabsActivity extends AppCompatActivity implements GroupTabsAda
         ArrayList<String> parentIds = intent.getStringArrayListExtra(TabsActivity.EXTRA_TAB_PARENT_IDS);
         boolean[] privateStates = intent.getBooleanArrayExtra(TabsActivity.EXTRA_TAB_PRIVATE_STATES);
         boolean[] pinnedStates = intent.getBooleanArrayExtra(TabsActivity.EXTRA_TAB_PINNED_STATES);
+        boolean[] lockedStates = intent.getBooleanArrayExtra(TabsActivity.EXTRA_TAB_LOCKED_STATES);
         int[] groupColors = intent.getIntArrayExtra(TabsActivity.EXTRA_TAB_GROUP_COLORS);
         int[] positions = intent.getIntArrayExtra(TabsActivity.EXTRA_TAB_POSITIONS);
         if (ids == null || titles == null || urls == null || privateStates == null) {
@@ -1369,6 +1430,7 @@ public class GroupTabsActivity extends AppCompatActivity implements GroupTabsAda
             }
             tab.setPosition(positions != null && i < positions.length ? positions[i] : i);
             tab.setPinned(pinnedStates != null && i < pinnedStates.length && pinnedStates[i]);
+            tab.setLocked(lockedStates != null && i < lockedStates.length && lockedStates[i]);
             runtimeTabs.add(tab);
         }
     }
@@ -1513,6 +1575,24 @@ public class GroupTabsActivity extends AppCompatActivity implements GroupTabsAda
         }
     }
 
+    private void recordLockedMutation(Tab tab, boolean locked) {
+        if (tab == null) {
+            return;
+        }
+        String tabId = tab.getId();
+        if (locked) {
+            unlockedTabIds.remove(tabId);
+            if (!lockedTabIds.contains(tabId)) {
+                lockedTabIds.add(tabId);
+            }
+        } else {
+            lockedTabIds.remove(tabId);
+            if (!unlockedTabIds.contains(tabId)) {
+                unlockedTabIds.add(tabId);
+            }
+        }
+    }
+
     private void recordCreatedPrivateGroup(String groupId, String groupName, int groupColor,
                                            List<Tab> tabs) {
         if (tabs == null || tabs.size() < 2) {
@@ -1600,6 +1680,12 @@ public class GroupTabsActivity extends AppCompatActivity implements GroupTabsAda
         }
         if (!unpinnedTabIds.isEmpty()) {
             result.putStringArrayListExtra(TabManagerActivity.RESULT_UNPINNED_TAB_IDS, unpinnedTabIds);
+        }
+        if (!lockedTabIds.isEmpty()) {
+            result.putStringArrayListExtra(TabManagerActivity.RESULT_LOCKED_TAB_IDS, lockedTabIds);
+        }
+        if (!unlockedTabIds.isEmpty()) {
+            result.putStringArrayListExtra(TabManagerActivity.RESULT_UNLOCKED_TAB_IDS, unlockedTabIds);
         }
         setResult(RESULT_OK, result);
         resultSet = true;

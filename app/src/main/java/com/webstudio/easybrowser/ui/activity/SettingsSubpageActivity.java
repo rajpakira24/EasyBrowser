@@ -1,13 +1,18 @@
 package com.webstudio.easybrowser.ui.activity;
 
+import android.Manifest;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.Settings;
+import android.text.InputType;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -15,6 +20,9 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.widget.LinearLayout;
@@ -22,6 +30,8 @@ import android.widget.RadioButton;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.appcompat.widget.Toolbar;
@@ -34,12 +44,19 @@ import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.slider.Slider;
 import com.google.android.material.switchmaterial.SwitchMaterial;
+import com.bumptech.glide.Glide;
+import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.webstudio.easybrowser.BuildConfig;
 import com.webstudio.easybrowser.R;
+import com.webstudio.easybrowser.managers.PrivacyStatsManager;
 import com.webstudio.easybrowser.utils.ScreenshotProtection;
 import com.webstudio.easybrowser.utils.SystemBarUtils;
 import com.webstudio.easybrowser.managers.RuntimeManager;
+import com.webstudio.easybrowser.repository.WeatherRepository;
+import com.webstudio.easybrowser.utils.AppSettings;
+import com.webstudio.easybrowser.utils.HomeBackgroundProvider;
 import com.webstudio.easybrowser.utils.SettingsKeys;
+import com.webstudio.easybrowser.utils.ThemeEngine;
 
 import org.mozilla.geckoview.GeckoRuntime;
 import org.mozilla.geckoview.GeckoRuntimeSettings;
@@ -47,11 +64,18 @@ import org.mozilla.geckoview.ContentBlocking;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Calendar;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 public class SettingsSubpageActivity extends AppCompatActivity {
+    private static final int REQUEST_PICK_WALLPAPER = 6107;
+    private static final int REQUEST_CROP_WALLPAPER = 6108;
+
     public static final String EXTRA_PAGE = "page";
     public static final String PAGE_SITE_SETTINGS = "site_settings";
     public static final String PAGE_TABS = "tabs";
@@ -77,21 +101,67 @@ public class SettingsSubpageActivity extends AppCompatActivity {
     private LinearLayout content;
     private WebView legalWebView;
     private Toolbar toolbar;
+    private AppSettings appSettings;
     private String page;
+    private ActivityResultLauncher<String[]> appPermissionLauncher;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        appSettings = new AppSettings(this);
+        setupAppPermissionLauncher();
+        int appBarColor = ThemeEngine.settingsChromeColor(this);
         SystemBarUtils.apply(this,
-                ContextCompat.getColor(this, R.color.app_bar_background),
-                ContextCompat.getColor(this, R.color.browser_chrome_background));
+                appBarColor,
+                appBarColor,
+                ThemeEngine.useDarkSystemBarIcons(appBarColor));
         page = getIntent().getStringExtra(EXTRA_PAGE);
         if (page == null || page.trim().isEmpty()) {
             page = PAGE_SITE_SETTINGS;
         }
         buildShell();
         buildPage();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (toolbar != null) {
+            buildPage();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_PICK_WALLPAPER && resultCode == RESULT_OK
+                && data != null && data.getData() != null) {
+            Uri uri = data.getData();
+            int flags = data.getFlags()
+                    & (Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            try {
+                getContentResolver().takePersistableUriPermission(uri, flags);
+            } catch (SecurityException ignored) {
+            }
+            openWallpaperCrop(uri);
+        } else if (requestCode == REQUEST_CROP_WALLPAPER && resultCode == RESULT_OK
+                && data != null && !TextUtils.isEmpty(data.getStringExtra(WallpaperCropActivity.EXTRA_OUTPUT_URI))) {
+            saveWallpaperUri(data.getStringExtra(WallpaperCropActivity.EXTRA_OUTPUT_URI));
+        }
+    }
+
+    private void saveWallpaperUri(String uriString) {
+        Set<String> savedWallpapers = getSavedWallpaperUris();
+        savedWallpapers.add(uriString);
+        prefs.edit()
+                .putString(SettingsKeys.PREF_WALLPAPER_USER_URI, uriString)
+                .putStringSet(SettingsKeys.PREF_WALLPAPER_USER_URIS, savedWallpapers)
+                .putString(SettingsKeys.PREF_WALLPAPER_MODE, "user")
+                .apply();
+        Toast.makeText(this, R.string.wallpaper_image_saved, Toast.LENGTH_SHORT).show();
+        applyThemePreferencesRealtime();
     }
 
     private void buildShell() {
@@ -110,7 +180,7 @@ public class SettingsSubpageActivity extends AppCompatActivity {
         }
         toolbar.setNavigationContentDescription(R.string.back);
         toolbar.setTitleTextColor(appBarForeground);
-        toolbar.setBackgroundColor(ContextCompat.getColor(this, R.color.app_bar_background));
+        toolbar.setBackgroundColor(ThemeEngine.settingsChromeColor(this));
         toolbar.setNavigationOnClickListener(v -> finish());
         MenuItem closeItem = toolbar.getMenu().add(R.string.dialog_close);
         Drawable closeIcon = ContextCompat.getDrawable(this, R.drawable.ic_close);
@@ -150,6 +220,7 @@ public class SettingsSubpageActivity extends AppCompatActivity {
             content.removeAllViews();
         }
         toolbar.setTitle(getPageTitle(page));
+        applySettingsThemeChrome();
         switch (page) {
             case PAGE_TABS:
                 buildTabsPage();
@@ -261,6 +332,11 @@ public class SettingsSubpageActivity extends AppCompatActivity {
         addNavigationRow(allSites, R.string.all_sites, R.string.site_permissions_summary,
                 () -> startActivity(new Intent(this, SitePermissionsActivity.class)));
 
+        addSection(R.string.app_permissions);
+        LinearLayout appPermissions = addCard();
+        addStaticRow(appPermissions, getString(R.string.app_permissions_request),
+                getAppPermissionsSummary(), this::requestMissingAppPermissions);
+
         addSection(R.string.permissions);
         LinearLayout permissions = addCard();
         addPermissionChoiceRow(permissions, R.string.location, SettingsKeys.PREF_SITE_LOCATION);
@@ -299,7 +375,6 @@ public class SettingsSubpageActivity extends AppCompatActivity {
         addSwitchRow(contentCard, R.string.desktop_site_default,
                 R.string.desktop_site_default_summary,
                 SettingsKeys.PREF_DESKTOP_SITE_DEFAULT, false, null);
-        addNavigationRow(contentCard, R.string.saved_zoom_for_sites, 0, this::showSavedZoomDialog);
         addNavigationRow(contentCard, R.string.data_stored, 0,
                 () -> startActivity(new Intent(this, CookieManagerActivity.class)));
     }
@@ -598,9 +673,30 @@ public class SettingsSubpageActivity extends AppCompatActivity {
     }
 
     private void buildTabsPage() {
+        addSection(R.string.startup_recovery);
+        LinearLayout startup = addCard();
+        addChoiceRow(startup, R.string.startup_recovery,
+                R.string.startup_recovery_summary,
+                SettingsKeys.PREF_STARTUP_MODE,
+                "restore_all",
+                new int[]{
+                        R.string.startup_restore_all,
+                        R.string.startup_restore_last_session,
+                        R.string.startup_homepage
+                },
+                new String[]{"restore_all", "restore_last_session", "homepage"},
+                null);
+
         LinearLayout card = addCard();
         addStaticRow(card, getString(R.string.move_to_inactive_section),
                 getInactiveDaysLabel(), () -> openSubpage(PAGE_INACTIVE_TABS));
+        addChoiceRow(card, R.string.tab_layout_mode,
+                R.string.tab_layout_summary,
+                SettingsKeys.PREF_TAB_LAYOUT_MODE,
+                "grid",
+                new int[]{R.string.tab_layout_grid, R.string.tab_layout_list},
+                new String[]{"grid", "list"},
+                null);
         addSwitchRow(card, R.string.show_undo_closed_tabs,
                 R.string.show_undo_closed_tabs_summary,
                 SettingsKeys.PREF_SHOW_TAB_UNDO, true, null);
@@ -648,6 +744,11 @@ public class SettingsSubpageActivity extends AppCompatActivity {
         return getString(R.string.after_21_days);
     }
 
+    private String getPrivacyReportSummary(PrivacyStatsManager.PeriodStats stats) {
+        return getString(R.string.privacy_report_format,
+                stats.pagesProtected, stats.itemsBlocked);
+    }
+
     private void buildNotificationsPage() {
         addParagraph(R.string.notifications_page_summary);
 
@@ -665,10 +766,91 @@ public class SettingsSubpageActivity extends AppCompatActivity {
                 R.string.completed_downloads_summary,
                 SettingsKeys.PREF_DOWNLOAD_COMPLETION_NOTIFICATIONS, true, null);
 
-        addSection(R.string.permissions);
-        LinearLayout permissions = addCard();
-        addPermissionChoiceRow(permissions, R.string.website_notifications,
-                SettingsKeys.PREF_SITE_NOTIFICATIONS);
+        addSection(R.string.browser);
+        LinearLayout browser = addCard();
+        addSwitchRow(browser, R.string.browser_alerts,
+                R.string.browser_alerts_summary,
+                SettingsKeys.PREF_BROWSER_ALERT_NOTIFICATIONS, true, null);
+        addSwitchRow(browser, R.string.privacy_alerts,
+                R.string.privacy_alerts_summary,
+                SettingsKeys.PREF_PRIVACY_NOTIFICATIONS, true, null);
+        addSwitchRow(browser, R.string.weather_alerts,
+                R.string.weather_alerts_summary,
+                SettingsKeys.PREF_WEATHER_NOTIFICATIONS, true, null);
+        addSwitchRow(browser, R.string.rewards_alerts,
+                R.string.rewards_alerts_summary,
+                SettingsKeys.PREF_REWARDS_NOTIFICATIONS, true, null);
+        addSwitchRow(browser, R.string.ai_alerts,
+                R.string.ai_alerts_summary,
+                SettingsKeys.PREF_AI_NOTIFICATIONS, true, null);
+        addSwitchRow(browser, R.string.update_alerts,
+                R.string.update_alerts_summary,
+                SettingsKeys.PREF_UPDATE_NOTIFICATIONS, true, null);
+    }
+
+    private void setupAppPermissionLauncher() {
+        appPermissionLauncher = registerForActivityResult(
+                new ActivityResultContracts.RequestMultiplePermissions(),
+                result -> {
+                    int granted = 0;
+                    for (Boolean value : result.values()) {
+                        if (Boolean.TRUE.equals(value)) {
+                            granted++;
+                        }
+                    }
+                    Toast.makeText(this,
+                            getString(R.string.app_permissions_updated,
+                                    granted, result.size()),
+                            Toast.LENGTH_SHORT).show();
+                    buildPage();
+                });
+    }
+
+    private void requestMissingAppPermissions() {
+        ArrayList<String> missing = getMissingAppPermissions();
+        if (missing.isEmpty()) {
+            Toast.makeText(this, R.string.app_permissions_all_granted,
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (appPermissionLauncher != null) {
+            appPermissionLauncher.launch(missing.toArray(new String[0]));
+        }
+    }
+
+    private String getAppPermissionsSummary() {
+        int missing = getMissingAppPermissions().size();
+        int total = getRuntimeAppPermissions().size();
+        if (missing == 0) {
+            return getString(R.string.app_permissions_all_granted);
+        }
+        return getString(R.string.app_permissions_missing_summary, total - missing, total);
+    }
+
+    private ArrayList<String> getMissingAppPermissions() {
+        ArrayList<String> missing = new ArrayList<>();
+        for (String permission : getRuntimeAppPermissions()) {
+            if (ContextCompat.checkSelfPermission(this, permission)
+                    != PackageManager.PERMISSION_GRANTED) {
+                missing.add(permission);
+            }
+        }
+        return missing;
+    }
+
+    private ArrayList<String> getRuntimeAppPermissions() {
+        ArrayList<String> permissions = new ArrayList<>();
+        permissions.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        permissions.add(Manifest.permission.ACCESS_COARSE_LOCATION);
+        permissions.add(Manifest.permission.CAMERA);
+        permissions.add(Manifest.permission.RECORD_AUDIO);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS);
+        }
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+            permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+        }
+        return permissions;
     }
 
     private void buildDownloadsPage() {
@@ -687,14 +869,6 @@ public class SettingsSubpageActivity extends AppCompatActivity {
         addStaticRow(behavior, getString(R.string.download_bandwidth_limit_title),
                 getDownloadBandwidthLimitLabel(), this::showDownloadBandwidthLimitDialog);
 
-        addSection(R.string.notifications);
-        LinearLayout notifications = addCard();
-        addSwitchRow(notifications, R.string.active_downloads,
-                R.string.active_downloads_summary,
-                SettingsKeys.PREF_DOWNLOAD_PROGRESS_NOTIFICATIONS, true, null);
-        addSwitchRow(notifications, R.string.completed_downloads,
-                R.string.completed_downloads_summary,
-                SettingsKeys.PREF_DOWNLOAD_COMPLETION_NOTIFICATIONS, true, null);
     }
 
     private void buildShieldsPage() {
@@ -720,6 +894,16 @@ public class SettingsSubpageActivity extends AppCompatActivity {
                 R.string.strip_tracking_params_summary,
                 "strip_tracking_params", true,
                 this::applyContentBlockingPreferencesIfRunning);
+
+        addSection(R.string.tracker_reports);
+        LinearLayout reports = addCard();
+        PrivacyStatsManager.Report report = PrivacyStatsManager.getReport(this);
+        addStaticRow(reports, getString(R.string.privacy_report_today),
+                getPrivacyReportSummary(report.today), null);
+        addStaticRow(reports, getString(R.string.privacy_report_week),
+                getPrivacyReportSummary(report.thisWeek), null);
+        addStaticRow(reports, getString(R.string.privacy_report_month),
+                getPrivacyReportSummary(report.thisMonth), null);
 
         addSection(R.string.privacy_security_settings);
         LinearLayout privacy = addCard();
@@ -763,19 +947,31 @@ public class SettingsSubpageActivity extends AppCompatActivity {
         addSwitchRow(controls, R.string.enable_bottom_navigation_toolbar,
                 R.string.enable_bottom_navigation_summary,
                 SettingsKeys.PREF_BOTTOM_NAVIGATION_ENABLED, true, null);
-        addSwitchRow(controls, R.string.show_undo_closed_tabs,
-                R.string.show_undo_closed_tabs_summary,
-                SettingsKeys.PREF_SHOW_TAB_UNDO, true, null);
     }
 
     private void buildNewTabPage() {
         LinearLayout card = addCard();
         addSwitchRow(card, R.string.show_privacy_stats,
                 R.string.show_privacy_stats_summary,
-                "show_privacy_stats", true, null);
+                SettingsKeys.PREF_SHOW_PRIVACY_STATS, true, null);
         addSwitchRow(card, R.string.show_quick_access,
                 R.string.show_quick_access_summary,
-                "show_quick_access", true, null);
+                SettingsKeys.PREF_SHOW_QUICK_ACCESS, true, null);
+        addSwitchRow(card, R.string.show_weather_widget,
+                R.string.show_weather_widget_summary,
+                SettingsKeys.PREF_SHOW_WEATHER_WIDGET, true, null);
+
+        LinearLayout weather = addCard();
+        WeatherRepository weatherRepository = new WeatherRepository(this);
+        addStaticRow(weather, getString(R.string.weather_location),
+                weatherRepository.getLocationSummary(), this::showWeatherLocationDialog);
+        addChoiceRow(weather, R.string.weather_units,
+                R.string.weather_summary,
+                SettingsKeys.PREF_WEATHER_UNITS,
+                WeatherRepository.UNITS_CELSIUS,
+                new int[]{R.string.weather_units_celsius, R.string.weather_units_fahrenheit},
+                new String[]{WeatherRepository.UNITS_CELSIUS, WeatherRepository.UNITS_FAHRENHEIT},
+                null);
     }
 
     private void buildAccessibilityPage() {
@@ -849,6 +1045,549 @@ public class SettingsSubpageActivity extends AppCompatActivity {
                 SettingsKeys.PREF_THEME_MODE, "light", this::applyThemeMode);
         addRadioRow(card, R.string.theme_dark, 0,
                 SettingsKeys.PREF_THEME_MODE, "dark", this::applyThemeMode);
+
+        LinearLayout colors = addCard();
+        addThemeColorPreviewRow(colors);
+        addThemePackPreviewRow(colors);
+        addSwitchRow(colors, R.string.theme_wallpaper_sync,
+                R.string.theme_wallpaper_sync_summary,
+                SettingsKeys.PREF_THEME_WALLPAPER_SYNC, false,
+                this::applyThemePreferencesRealtime);
+
+        LinearLayout wallpaper = addCard();
+        addWallpaperModePreviewRow(wallpaper);
+        addWallpaperCollectionPreviewRow(wallpaper);
+        addStaticRow(wallpaper, getString(R.string.wallpaper_favorites),
+                getWallpaperFavoritesSummary(), this::showWallpaperFavoritesDialog);
+        addSwitchRow(wallpaper, R.string.wallpaper_favorites_only,
+                R.string.wallpaper_favorites_only_summary,
+                SettingsKeys.PREF_WALLPAPER_FAVORITES_ONLY, false,
+                this::applyThemePreferencesRealtime);
+        addSwitchRow(wallpaper, R.string.wallpaper_offline_pack,
+                R.string.wallpaper_offline_pack_summary,
+                SettingsKeys.PREF_WALLPAPER_OFFLINE_PACK, false,
+                () -> {
+                    if (appSettings.isWallpaperOfflinePackEnabled()) {
+                        prefetchWallpaperPackFromSettings();
+                    }
+                    applyThemePreferencesRealtime();
+                });
+        addSliderRow(wallpaper, R.string.wallpaper_blur,
+                SettingsKeys.PREF_WALLPAPER_BLUR, 0, 0, 24, 1, " px");
+        addSliderRow(wallpaper, R.string.wallpaper_overlay,
+                SettingsKeys.PREF_WALLPAPER_OVERLAY, 42, 0, 80, 1, "%");
+    }
+
+    private void addThemeColorPreviewRow(LinearLayout card) {
+        int[] labels = new int[]{
+                R.string.theme_blue,
+                R.string.theme_green,
+                R.string.theme_purple,
+                R.string.theme_orange,
+                R.string.theme_red,
+                R.string.theme_amoled_black
+        };
+        String[] values = new String[]{"blue", "green", "purple", "orange", "red",
+                "amoled_black"};
+        int[][] swatches = new int[][]{
+                palette("#2F80ED", "#56CCF2"),
+                palette("#1F8A5B", "#8BD66F"),
+                palette("#6D5DFB", "#D66CFF"),
+                palette("#F97316", "#FACC15"),
+                palette("#D7263D", "#FF8FA3"),
+                palette("#000000", "#141414", "#2DD4BF")
+        };
+        String selected = prefs.getString(SettingsKeys.PREF_THEME_COLOR_PRESET, "blue");
+        LinearLayout strip = createPreviewStrip();
+        for (int i = 0; i < values.length; i++) {
+            final String value = values[i];
+            strip.addView(createPreviewTile(getString(labels[i]),
+                    createThemePreviewSurface(swatches[i]),
+                    value.equals(selected),
+                    112,
+                    () -> {
+                        prefs.edit()
+                                .putString(SettingsKeys.PREF_THEME_COLOR_PRESET, value)
+                                .apply();
+                        applyThemePreferencesRealtime();
+                    }));
+        }
+        addPreviewGroupRow(card, R.string.theme_color, getThemeColorLabel(), null, strip);
+    }
+
+    private void addThemePackPreviewRow(LinearLayout card) {
+        int[] labels = new int[]{
+                R.string.theme_pack_default,
+                R.string.theme_pack_glass,
+                R.string.theme_pack_nature,
+                R.string.theme_pack_space,
+                R.string.theme_pack_gaming,
+                R.string.theme_pack_cyberpunk,
+                R.string.theme_pack_amoled,
+                R.string.theme_pack_material_you
+        };
+        String[] values = new String[]{"default", "glass", "nature", "space", "gaming",
+                "cyberpunk", "amoled", "material_you"};
+        int[][] swatches = new int[][]{
+                palette("#F7FBFF", "#3282B8", "#0F4C75"),
+                palette("#F4FBFF", "#BCE7F4", "#FFFFFF"),
+                palette("#102F26", "#3C8D5F", "#D8EDC7"),
+                palette("#101827", "#37307D", "#88D8FF"),
+                palette("#101820", "#16C784", "#F7C948"),
+                palette("#17112A", "#FF2BD6", "#00E5FF"),
+                palette("#000000", "#151515", "#36D399"),
+                palette("#F8F2E7", "#8EA67B", "#D7B98A")
+        };
+        String selected = prefs.getString(SettingsKeys.PREF_THEME_PACK, "default");
+        LinearLayout strip = createPreviewStrip();
+        for (int i = 0; i < values.length; i++) {
+            final String value = values[i];
+            strip.addView(createPreviewTile(getString(labels[i]),
+                    createThemePreviewSurface(swatches[i]),
+                    value.equals(selected),
+                    118,
+                    () -> {
+                        prefs.edit().putString(SettingsKeys.PREF_THEME_PACK, value).apply();
+                        applyThemePreferencesRealtime();
+                    }));
+        }
+        addPreviewGroupRow(card, R.string.theme_pack, getThemePackLabel(), null, strip);
+    }
+
+    private void addWallpaperModePreviewRow(LinearLayout card) {
+        String mode = prefs.getString(SettingsKeys.PREF_WALLPAPER_MODE, "auto");
+        String collection = prefs.getString(SettingsKeys.PREF_WALLPAPER_COLLECTION, "nature");
+        String userUri = prefs.getString(SettingsKeys.PREF_WALLPAPER_USER_URI, "");
+        int dayBucket = getWallpaperPreviewDayBucket();
+
+        LinearLayout strip = createPreviewStrip();
+        strip.addView(createPreviewTile(getString(R.string.wallpaper_auto),
+                createPhotoWallpaperPreview(HomeBackgroundProvider
+                        .photoForDailyMode("auto", collection, dayBucket)
+                        .getImageUrl(), palette("#EEF7FF", "#BDE7F8")),
+                "auto".equals(mode),
+                138,
+                82,
+                () -> {
+                    prefs.edit().putString(SettingsKeys.PREF_WALLPAPER_MODE, "auto").apply();
+                    applyThemePreferencesRealtime();
+                }));
+
+        strip.addView(createPreviewTile(getString(R.string.wallpaper_user),
+                TextUtils.isEmpty(userUri)
+                        ? createPickWallpaperPreview()
+                        : createImageWallpaperPreview(userUri),
+                "user".equals(mode),
+                138,
+                82,
+                () -> {
+                    if (TextUtils.isEmpty(userUri)) {
+                        openWallpaperPicker();
+                    } else if ("user".equals(mode)) {
+                        openWallpaperPicker();
+                    } else {
+                        prefs.edit().putString(SettingsKeys.PREF_WALLPAPER_MODE, "user").apply();
+                        applyThemePreferencesRealtime();
+                    }
+                }));
+
+        strip.addView(createPreviewTile(getString(R.string.wallpaper_collection),
+                createPhotoWallpaperPreview(HomeBackgroundProvider
+                        .photoForDailyMode("collection", collection, dayBucket)
+                        .getImageUrl(), palette("#102F26", "#4DAA89")),
+                "collection".equals(mode),
+                138,
+                82,
+                () -> {
+                    prefs.edit()
+                            .putString(SettingsKeys.PREF_WALLPAPER_MODE, "collection")
+                            .apply();
+                    applyThemePreferencesRealtime();
+                }));
+        addPreviewGroupRow(card, R.string.wallpaper_mode, getWallpaperModeLabel(),
+                getString(R.string.wallpaper_mode_summary), strip);
+    }
+
+    private void addWallpaperCollectionPreviewRow(LinearLayout card) {
+        int[] labels = new int[]{
+                R.string.wallpaper_nature,
+                R.string.wallpaper_mountains,
+                R.string.wallpaper_ocean,
+                R.string.wallpaper_space,
+                R.string.wallpaper_cities,
+                R.string.wallpaper_abstract,
+                R.string.wallpaper_amoled,
+                R.string.wallpaper_gaming,
+                R.string.wallpaper_minimal
+        };
+        String[] values = new String[]{"nature", "mountains", "ocean", "space", "cities",
+                "abstract", "amoled", "gaming", "minimal"};
+        int[][] fallbackSwatches = wallpaperCollectionFallbackPalettes();
+        String selected = prefs.getString(SettingsKeys.PREF_WALLPAPER_COLLECTION, "nature");
+        boolean collectionMode = "collection".equals(
+                prefs.getString(SettingsKeys.PREF_WALLPAPER_MODE, "auto"));
+        int dayBucket = getWallpaperPreviewDayBucket();
+        LinearLayout strip = createPreviewStrip();
+        for (int i = 0; i < values.length; i++) {
+            final String value = values[i];
+            strip.addView(createPreviewTile(getString(labels[i]),
+                    createPhotoWallpaperPreview(HomeBackgroundProvider
+                            .photoForDailyMode("collection", value, dayBucket)
+                            .getImageUrl(), fallbackSwatches[i]),
+                    collectionMode && value.equals(selected),
+                    142,
+                    82,
+                    () -> {
+                        prefs.edit()
+                                .putString(SettingsKeys.PREF_WALLPAPER_COLLECTION, value)
+                                .putString(SettingsKeys.PREF_WALLPAPER_MODE, "collection")
+                                .apply();
+                        applyThemePreferencesRealtime();
+                    }));
+        }
+        addPreviewGroupRow(card, R.string.wallpaper_collection_name,
+                getWallpaperCollectionLabel(), null, strip);
+    }
+
+    private void addWallpaperImagePreviewRow(LinearLayout card) {
+        LinearLayout strip = createPreviewStrip();
+        strip.addView(createPreviewTile(getString(R.string.wallpaper_pick_image),
+                createPickWallpaperPreview(),
+                false,
+                124,
+                82,
+                this::openWallpaperPicker));
+
+        String current = prefs.getString(SettingsKeys.PREF_WALLPAPER_USER_URI, "");
+        LinkedHashSet<String> imageUris = new LinkedHashSet<>();
+        if (!TextUtils.isEmpty(current)) {
+            imageUris.add(current);
+        }
+        imageUris.addAll(getSavedWallpaperUris());
+        for (String uri : imageUris) {
+            boolean selected = uri.equals(current)
+                    && "user".equals(prefs.getString(SettingsKeys.PREF_WALLPAPER_MODE, "auto"));
+            strip.addView(createPreviewTile(getWallpaperDisplayName(uri),
+                    createImageWallpaperPreview(uri),
+                    selected,
+                    124,
+                    82,
+                    () -> {
+                        prefs.edit()
+                                .putString(SettingsKeys.PREF_WALLPAPER_USER_URI, uri)
+                                .putString(SettingsKeys.PREF_WALLPAPER_MODE, "user")
+                                .apply();
+                        buildPage();
+                    }));
+        }
+        addPreviewStripRow(card, strip);
+    }
+
+    private int[][] wallpaperCollectionFallbackPalettes() {
+        return new int[][]{
+                palette("#0F3D2E", "#4DAA89", "#DCEFD0"),
+                palette("#223047", "#8BA6C8", "#F3F7FA"),
+                palette("#043B5C", "#19A7CE", "#B8F3FF"),
+                palette("#080C1A", "#2B2F77", "#B9D6FF"),
+                palette("#172033", "#D88C4A", "#F5D7A1"),
+                palette("#47226B", "#E84A8A", "#FFD166"),
+                palette("#000000", "#151515", "#2DD4BF"),
+                palette("#111827", "#19D3A2", "#F4C430"),
+                palette("#F5F1E8", "#D9D2C3", "#8F9B8F")
+        };
+    }
+
+    private String getWallpaperModeLabel() {
+        String mode = prefs.getString(SettingsKeys.PREF_WALLPAPER_MODE, "auto");
+        if ("user".equals(mode)) {
+            return getString(R.string.wallpaper_user);
+        }
+        if ("collection".equals(mode)) {
+            return getString(R.string.wallpaper_collection);
+        }
+        return getString(R.string.wallpaper_auto);
+    }
+
+    private String getThemeColorLabel() {
+        int[] labels = new int[]{
+                R.string.theme_blue,
+                R.string.theme_green,
+                R.string.theme_purple,
+                R.string.theme_orange,
+                R.string.theme_red,
+                R.string.theme_amoled_black
+        };
+        String[] values = new String[]{"blue", "green", "purple", "orange", "red",
+                "amoled_black"};
+        return choiceLabel(prefs.getString(SettingsKeys.PREF_THEME_COLOR_PRESET, "blue"),
+                labels, values);
+    }
+
+    private String getThemePackLabel() {
+        int[] labels = new int[]{
+                R.string.theme_pack_default,
+                R.string.theme_pack_glass,
+                R.string.theme_pack_nature,
+                R.string.theme_pack_space,
+                R.string.theme_pack_gaming,
+                R.string.theme_pack_cyberpunk,
+                R.string.theme_pack_amoled,
+                R.string.theme_pack_material_you
+        };
+        String[] values = new String[]{"default", "glass", "nature", "space", "gaming",
+                "cyberpunk", "amoled", "material_you"};
+        return choiceLabel(prefs.getString(SettingsKeys.PREF_THEME_PACK, "default"),
+                labels, values);
+    }
+
+    private String getWallpaperCollectionLabel() {
+        int[] labels = new int[]{
+                R.string.wallpaper_nature,
+                R.string.wallpaper_mountains,
+                R.string.wallpaper_ocean,
+                R.string.wallpaper_space,
+                R.string.wallpaper_cities,
+                R.string.wallpaper_abstract,
+                R.string.wallpaper_amoled,
+                R.string.wallpaper_gaming,
+                R.string.wallpaper_minimal
+        };
+        String[] values = new String[]{"nature", "mountains", "ocean", "space", "cities",
+                "abstract", "amoled", "gaming", "minimal"};
+        return choiceLabel(prefs.getString(SettingsKeys.PREF_WALLPAPER_COLLECTION, "nature"),
+                labels, values);
+    }
+
+    private int getWallpaperPreviewDayBucket() {
+        Calendar now = Calendar.getInstance();
+        return now.get(Calendar.YEAR) * 1000 + now.get(Calendar.DAY_OF_YEAR);
+    }
+
+    private void addPreviewStripRow(LinearLayout card, LinearLayout strip) {
+        HorizontalScrollView scroller = new HorizontalScrollView(this);
+        scroller.setHorizontalScrollBarEnabled(false);
+        scroller.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        scroller.setClipToPadding(false);
+        scroller.setPadding(dp(16), dp(12), dp(16), dp(14));
+        scroller.addView(strip, new HorizontalScrollView.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+        addRow(card, scroller);
+    }
+
+    private void addPreviewGroupRow(LinearLayout card, int titleRes, String value,
+                                    String summary, LinearLayout strip) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.setPadding(dp(16), dp(16), dp(16), dp(14));
+
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.VERTICAL);
+        header.addView(createTitle(titleRes));
+        if (!TextUtils.isEmpty(value)) {
+            TextView valueView = createSummary(value);
+            addTopMargin(valueView, dp(4));
+            header.addView(valueView);
+        }
+        if (!TextUtils.isEmpty(summary)) {
+            TextView summaryView = createSummary(summary);
+            addTopMargin(summaryView, dp(4));
+            header.addView(summaryView);
+        }
+        row.addView(header, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        HorizontalScrollView scroller = new HorizontalScrollView(this);
+        scroller.setHorizontalScrollBarEnabled(false);
+        scroller.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        scroller.setClipToPadding(false);
+        scroller.addView(strip, new HorizontalScrollView.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams scrollerParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        scrollerParams.topMargin = dp(14);
+        row.addView(scroller, scrollerParams);
+
+        addRow(card, row);
+    }
+
+    private LinearLayout createPreviewStrip() {
+        LinearLayout strip = new LinearLayout(this);
+        strip.setOrientation(LinearLayout.HORIZONTAL);
+        strip.setGravity(Gravity.CENTER_VERTICAL);
+        return strip;
+    }
+
+    private LinearLayout createPreviewTile(String label, View preview, boolean selected,
+                                           int widthDp, Runnable action) {
+        return createPreviewTile(label, preview, selected, widthDp, 54, action);
+    }
+
+    private LinearLayout createPreviewTile(String label, View preview, boolean selected,
+                                           int widthDp, int previewHeightDp, Runnable action) {
+        LinearLayout tile = new LinearLayout(this);
+        tile.setOrientation(LinearLayout.VERTICAL);
+        tile.setGravity(Gravity.CENTER_HORIZONTAL);
+        tile.setPadding(dp(8), dp(8), dp(8), dp(8));
+        tile.setBackground(createPreviewTileBackground(selected));
+        tile.setClickable(true);
+        tile.setFocusable(true);
+        tile.setContentDescription(label);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            tile.setElevation(selected ? dp(3) : dp(1));
+        }
+        tile.setOnClickListener(v -> action.run());
+
+        tile.addView(preview, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(previewHeightDp)));
+
+        TextView title = createSummary(label);
+        title.setTextSize(12);
+        title.setGravity(Gravity.CENTER);
+        title.setSingleLine(true);
+        title.setEllipsize(TextUtils.TruncateAt.END);
+        title.setAlpha(selected ? 1f : 0.76f);
+        if (selected) {
+            title.setTypeface(title.getTypeface(), android.graphics.Typeface.BOLD);
+        }
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        titleParams.topMargin = dp(7);
+        tile.addView(title, titleParams);
+
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                dp(widthDp), ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.setMarginEnd(dp(10));
+        tile.setLayoutParams(params);
+        return tile;
+    }
+
+    private Drawable createPreviewTileBackground(boolean selected) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(resolveColor(com.google.android.material.R.attr.colorSurface));
+        drawable.setCornerRadius(dp(8));
+        drawable.setStroke(dp(selected ? 2 : 1), selected
+                ? ThemeEngine.homePalette(this).accent
+                : ContextCompat.getColor(this, R.color.border_color));
+        return drawable;
+    }
+
+    private View createThemePreviewSurface(int[] colors) {
+        FrameLayout surface = new FrameLayout(this);
+        surface.setBackground(createGradientDrawable(colors, 8));
+
+        View topLine = createPreviewBar(0xCCFFFFFF, 34, 5);
+        FrameLayout.LayoutParams topParams = new FrameLayout.LayoutParams(dp(34), dp(5),
+                Gravity.TOP | Gravity.START);
+        topParams.setMargins(dp(9), dp(10), 0, 0);
+        surface.addView(topLine, topParams);
+
+        View searchBar = createPreviewBar(0xE6FFFFFF, 72, 10);
+        FrameLayout.LayoutParams searchParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(10), Gravity.BOTTOM);
+        searchParams.setMargins(dp(9), 0, dp(9), dp(9));
+        surface.addView(searchBar, searchParams);
+
+        View accent = createPreviewBar(0xDD101820, 18, 18);
+        FrameLayout.LayoutParams accentParams = new FrameLayout.LayoutParams(dp(18), dp(18),
+                Gravity.END | Gravity.CENTER_VERTICAL);
+        accentParams.setMargins(0, 0, dp(10), 0);
+        surface.addView(accent, accentParams);
+        return surface;
+    }
+
+    private View createWallpaperPreviewSurface(int[] colors) {
+        FrameLayout surface = new FrameLayout(this);
+        surface.setBackground(createGradientDrawable(colors, 8));
+        View shade = createPreviewBar(0x40101820, 88, 12);
+        FrameLayout.LayoutParams shadeParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(12), Gravity.BOTTOM);
+        shadeParams.setMargins(dp(9), 0, dp(9), dp(9));
+        surface.addView(shade, shadeParams);
+        return surface;
+    }
+
+    private View createPhotoWallpaperPreview(String imageUrl, int[] fallbackColors) {
+        FrameLayout surface = new FrameLayout(this);
+        surface.setBackground(createGradientDrawable(fallbackColors, 8));
+
+        ImageView image = new ImageView(this);
+        image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        image.setAlpha(0.96f);
+        surface.addView(image, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
+        if (!TextUtils.isEmpty(imageUrl)) {
+            Glide.with(image).load(imageUrl).centerCrop().into(image);
+        }
+
+        View shade = createPreviewBar(0x45101820, 88, 12);
+        FrameLayout.LayoutParams shadeParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(12), Gravity.BOTTOM);
+        shadeParams.setMargins(dp(8), 0, dp(8), dp(8));
+        surface.addView(shade, shadeParams);
+        return surface;
+    }
+
+    private View createPickWallpaperPreview() {
+        FrameLayout surface = new FrameLayout(this);
+        surface.setBackground(createGradientDrawable(
+                palette("#F4FBFF", "#BDE7F8", "#FFFFFF"), 8));
+        TextView plus = createTitle("+");
+        plus.setTextSize(28);
+        plus.setGravity(Gravity.CENTER);
+        plus.setTextColor(ContextCompat.getColor(this, R.color.colorPrimary));
+        surface.addView(plus, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
+        return surface;
+    }
+
+    private View createImageWallpaperPreview(String uri) {
+        FrameLayout surface = new FrameLayout(this);
+        surface.setBackground(createGradientDrawable(
+                palette("#EEF5F8", "#DCE8EA"), 8));
+        ImageView image = new ImageView(this);
+        image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        image.setBackground(createGradientDrawable(palette("#DCE8EA", "#EEF5F8"), 8));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            image.setClipToOutline(true);
+        }
+        surface.addView(image, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
+        Glide.with(image).load(Uri.parse(uri)).centerCrop().into(image);
+        return surface;
+    }
+
+    private View createPreviewBar(int color, int widthDp, int heightDp) {
+        View view = new View(this);
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(color);
+        drawable.setCornerRadius(dp(Math.max(2, heightDp / 2)));
+        view.setBackground(drawable);
+        view.setAlpha(0.92f);
+        view.setMinimumWidth(dp(widthDp));
+        view.setMinimumHeight(dp(heightDp));
+        return view;
+    }
+
+    private GradientDrawable createGradientDrawable(int[] colors, int radiusDp) {
+        GradientDrawable drawable = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                colors);
+        drawable.setCornerRadius(dp(radiusDp));
+        return drawable;
+    }
+
+    private int[] palette(String... hexColors) {
+        int[] colors = new int[hexColors.length];
+        for (int i = 0; i < hexColors.length; i++) {
+            colors[i] = Color.parseColor(hexColors[i]);
+        }
+        return colors;
     }
 
     private void buildToolbarShortcutPage() {
@@ -972,7 +1711,7 @@ public class SettingsSubpageActivity extends AppCompatActivity {
         card.setCardBackgroundColor(ContextCompat.getColor(this,
                 R.color.settings_card_background));
         card.setStrokeWidth(dp(1));
-        card.setStrokeColor(ContextCompat.getColor(this, R.color.border_color));
+        card.setStrokeColor(ThemeEngine.homePalette(this).accentSoft);
         return card;
     }
 
@@ -1036,6 +1775,8 @@ public class SettingsSubpageActivity extends AppCompatActivity {
 
         SwitchMaterial toggle = new SwitchMaterial(this);
         toggle.setChecked(prefs.getBoolean(key, defaultValue));
+        toggle.setThumbTintList(ThemeEngine.switchThumbTint(this));
+        toggle.setTrackTintList(ThemeEngine.switchTrackTint(this));
         toggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
             prefs.edit().putBoolean(key, isChecked).apply();
             if (onChanged != null) {
@@ -1045,6 +1786,47 @@ public class SettingsSubpageActivity extends AppCompatActivity {
         row.addView(toggle);
         row.setOnClickListener(v -> toggle.toggle());
         addRow(card, row);
+    }
+
+    private void addSliderRow(LinearLayout card, int titleRes, String key,
+                              int defaultValue, int min, int max, int step, String suffix) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.setPadding(dp(16), dp(14), dp(16), dp(14));
+        row.setMinimumHeight(dp(76));
+
+        TextView title = createTitle(titleRes);
+        row.addView(title);
+
+        TextView value = createSummary(formatSliderValue(getIntPreference(key, defaultValue), suffix));
+        addTopMargin(value, dp(4));
+        row.addView(value);
+
+        Slider slider = new Slider(this);
+        slider.setValueFrom(min);
+        slider.setValueTo(max);
+        slider.setStepSize(step);
+        slider.setValue(getIntPreference(key, defaultValue));
+        slider.addOnChangeListener((rangeSlider, sliderValue, fromUser) -> {
+            int rounded = Math.round(sliderValue);
+            prefs.edit().putInt(key, rounded).apply();
+            value.setText(formatSliderValue(rounded, suffix));
+        });
+        row.addView(slider, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        addRow(card, row);
+    }
+
+    private int getIntPreference(String key, int defaultValue) {
+        try {
+            return prefs.getInt(key, defaultValue);
+        } catch (ClassCastException ignored) {
+            return defaultValue;
+        }
+    }
+
+    private String formatSliderValue(int value, String suffix) {
+        return value + suffix;
     }
 
     private void addChoiceRow(LinearLayout card, int titleRes, int summaryRes,
@@ -1120,6 +1902,223 @@ public class SettingsSubpageActivity extends AppCompatActivity {
                 })
                 .setNegativeButton(R.string.cancel, null)
                 .show();
+    }
+
+    private void showWeatherLocationDialog() {
+        WeatherRepository weatherRepository = new WeatherRepository(this);
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        int padding = dp(16);
+        form.setPadding(padding, padding, padding, 0);
+
+        SwitchMaterial useCurrentLocation = new SwitchMaterial(this);
+        useCurrentLocation.setText(R.string.weather_use_current_location);
+        useCurrentLocation.setChecked(weatherRepository.isUsingCurrentLocation());
+        LinearLayout.LayoutParams switchParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        switchParams.bottomMargin = dp(10);
+        form.addView(useCurrentLocation, switchParams);
+
+        EditText name = createWeatherEditText(R.string.weather_location_name,
+                prefs.getString(SettingsKeys.PREF_WEATHER_LOCATION_NAME,
+                        WeatherRepository.DEFAULT_LOCATION_NAME),
+                InputType.TYPE_CLASS_TEXT);
+        EditText latitude = createWeatherEditText(R.string.weather_latitude,
+                prefs.getString(SettingsKeys.PREF_WEATHER_LATITUDE,
+                        WeatherRepository.DEFAULT_LATITUDE),
+                InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL
+                        | InputType.TYPE_NUMBER_FLAG_SIGNED);
+        EditText longitude = createWeatherEditText(R.string.weather_longitude,
+                prefs.getString(SettingsKeys.PREF_WEATHER_LONGITUDE,
+                        WeatherRepository.DEFAULT_LONGITUDE),
+                InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL
+                        | InputType.TYPE_NUMBER_FLAG_SIGNED);
+        form.addView(name);
+        form.addView(latitude);
+        form.addView(longitude);
+        setWeatherManualFieldsEnabled(!useCurrentLocation.isChecked(),
+                name, latitude, longitude);
+        useCurrentLocation.setOnCheckedChangeListener((buttonView, isChecked) ->
+                setWeatherManualFieldsEnabled(!isChecked, name, latitude, longitude));
+
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.weather_location)
+                .setView(form)
+                .setPositiveButton(R.string.save, (dialog, which) -> {
+                    if (useCurrentLocation.isChecked()) {
+                        weatherRepository.saveCurrentLocationEnabled(true);
+                    } else {
+                        weatherRepository.saveManualLocation(
+                                name.getText().toString(),
+                                latitude.getText().toString(),
+                                longitude.getText().toString());
+                    }
+                    Toast.makeText(this, R.string.weather_location_saved,
+                            Toast.LENGTH_SHORT).show();
+                    buildPage();
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    private void setWeatherManualFieldsEnabled(boolean enabled, EditText... fields) {
+        for (EditText field : fields) {
+            field.setEnabled(enabled);
+            field.setAlpha(enabled ? 1f : 0.48f);
+        }
+    }
+
+    private EditText createWeatherEditText(int hintRes, String value, int inputType) {
+        EditText editText = new EditText(this);
+        editText.setHint(hintRes);
+        editText.setSingleLine(true);
+        editText.setText(value);
+        editText.setInputType(inputType);
+        editText.setSelectAllOnFocus(true);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.bottomMargin = dp(8);
+        editText.setLayoutParams(params);
+        return editText;
+    }
+
+    private String getWallpaperUserSummary() {
+        String uri = prefs.getString(SettingsKeys.PREF_WALLPAPER_USER_URI, "");
+        return TextUtils.isEmpty(uri) ? getString(R.string.wallpaper_no_user_image) : uri;
+    }
+
+    private String getWallpaperSavedSummary() {
+        int count = getSavedWallpaperUris().size();
+        if (count == 0) {
+            return getString(R.string.wallpaper_no_saved_images);
+        }
+        return getResources().getQuantityString(R.plurals.wallpaper_saved_count, count, count);
+    }
+
+    private String getWallpaperFavoritesSummary() {
+        int count = appSettings.getWallpaperFavoriteIds().size();
+        if (count == 0) {
+            return getString(R.string.wallpaper_no_favorites);
+        }
+        return getResources().getQuantityString(R.plurals.wallpaper_favorite_count, count, count);
+    }
+
+    private Set<String> getSavedWallpaperUris() {
+        return new LinkedHashSet<>(prefs.getStringSet(
+                SettingsKeys.PREF_WALLPAPER_USER_URIS, Collections.emptySet()));
+    }
+
+    private void showSavedWallpapersDialog() {
+        List<String> saved = new ArrayList<>(getSavedWallpaperUris());
+        if (saved.isEmpty()) {
+            openWallpaperPicker();
+            return;
+        }
+        String[] labels = new String[saved.size() + 1];
+        for (int i = 0; i < saved.size(); i++) {
+            labels[i] = getWallpaperDisplayName(saved.get(i));
+        }
+        labels[saved.size()] = getString(R.string.wallpaper_pick_image);
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.wallpaper_saved_images)
+                .setItems(labels, (dialog, which) -> {
+                    if (which == saved.size()) {
+                        openWallpaperPicker();
+                        return;
+                    }
+                    prefs.edit()
+                            .putString(SettingsKeys.PREF_WALLPAPER_USER_URI, saved.get(which))
+                            .putString(SettingsKeys.PREF_WALLPAPER_MODE, "user")
+                            .apply();
+                    Toast.makeText(this, R.string.wallpaper_image_saved, Toast.LENGTH_SHORT).show();
+                    buildPage();
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    private void showWallpaperFavoritesDialog() {
+        List<HomeBackgroundProvider.Photo> photos = HomeBackgroundProvider.allPhotos();
+        if (photos.isEmpty()) {
+            return;
+        }
+        Set<String> selectedIds = appSettings.getWallpaperFavoriteIds();
+        String[] labels = new String[photos.size()];
+        boolean[] checkedItems = new boolean[photos.size()];
+        for (int i = 0; i < photos.size(); i++) {
+            HomeBackgroundProvider.Photo photo = photos.get(i);
+            labels[i] = getString(R.string.wallpaper_photo_label, photo.getPhotographer());
+            checkedItems[i] = selectedIds.contains(photo.getId());
+        }
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.wallpaper_favorites)
+                .setMultiChoiceItems(labels, checkedItems, (dialog, which, isChecked) -> {
+                    String photoId = photos.get(which).getId();
+                    if (isChecked) {
+                        selectedIds.add(photoId);
+                    } else {
+                        selectedIds.remove(photoId);
+                    }
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .setNeutralButton(R.string.clear, (dialog, which) -> {
+                    appSettings.setWallpaperFavoriteIds(Collections.emptySet());
+                    Toast.makeText(this, R.string.wallpaper_favorites_saved, Toast.LENGTH_SHORT).show();
+                    applyThemePreferencesRealtime();
+                })
+                .setPositiveButton(R.string.save, (dialog, which) -> {
+                    appSettings.setWallpaperFavoriteIds(selectedIds);
+                    Toast.makeText(this, R.string.wallpaper_favorites_saved, Toast.LENGTH_SHORT).show();
+                    applyThemePreferencesRealtime();
+                })
+                .show();
+    }
+
+    private void prefetchWallpaperPackFromSettings() {
+        Set<String> preferredIds = appSettings.isWallpaperFavoritesOnly()
+                ? appSettings.getWallpaperFavoriteIds()
+                : null;
+        for (HomeBackgroundProvider.Photo photo : HomeBackgroundProvider.photosForMode(
+                appSettings.getWallpaperMode(), appSettings.getWallpaperCollection(), preferredIds)) {
+            Glide.with(this)
+                    .load(photo.getImageUrl())
+                    .diskCacheStrategy(DiskCacheStrategy.ALL)
+                    .preload();
+        }
+        Toast.makeText(this, R.string.wallpaper_offline_pack_started, Toast.LENGTH_SHORT).show();
+    }
+
+    private String getWallpaperDisplayName(String uriString) {
+        if (TextUtils.isEmpty(uriString)) {
+            return getString(R.string.wallpaper_user_image);
+        }
+        Uri uri = Uri.parse(uriString);
+        String lastSegment = uri.getLastPathSegment();
+        return TextUtils.isEmpty(lastSegment) ? uriString : lastSegment;
+    }
+
+    private void openWallpaperPicker() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("image/*");
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        try {
+            startActivityForResult(intent, REQUEST_PICK_WALLPAPER);
+        } catch (RuntimeException e) {
+            Toast.makeText(this, R.string.error_generic, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void openWallpaperCrop(Uri uri) {
+        Intent intent = new Intent(this, WallpaperCropActivity.class);
+        intent.putExtra(WallpaperCropActivity.EXTRA_SOURCE_URI, uri.toString());
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        try {
+            startActivityForResult(intent, REQUEST_CROP_WALLPAPER);
+        } catch (RuntimeException e) {
+            saveWallpaperUri(uri.toString());
+        }
     }
 
     private String getDownloadLocationSummary() {
@@ -1245,7 +2244,7 @@ public class SettingsSubpageActivity extends AppCompatActivity {
 
     private void addSection(int titleRes) {
         TextView title = createSummary(titleRes);
-        title.setTextColor(ContextCompat.getColor(this, R.color.section_heading));
+        title.setTextColor(ThemeEngine.homePalette(this).accent);
         title.setTypeface(title.getTypeface(), android.graphics.Typeface.BOLD);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -1440,6 +2439,41 @@ public class SettingsSubpageActivity extends AppCompatActivity {
         if (runtime != null) {
             runtime.getSettings().setPreferredColorScheme(getPreferredColorScheme(mode));
         }
+    }
+
+    private void applyThemePreferencesRealtime() {
+        setResult(RESULT_OK);
+        applyThemeMode();
+        applySettingsThemeChrome();
+        buildPage();
+    }
+
+    private void applySettingsThemeChrome() {
+        if (toolbar == null) {
+            return;
+        }
+        int appBarColor = ThemeEngine.settingsChromeColor(this);
+        int foreground = ThemeEngine.foregroundFor(appBarColor);
+        toolbar.setBackgroundColor(appBarColor);
+        toolbar.setTitleTextColor(foreground);
+        Drawable navigationIcon = toolbar.getNavigationIcon();
+        if (navigationIcon != null) {
+            navigationIcon = DrawableCompat.wrap(navigationIcon.mutate());
+            DrawableCompat.setTint(navigationIcon, foreground);
+            toolbar.setNavigationIcon(navigationIcon);
+        }
+        for (int i = 0; i < toolbar.getMenu().size(); i++) {
+            Drawable icon = toolbar.getMenu().getItem(i).getIcon();
+            if (icon != null) {
+                icon = DrawableCompat.wrap(icon.mutate());
+                DrawableCompat.setTint(icon, foreground);
+                toolbar.getMenu().getItem(i).setIcon(icon);
+            }
+        }
+        SystemBarUtils.apply(this,
+                appBarColor,
+                appBarColor,
+                ThemeEngine.useDarkSystemBarIcons(appBarColor));
     }
 
     private int getPreferredColorScheme(String mode) {

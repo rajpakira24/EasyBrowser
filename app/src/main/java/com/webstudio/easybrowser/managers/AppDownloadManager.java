@@ -1,8 +1,6 @@
 package com.webstudio.easybrowser.managers;
 
 import android.Manifest;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.ContentResolver;
 import android.content.ContentValues;
@@ -58,7 +56,7 @@ import okhttp3.Response;
 import okhttp3.ResponseBody;
 
 public class AppDownloadManager {
-    private static final String DOWNLOAD_CHANNEL_ID = "downloads";
+    private static final String DOWNLOAD_CHANNEL_ID = AppNotificationChannels.CHANNEL_DOWNLOADS;
     private static final int BUFFER_SIZE = 16 * 1024;
     private static final int MAX_REDIRECTS = 5;
     private static final long PROGRESS_UPDATE_INTERVAL_MS = 500;
@@ -901,18 +899,7 @@ public class AppDownloadManager {
     }
 
     private void createNotificationChannel(Context context) {
-        if (Build.VERSION.SDK_INT < 26) {
-            return;
-        }
-        NotificationChannel channel = new NotificationChannel(
-                DOWNLOAD_CHANNEL_ID,
-                context.getString(R.string.notification_channel_downloads),
-                NotificationManager.IMPORTANCE_LOW);
-        channel.setDescription(context.getString(R.string.notification_channel_downloads_description));
-        NotificationManager manager = context.getSystemService(NotificationManager.class);
-        if (manager != null) {
-            manager.createNotificationChannel(channel);
-        }
+        AppNotificationChannels.ensureCreated(context);
     }
 
     private PendingIntent createDownloadsPendingIntent(Context context) {

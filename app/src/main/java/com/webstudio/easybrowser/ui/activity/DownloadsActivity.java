@@ -23,6 +23,7 @@ import com.webstudio.easybrowser.adapters.DownloadsAdapter;
 import com.webstudio.easybrowser.managers.AppDownloadManager;
 import com.webstudio.easybrowser.models.DownloadItem;
 import com.webstudio.easybrowser.repository.DownloadRepository;
+import com.webstudio.easybrowser.utils.ThemeEngine;
 
 import java.util.ArrayList;
 import java.io.File;
@@ -73,6 +74,7 @@ public class DownloadsActivity extends AppCompatActivity implements DownloadsAda
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
             getSupportActionBar().setTitle(R.string.downloads);
         }
+        ThemeEngine.applyChrome(this, toolbar);
     }
 
     private void initializeViews() {

@@ -33,7 +33,7 @@ import com.webstudio.easybrowser.database.entity.TabGroupEntity;
         ReadingListEntity.class,
         TabGroupEntity.class,
         TabEntity.class
-}, version = 7)
+}, version = 9)
 public abstract class AppDatabase extends RoomDatabase {
     private static volatile AppDatabase INSTANCE;
     // Single shared executor for all repository background work. Each repository used
@@ -145,6 +145,20 @@ public abstract class AppDatabase extends RoomDatabase {
         }
     };
 
+    public static final Migration MIGRATION_7_8 = new Migration(7, 8) {
+        @Override
+        public void migrate(SupportSQLiteDatabase database) {
+            database.execSQL("ALTER TABLE `tabs` ADD COLUMN `scrollY` INTEGER NOT NULL DEFAULT 0");
+        }
+    };
+
+    public static final Migration MIGRATION_8_9 = new Migration(8, 9) {
+        @Override
+        public void migrate(SupportSQLiteDatabase database) {
+            database.execSQL("ALTER TABLE `tabs` ADD COLUMN `locked` INTEGER NOT NULL DEFAULT 0");
+        }
+    };
+
     public static final Migration MIGRATION_1_2 = new Migration(1, 2) {
         @Override
         public void migrate(SupportSQLiteDatabase database) {
@@ -172,7 +186,9 @@ public abstract class AppDatabase extends RoomDatabase {
             MIGRATION_3_4,
             MIGRATION_4_5,
             MIGRATION_5_6,
-            MIGRATION_6_7
+            MIGRATION_6_7,
+            MIGRATION_7_8,
+            MIGRATION_8_9
     };
 
     public abstract BookmarkDao bookmarkDao();
