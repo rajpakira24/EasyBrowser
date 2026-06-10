@@ -27,7 +27,7 @@
             android:layout_gravity="center"
             android:contentDescription="@string/tab_favicon"
             android:scaleType="centerInside"
-            android:src="@drawable/ic_globe" />
+            android:src="@mipmap/ic_launcher" />
     </com.google.android.material.card.MaterialCardView>
 
     <ImageButton

@@ -75,12 +75,14 @@ public class QuickAccessRepository {
                 existing.setFaviconUrl(faviconUrl);
                 existing.setVisitCount(existing.getVisitCount() + 1);
                 existing.setLastVisited(System.currentTimeMillis());
+                existing.setPinned(existing.isPinned() || item.isPinned());
                 database.quickAccessDao().update(existing);
             } else {
                 QuickAccessEntity entity = new QuickAccessEntity(item.getId(),
                         quickAccessTitle, quickAccessUrl);
                 entity.setFaviconUrl(faviconUrl);
                 entity.setVisitCount(1);
+                entity.setPinned(item.isPinned());
                 database.quickAccessDao().insert(entity);
             }
         });
@@ -106,6 +108,7 @@ public class QuickAccessRepository {
                 existing.setUrl(savedUrl);
                 existing.setFaviconUrl(faviconUrl);
                 existing.setLastVisited(System.currentTimeMillis());
+                existing.setPinned(existing.isPinned() || oldItem.isPinned() || newItem.isPinned());
                 if (newQuickAccessUrl != null) {
                     mergeDuplicateEntities(existing, newQuickAccessUrl);
                 }
@@ -115,10 +118,53 @@ public class QuickAccessRepository {
                         savedTitle, savedUrl);
                 entity.setFaviconUrl(faviconUrl);
                 entity.setVisitCount(newItem.getVisitCount());
+                entity.setPinned(newItem.isPinned());
                 database.quickAccessDao().insert(entity);
             }
             if (callback != null) {
                 callback.onQuickAccessItemAdded(newItem);
+            }
+        });
+    }
+
+    public void setPinned(QuickAccessItem item, boolean pinned, QuickAccessCallback callback) {
+        executor.execute(() -> {
+            if (item == null || shouldSkipQuickAccessUrl(item.getUrl())) {
+                return;
+            }
+            String quickAccessUrl = UrlUtils.getQuickAccessUrl(item.getUrl());
+            if (quickAccessUrl == null) {
+                return;
+            }
+            QuickAccessEntity existing = findQuickAccessEntity(quickAccessUrl);
+            String displayHost = UrlUtils.getQuickAccessTitle(quickAccessUrl);
+            String title = displayHost != null ? displayHost : item.getTitle();
+            String faviconUrl = firstNonEmpty(UrlUtils.getFaviconUrl(quickAccessUrl), item.getFaviconUrl());
+            if (existing != null) {
+                mergeDuplicateEntities(existing, quickAccessUrl);
+                existing.setTitle(title);
+                existing.setUrl(quickAccessUrl);
+                existing.setFaviconUrl(faviconUrl);
+                existing.setPinned(pinned);
+                existing.setVisitCount(Math.max(1, existing.getVisitCount()));
+                existing.setLastVisited(System.currentTimeMillis());
+                database.quickAccessDao().update(existing);
+            } else {
+                QuickAccessEntity entity = new QuickAccessEntity(item.getId(), title, quickAccessUrl);
+                entity.setFaviconUrl(faviconUrl);
+                entity.setPinned(pinned);
+                entity.setVisitCount(Math.max(1, item.getVisitCount()));
+                entity.setLastVisited(System.currentTimeMillis());
+                database.quickAccessDao().insert(entity);
+            }
+            QuickAccessItem updated = new QuickAccessItem(title, quickAccessUrl);
+            updated.setId(item.getId());
+            updated.setFaviconUrl(faviconUrl);
+            updated.setVisitCount(Math.max(1, item.getVisitCount()));
+            updated.setLastVisited(System.currentTimeMillis());
+            updated.setPinned(pinned);
+            if (callback != null) {
+                callback.onQuickAccessItemAdded(updated);
             }
         });
     }
@@ -189,9 +235,11 @@ public class QuickAccessRepository {
                 item.setFaviconUrl(faviconUrl);
                 item.setVisitCount(entity.getVisitCount());
                 item.setLastVisited(entity.getLastVisited());
+                item.setPinned(entity.isPinned());
                 groupedItems.put(groupedUrl, item);
             } else {
                 existing.setVisitCount(existing.getVisitCount() + entity.getVisitCount());
+                existing.setPinned(existing.isPinned() || entity.isPinned());
                 if (isEmpty(existing.getFaviconUrl()) && !isEmpty(faviconUrl)) {
                     existing.setFaviconUrl(faviconUrl);
                 }
@@ -202,6 +250,9 @@ public class QuickAccessRepository {
         }
         List<QuickAccessItem> items = new ArrayList<>(groupedItems.values());
         Collections.sort(items, (first, second) -> {
+            if (first.isPinned() != second.isPinned()) {
+                return first.isPinned() ? -1 : 1;
+            }
             int visitCompare = Integer.compare(second.getVisitCount(), first.getVisitCount());
             if (visitCompare != 0) {
                 return visitCompare;
@@ -224,6 +275,7 @@ public class QuickAccessRepository {
             if (entity.getLastVisited() > keeper.getLastVisited()) {
                 keeper.setLastVisited(entity.getLastVisited());
             }
+            keeper.setPinned(keeper.isPinned() || entity.isPinned());
             if (isEmpty(keeper.getFaviconUrl()) && !isEmpty(entity.getFaviconUrl())) {
                 keeper.setFaviconUrl(entity.getFaviconUrl());
             }

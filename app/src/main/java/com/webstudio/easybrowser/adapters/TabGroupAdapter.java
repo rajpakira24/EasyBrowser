@@ -19,7 +19,6 @@ import android.widget.PopupMenu;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
-import androidx.core.content.ContextCompat;
 import androidx.core.view.ViewCompat;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
@@ -93,6 +92,7 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
     private final Set<String> collapsedGroupIds = new HashSet<>();
     private boolean gridMode = true;
     private boolean showGroupCloseButton;
+    private ThemeColors themeColors = ThemeColors.light();
 
     public TabGroupAdapter(Listener listener) {
         this.listener = listener;
@@ -136,6 +136,11 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
 
     public void setShowGroupCloseButton(boolean showGroupCloseButton) {
         this.showGroupCloseButton = showGroupCloseButton;
+        notifyDataSetChanged();
+    }
+
+    public void setThemeColors(ThemeColors themeColors) {
+        this.themeColors = themeColors != null ? themeColors : ThemeColors.light();
         notifyDataSetChanged();
     }
 
@@ -318,9 +323,9 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
             binding.groupCard.setContentDescription(TextUtils.isEmpty(titleSummary)
                     ? groupTitle + ", " + countText
                     : groupTitle + ", " + countText + ", " + titleSummary);
-            tintCircle(binding.groupColorIndicator, group.getGroupColor());
+            tintCircle(binding.groupColorIndicator, group.getGroupColor(), themeColors.surface);
             binding.groupCard.setCardBackgroundColor(
-                    cardBackgroundForGroup(itemView.getContext(), group.getGroupColor()));
+                    cardBackgroundForGroup(group.getGroupColor(), themeColors));
             applyGroupTextColors();
             if (collapsed) {
                 binding.moreCount.setVisibility(View.GONE);
@@ -347,8 +352,7 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
             binding.groupOverflow.setVisibility(showGroupCloseButton ? View.GONE : View.VISIBLE);
             binding.groupOverflow.setOnClickListener(showGroupCloseButton ? null : v -> showOverflow(v, group));
             binding.cardClose.setVisibility(showGroupCloseButton ? View.VISIBLE : View.GONE);
-            binding.cardClose.setColorFilter(ContextCompat.getColor(
-                    itemView.getContext(), R.color.tab_manager_text_secondary));
+            binding.cardClose.setColorFilter(themeColors.textSecondary);
             binding.cardClose.setContentDescription(itemView.getContext().getString(R.string.close_group));
             binding.cardClose.setOnClickListener(showGroupCloseButton
                     ? v -> listener.onCloseGroup(group)
@@ -369,26 +373,22 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
                     ? getDisplayTitle(tab)
                     : itemView.getContext().getString(R.string.new_tab);
             binding.tabCount.setText(title);
-            binding.tabCount.setTextColor(ContextCompat.getColor(
-                    itemView.getContext(), R.color.tab_manager_text));
+            binding.tabCount.setTextColor(themeColors.text);
             binding.groupCard.setContentDescription(!TextUtils.isEmpty(host)
                     ? title + ", " + host
                     : title);
-            binding.groupCard.setCardBackgroundColor(ContextCompat.getColor(
-                    itemView.getContext(), R.color.tab_manager_card));
+            binding.groupCard.setCardBackgroundColor(themeColors.card);
             configureStandalonePreview();
             bindStandalonePreview(tab);
             binding.moreCount.setVisibility(View.GONE);
-            applyMode(selectedTabIds.contains(tab.getId()), ContextCompat.getColor(
-                    itemView.getContext(), R.color.tab_manager_text_secondary), false);
+            applyMode(selectedTabIds.contains(tab.getId()), themeColors.textSecondary, false);
             bindTabOpenTargets(tab);
             bindTabLongPressTargets(tab);
             binding.pinnedIcon.setVisibility(tab.isPinned() ? View.VISIBLE : View.GONE);
             binding.groupOverflow.setVisibility(View.GONE);
             binding.groupOverflow.setOnClickListener(null);
             binding.cardClose.setVisibility(View.VISIBLE);
-            binding.cardClose.setColorFilter(ContextCompat.getColor(
-                    itemView.getContext(), R.color.tab_manager_text_secondary));
+            binding.cardClose.setColorFilter(themeColors.textSecondary);
             binding.cardClose.setContentDescription(itemView.getContext().getString(R.string.close_tab));
             binding.cardClose.setOnClickListener(v -> listener.onCloseTab(tab));
             binding.groupCard.setOnDragListener((v, event) -> handleTabDropEvent(event, tab));
@@ -535,7 +535,7 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
         }
 
         private void configureGroupCollage(int count, int groupColor) {
-            int cellColor = previewCellBackgroundForGroup(itemView.getContext(), groupColor);
+            int cellColor = previewCellBackgroundForGroup(groupColor, themeColors);
             setCellBackground(binding.previewCell1, cellColor, false, false);
             setCellBackground(binding.previewCell2, cellColor, false, false);
             setCellBackground(binding.previewCell3, cellColor, true, false);
@@ -567,7 +567,7 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
         }
 
         private void configureStandalonePreview() {
-            binding.previewCell1.setBackgroundResource(R.drawable.bg_tab_group_preview_cell_bottom_both);
+            setCellBackground(binding.previewCell1, themeColors.preview, true, true);
             binding.previewCell1.setVisibility(View.VISIBLE);
             binding.previewCell2.setVisibility(View.GONE);
             binding.previewCell3.setVisibility(View.GONE);
@@ -600,7 +600,7 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
         }
 
         private void applyGroupTextColors() {
-            int textColor = ContextCompat.getColor(itemView.getContext(), R.color.tab_manager_text);
+            int textColor = themeColors.text;
             binding.tabCount.setTextColor(textColor);
             binding.groupOverflow.setColorFilter(textColor);
             binding.moreCount.setTextColor(textColor);
@@ -661,22 +661,19 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
                     && draggedTab.isPrivate() == targetTab.isPrivate();
             if (event.getAction() == DragEvent.ACTION_DROP) {
                 setDropTargetHighlighted(false, selectedTabIds.contains(targetTab.getId()),
-                        ContextCompat.getColor(itemView.getContext(),
-                                R.color.tab_manager_text_secondary));
+                        themeColors.textSecondary);
                 if (allowed) {
                     listener.onCreateGroupFromTabs(draggedTab, targetTab);
                 }
                 return true;
             } else if (event.getAction() == DragEvent.ACTION_DRAG_ENTERED) {
                 setDropTargetHighlighted(allowed, selectedTabIds.contains(targetTab.getId()),
-                        ContextCompat.getColor(itemView.getContext(),
-                                R.color.tab_manager_text_secondary));
+                        themeColors.textSecondary);
                 return true;
             } else if (event.getAction() == DragEvent.ACTION_DRAG_EXITED
                     || event.getAction() == DragEvent.ACTION_DRAG_ENDED) {
                 setDropTargetHighlighted(false, selectedTabIds.contains(targetTab.getId()),
-                        ContextCompat.getColor(itemView.getContext(),
-                                R.color.tab_manager_text_secondary));
+                        themeColors.textSecondary);
                 return true;
             }
             return event.getAction() == DragEvent.ACTION_DRAG_STARTED
@@ -769,39 +766,38 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
             String faviconUri = tab.getFaviconUri();
             String fallback = !TextUtils.isEmpty(faviconUri) ? faviconUri : getFaviconUrl(tab.getUrl());
             if (TextUtils.isEmpty(fallback)) {
-                imageView.setImageResource(R.drawable.ic_globe);
+                imageView.setImageResource(R.mipmap.ic_launcher);
                 return;
             }
             Glide.with(imageView)
                     .load(fallback)
-                    .placeholder(R.drawable.ic_globe)
-                    .error(R.drawable.ic_globe)
+                    .placeholder(R.mipmap.ic_launcher)
+                    .error(R.mipmap.ic_launcher)
                     .into(imageView);
         }
     }
 
-    private static void tintCircle(View view, int color) {
+    private static void tintCircle(View view, int color, int strokeColor) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setShape(GradientDrawable.OVAL);
         drawable.setColor(color);
         int strokeWidth = Math.round(3 * view.getResources().getDisplayMetrics().density);
-        drawable.setStroke(strokeWidth,
-                ContextCompat.getColor(view.getContext(), R.color.colorSurface));
+        drawable.setStroke(strokeWidth, strokeColor);
         view.setBackground(drawable);
     }
 
-    private static int cardBackgroundForGroup(Context context, int color) {
+    private static int cardBackgroundForGroup(int color, ThemeColors themeColors) {
         if (color == 0) {
-            return ContextCompat.getColor(context, R.color.tab_manager_panel_selected);
+            return themeColors.cardSelected;
         }
-        return blendWithBase(color, ContextCompat.getColor(context, R.color.colorSurface), 0.24f);
+        return blendWithBase(color, themeColors.surface, 0.24f);
     }
 
-    private static int previewCellBackgroundForGroup(Context context, int color) {
+    private static int previewCellBackgroundForGroup(int color, ThemeColors themeColors) {
         if (color == 0) {
-            return ContextCompat.getColor(context, R.color.tab_manager_preview);
+            return themeColors.preview;
         }
-        return blendWithBase(color, ContextCompat.getColor(context, R.color.colorSurface), 0.12f);
+        return blendWithBase(color, themeColors.surface, 0.12f);
     }
 
     private static int blendWithBase(int color, int baseColor, float colorWeight) {
@@ -813,6 +809,45 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
         int blue = Math.round(Color.blue(baseColor) * (1f - clampedWeight)
                 + Color.blue(color) * clampedWeight);
         return Color.rgb(red, green, blue);
+    }
+
+    public static final class ThemeColors {
+        public final int surface;
+        public final int card;
+        public final int cardSelected;
+        public final int preview;
+        public final int text;
+        public final int textSecondary;
+
+        public ThemeColors(int surface, int card, int cardSelected, int preview,
+                           int text, int textSecondary) {
+            this.surface = surface;
+            this.card = card;
+            this.cardSelected = cardSelected;
+            this.preview = preview;
+            this.text = text;
+            this.textSecondary = textSecondary;
+        }
+
+        public static ThemeColors light() {
+            return new ThemeColors(
+                    0xFFFFFFFF,
+                    0xFFF7F8FA,
+                    0xFFEEF3FF,
+                    0xFFEEF1F5,
+                    0xFF313851,
+                    0xFF6F7482);
+        }
+
+        public static ThemeColors dark() {
+            return new ThemeColors(
+                    0xFF172529,
+                    0xFF172529,
+                    0xFF213238,
+                    0xFF0D171A,
+                    0xFFDCE8E6,
+                    0xFF9AA8AC);
+        }
     }
 
     private static class DiffCallback extends DiffUtil.Callback {

@@ -48,6 +48,7 @@ public class RuntimeManager {
 
                     try {
                         runtime = GeckoRuntime.create(context, runtimeSettings.build());
+                        BuiltInAdBlockerManager.apply(runtime, prefs);
                     } catch (Exception e) {
                         Log.e("RuntimeManager", "GeckoRuntime.create failed", e);
                         runtime = null;
@@ -70,6 +71,7 @@ public class RuntimeManager {
             applyLocalNetworkBlocking(settings, shouldBlockLocalNetwork(prefs));
             settings.setLocales(getPreferredLocales(prefs));
             applyContentBlocking(runtime.getSettings().getContentBlocking(), prefs);
+            BuiltInAdBlockerManager.apply(runtime, prefs);
         }
         return runtime;
     }

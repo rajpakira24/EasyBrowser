@@ -52,6 +52,7 @@ import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.webstudio.easybrowser.BuildConfig;
 import com.webstudio.easybrowser.EasyBrowserApplication;
 import com.webstudio.easybrowser.R;
+import com.webstudio.easybrowser.managers.BuiltInAdBlockerManager;
 import com.webstudio.easybrowser.managers.PrivacyStatsManager;
 import com.webstudio.easybrowser.utils.ScreenshotProtection;
 import com.webstudio.easybrowser.utils.SystemBarUtils;
@@ -2351,12 +2352,44 @@ public class SettingsSubpageActivity extends AppCompatActivity {
 
     private void addSection(int titleRes) {
         TextView title = createSummary(titleRes);
-        title.setTextColor(ThemeEngine.homePalette(this).accent);
+        int accent = ThemeEngine.homePalette(this).accent;
+        title.setTextColor(accent);
         title.setTypeface(title.getTypeface(), android.graphics.Typeface.BOLD);
+        applySectionIcon(title, titleRes, accent);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         params.setMargins(0, dp(8), 0, dp(4));
         content.addView(title, params);
+    }
+
+    private void applySectionIcon(TextView title, int titleRes, int tint) {
+        int iconRes = getSectionIconRes(titleRes);
+        if (iconRes == 0) {
+            return;
+        }
+        Drawable icon = ContextCompat.getDrawable(this, iconRes);
+        if (icon == null) {
+            return;
+        }
+        icon = DrawableCompat.wrap(icon.mutate());
+        DrawableCompat.setTint(icon, tint);
+        icon.setBounds(0, 0, dp(18), dp(18));
+        title.setCompoundDrawablesRelative(icon, null, null, null);
+        title.setCompoundDrawablePadding(dp(8));
+        title.setGravity(Gravity.CENTER_VERTICAL);
+    }
+
+    private int getSectionIconRes(int titleRes) {
+        if (titleRes == R.string.general_settings) {
+            return R.drawable.ic_settings;
+        }
+        if (titleRes == R.string.privacy_security_settings) {
+            return R.drawable.ic_security;
+        }
+        if (titleRes == R.string.downloads) {
+            return R.drawable.ic_download;
+        }
+        return 0;
     }
 
     private void addParagraph(int textRes) {
@@ -2638,6 +2671,7 @@ public class SettingsSubpageActivity extends AppCompatActivity {
                 .setQueryParameterStrippingEnabled(
                         prefs.getBoolean("strip_tracking_params", true))
                 .setQueryParameterStrippingPrivateBrowsingEnabled(true);
+        BuiltInAdBlockerManager.apply(runtime, prefs);
     }
 
     private void openCaptionSettings() {

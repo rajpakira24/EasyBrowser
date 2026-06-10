@@ -44,7 +44,7 @@
                 android:background="@drawable/bg_tab_manager_icon_chip"
                 android:contentDescription="@string/tab_favicon"
                 android:padding="6dp"
-                android:src="@drawable/ic_globe"
+                android:src="@mipmap/ic_launcher"
                 android:visibility="gone"
                 tools:visibility="visible" />
 
@@ -143,7 +143,7 @@
                     android:background="@drawable/bg_tab_manager_icon_chip"
                     android:contentDescription="@string/tab_favicon"
                     android:padding="7dp"
-                    android:src="@drawable/ic_globe" />
+                    android:src="@mipmap/ic_launcher" />
 
                 <TextView
                     android:id="@+id/title_1"
@@ -189,7 +189,7 @@
                     android:background="@drawable/bg_tab_manager_icon_chip"
                     android:contentDescription="@string/tab_favicon"
                     android:padding="7dp"
-                    android:src="@drawable/ic_globe" />
+                    android:src="@mipmap/ic_launcher" />
 
                 <TextView
                     android:id="@+id/title_2"
@@ -235,7 +235,7 @@
                     android:background="@drawable/bg_tab_manager_icon_chip"
                     android:contentDescription="@string/tab_favicon"
                     android:padding="7dp"
-                    android:src="@drawable/ic_globe" />
+                    android:src="@mipmap/ic_launcher" />
 
                 <TextView
                     android:id="@+id/title_3"

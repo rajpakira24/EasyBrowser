@@ -13,12 +13,16 @@ import com.bumptech.glide.Glide;
 import com.bumptech.glide.RequestBuilder;
 import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.models.QuickAccessItem;
+import com.webstudio.easybrowser.utils.FaviconNormalizeTransformation;
 import com.webstudio.easybrowser.utils.UrlUtils;
 import java.util.List;
 
 public class QuickAccessAdapter extends RecyclerView.Adapter<QuickAccessAdapter.ViewHolder> {
+    private static final FaviconNormalizeTransformation FAVICON_NORMALIZER =
+            new FaviconNormalizeTransformation();
     private List<QuickAccessItem> items;
     private OnQuickAccessClickListener listener;
+    private int itemWidth;
 
     public interface OnQuickAccessClickListener {
         void onQuickAccessClick(QuickAccessItem item);
@@ -41,6 +45,7 @@ public class QuickAccessAdapter extends RecyclerView.Adapter<QuickAccessAdapter.
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         QuickAccessItem item = items.get(position);
+        holder.setItemWidth(itemWidth);
         holder.bind(item);
     }
 
@@ -51,6 +56,14 @@ public class QuickAccessAdapter extends RecyclerView.Adapter<QuickAccessAdapter.
 
     public void updateItems(List<QuickAccessItem> newItems) {
         this.items = newItems;
+        notifyDataSetChanged();
+    }
+
+    public void setItemWidth(int itemWidth) {
+        if (this.itemWidth == itemWidth) {
+            return;
+        }
+        this.itemWidth = itemWidth;
         notifyDataSetChanged();
     }
 
@@ -80,6 +93,16 @@ public class QuickAccessAdapter extends RecyclerView.Adapter<QuickAccessAdapter.
             });
         }
 
+        void setItemWidth(int itemWidth) {
+            if (itemWidth <= 0 || itemView.getLayoutParams().width == itemWidth) {
+                return;
+            }
+
+            ViewGroup.LayoutParams params = itemView.getLayoutParams();
+            params.width = itemWidth;
+            itemView.setLayoutParams(params);
+        }
+
         void bind(QuickAccessItem item) {
             title.setText(item.getTitle());
 
@@ -95,18 +118,20 @@ public class QuickAccessAdapter extends RecyclerView.Adapter<QuickAccessAdapter.
             if (!TextUtils.isEmpty(faviconUrl)) {
                 RequestBuilder<Drawable> request = Glide.with(favicon)
                         .load(faviconUrl)
-                        .placeholder(R.drawable.ic_globe);
+                        .placeholder(R.mipmap.ic_launcher)
+                        .transform(FAVICON_NORMALIZER);
                 if (!TextUtils.isEmpty(fallbackUrl)) {
                     request.error(Glide.with(favicon)
                             .load(fallbackUrl)
-                            .placeholder(R.drawable.ic_globe)
-                            .error(R.drawable.ic_globe));
+                            .placeholder(R.mipmap.ic_launcher)
+                            .transform(FAVICON_NORMALIZER)
+                            .error(R.mipmap.ic_launcher));
                 } else {
-                    request.error(R.drawable.ic_globe);
+                    request.error(R.mipmap.ic_launcher);
                 }
                 request.into(favicon);
             } else {
-                favicon.setImageResource(R.drawable.ic_globe);
+                favicon.setImageResource(R.mipmap.ic_launcher);
             }
         }
 

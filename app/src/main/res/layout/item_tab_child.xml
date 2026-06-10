@@ -59,7 +59,7 @@
                     android:layout_width="22dp"
                     android:layout_height="22dp"
                     android:contentDescription="@string/accessibility_security_icon"
-                    android:src="@drawable/ic_globe" />
+                    android:src="@mipmap/ic_launcher" />
 
                 <TextView
                     android:id="@+id/title"
@@ -110,7 +110,7 @@
                         android:layout_width="38dp"
                         android:layout_height="38dp"
                         android:alpha="0.7"
-                        android:src="@drawable/ic_globe" />
+                        android:src="@mipmap/ic_launcher" />
 
                     <TextView
                         android:id="@+id/host"

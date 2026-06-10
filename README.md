@@ -1,6 +1,6 @@
 # Easy Browser
 
-Easy Browser is a privacy-focused Android browser built on Mozilla GeckoView, not the system WebView. It includes native tab management, tab groups, persistent browser state, ad and tracker blocking, HTTPS-only mode, private browsing, downloads with pause/resume, bookmarks, history, reading list, site permissions, and per-site user styles.
+Easy Browser is a privacy-focused Android browser built on Mozilla GeckoView, not the system WebView. It includes native tab management, tab groups, persistent browser state, ad and tracker blocking, HTTPS-only mode, private browsing, downloads with pause/resume, bookmarks, history, reading list, site permissions, per-site user styles, and a built-in weather dashboard.
 
 ## Screenshots
 
@@ -16,14 +16,15 @@ Most alternative Android browsers wrap the system WebView, which means they inhe
 
 ## Features
 
-- **Tabs and groups** - persistent normal tabs, private tabs that stay off disk, tab search, grouped tabs, inactive tabs, pinned tab metadata, thumbnails, and quick tab switching
-- **Privacy** - three blocking levels, GeckoView Enhanced Tracking Protection, cookie-banner rejection, tracking-parameter stripping, Do Not Track, HTTPS-only mode, popup blocking, and optional screenshot protection
+- **Tabs and groups** - persistent normal tabs, private tabs that stay off disk, tab search, grouped tabs, inactive tabs, tab thumbnails, group previews, and quick tab switching
+- **Privacy** - three blocking levels, GeckoView Enhanced Tracking Protection, built-in cosmetic ad-blocking extension, cookie-banner rejection, tracking-parameter stripping, Do Not Track, HTTPS-only mode, popup blocking, and optional screenshot protection
 - **Downloads** - OkHttp-backed downloads with Range resume, MediaStore publishing on API 29+, Wi-Fi-only queuing, speed tracking, and pause/resume handling
 - **Search** - DuckDuckGo by default, with configurable engines such as Brave Search, Google, Bing, Ecosia, Yahoo, and custom providers
-- **Home screen** - privacy stats, quick access, photo-backed background, and bottom navigation for repeated browser workflows
+- **Home screen** - privacy stats, pinned quick-access shortcuts, a horizontally scrolling shortcut carousel, photo-backed background, and bottom navigation for repeated browser workflows
+- **Weather** - current conditions, realtime sky-condition artwork, hourly forecast, 7-day forecast, and AQI using the selected device or manual location
 - **Per-site controls** - user CSS injection, custom zoom, permissions, cookies, and storage controls
 - **Reading list** - save pages for later reading
-- **Extensions** - GeckoView web extension support hooks and extension-management UI
+- **Extensions** - GeckoView web extension support hooks, bundled extension assets, and extension-management UI
 
 ## Tech Stack
 
@@ -33,10 +34,14 @@ Most alternative Android browsers wrap the system WebView, which means they inhe
 | Min SDK | 21 (Android 5.0) |
 | Target SDK | 37 |
 | Engine | Mozilla GeckoView 143 |
-| Database | Room 2.6.1 (`browser.db`, v7) |
+| Database | Room 2.6.1 (`browser.db`, v10) |
 | Network | OkHttp 5.3.2 |
 | Image loading | Glide 5.0.7 |
 | DI | None - singletons plus Android `ViewModel` / `AndroidViewModel` classes |
+
+## Weather Data
+
+Weather forecasts come from MET Norway Locationforecast. Air quality uses Open-Meteo Air Quality with the same latitude and longitude as the active weather location; the displayed AQI value is on the US AQI scale, not a US-based location lookup.
 
 ## Build
 

@@ -14,6 +14,7 @@ public class QuickAccessEntity {
     private String faviconUrl;
     private int visitCount;
     private long lastVisited;
+    private boolean pinned;
 
     // Constructor
     public QuickAccessEntity(@NonNull String id, String title, String url) {
@@ -21,6 +22,7 @@ public class QuickAccessEntity {
         this.title = title;
         this.url = url;
         this.lastVisited = System.currentTimeMillis();
+        this.pinned = false;
     }
 
     // Getters and Setters
@@ -37,4 +39,6 @@ public class QuickAccessEntity {
     public void setVisitCount(int visitCount) { this.visitCount = visitCount; }
     public long getLastVisited() { return lastVisited; }
     public void setLastVisited(long lastVisited) { this.lastVisited = lastVisited; }
+    public boolean isPinned() { return pinned; }
+    public void setPinned(boolean pinned) { this.pinned = pinned; }
 }

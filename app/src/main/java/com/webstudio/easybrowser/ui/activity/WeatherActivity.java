@@ -2,6 +2,7 @@ package com.webstudio.easybrowser.ui.activity;
 
 import android.Manifest;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -15,6 +16,7 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -28,18 +30,19 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.content.ContextCompat;
 import androidx.core.widget.NestedScrollView;
+import androidx.preference.PreferenceManager;
 
 import com.google.android.material.card.MaterialCardView;
 import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.managers.WeatherAlertManager;
 import com.webstudio.easybrowser.models.WeatherSnapshot;
 import com.webstudio.easybrowser.repository.WeatherRepository;
+import com.webstudio.easybrowser.utils.SettingsKeys;
 import com.webstudio.easybrowser.utils.ThemeEngine;
 import com.webstudio.easybrowser.utils.WeatherAnimationMapper;
 import com.webstudio.easybrowser.utils.WeatherIconMapper;
 
 import java.text.SimpleDateFormat;
-import java.util.Calendar;
 import java.util.Date;
 import java.util.Locale;
 
@@ -152,8 +155,8 @@ public class WeatherActivity extends AppCompatActivity {
         });
     }
 
-    private void openOpenMeteo() {
-        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://open-meteo.com/"));
+    private void openWeatherProvider() {
+        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://api.met.no/"));
         try {
             startActivity(intent);
         } catch (Exception ignored) {
@@ -193,10 +196,11 @@ public class WeatherActivity extends AppCompatActivity {
     private void showWeather(WeatherSnapshot snapshot, boolean fromCache) {
         content.removeAllViews();
 
-        boolean night = isNight(snapshot);
-        LinearLayout current = addHeroPanel(snapshot, night);
-        current.addView(createHeroHeader(snapshot, night));
-        current.addView(createTodayBand(snapshot, night));
+        boolean weatherNight = isNight(snapshot);
+        boolean darkPalette = isAppDarkMode();
+        LinearLayout current = addHeroPanel(snapshot, darkPalette);
+        current.addView(createHeroHeader(snapshot, darkPalette, weatherNight));
+        current.addView(createTodayBand(snapshot, darkPalette, weatherNight));
 
         LinearLayout metricGrid = new LinearLayout(this);
         metricGrid.setOrientation(LinearLayout.VERTICAL);
@@ -206,31 +210,40 @@ public class WeatherActivity extends AppCompatActivity {
         current.addView(metricGrid, metricGridParams);
 
         LinearLayout row1 = createMetricRow();
-        row1.addView(createMetricChip(R.string.weather_metric_feels_like,
-                snapshot.formatFeelsLike(units), night));
-        row1.addView(createMetricChip(R.string.weather_metric_humidity,
-                snapshot.getHumidity() + "%", night));
-        row1.addView(createMetricChip(R.string.weather_metric_wind,
-                String.format(Locale.US, "%.0f", snapshot.getWindSpeed()), night));
+        row1.addView(createMetricChip(R.drawable.ic_weather_temperature,
+                R.string.weather_metric_feels_like,
+                snapshot.formatFeelsLike(units), darkPalette));
+        row1.addView(createMetricChip(R.drawable.ic_weather_humidity,
+                R.string.weather_metric_humidity,
+                snapshot.getHumidity() + "%", darkPalette));
+        row1.addView(createMetricChip(R.drawable.ic_weather_wind,
+                R.string.weather_metric_wind,
+                String.format(Locale.US, "%.0f", snapshot.getWindSpeed()), darkPalette));
         metricGrid.addView(row1);
 
         LinearLayout row2 = createMetricRow();
-        row2.addView(createMetricChip(R.string.weather_metric_sunrise,
-                snapshot.getSunrise().isEmpty() ? "--" : snapshot.getSunrise(), night));
-        row2.addView(createMetricChip(R.string.weather_metric_sunset,
-                snapshot.getSunset().isEmpty() ? "--" : snapshot.getSunset(), night));
-        row2.addView(createMetricChip(R.string.weather_metric_updated,
-                DateFormat.getTimeFormat(this).format(new Date(snapshot.getFetchedAt())), night));
+        row2.addView(createMetricChip(R.drawable.ic_weather_sunrise,
+                R.string.weather_metric_sunrise,
+                snapshot.getSunrise().isEmpty() ? "--" : snapshot.getSunrise(), darkPalette));
+        row2.addView(createMetricChip(R.drawable.ic_weather_sunset,
+                R.string.weather_metric_sunset,
+                snapshot.getSunset().isEmpty() ? "--" : snapshot.getSunset(), darkPalette));
+        row2.addView(createMetricChip(R.drawable.ic_weather_updated,
+                R.string.weather_metric_updated,
+                DateFormat.getTimeFormat(this).format(new Date(snapshot.getFetchedAt())), darkPalette));
         metricGrid.addView(row2);
 
         TextView provider = createSummary(getString(R.string.weather_provider));
-        provider.setTextColor(heroSubTextColor(night));
+        provider.setTextColor(heroSubTextColor(darkPalette));
         provider.setGravity(Gravity.CENTER);
         provider.setTextSize(13);
         provider.setContentDescription(getString(R.string.weather_provider_open));
-        provider.setOnClickListener(v -> openOpenMeteo());
+        provider.setOnClickListener(v -> openWeatherProvider());
         addTopMargin(provider, dp(14));
         current.addView(provider);
+
+        addHourlyConditions(snapshot, darkPalette);
+        addAirQuality(snapshot);
 
         TextView forecastTitle = createSection(R.string.weather_forecast);
         content.addView(forecastTitle);
@@ -240,7 +253,8 @@ public class WeatherActivity extends AppCompatActivity {
         }
     }
 
-    private LinearLayout createHeroHeader(WeatherSnapshot snapshot, boolean night) {
+    private LinearLayout createHeroHeader(WeatherSnapshot snapshot, boolean darkPalette,
+                                          boolean weatherNight) {
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
@@ -261,7 +275,7 @@ public class WeatherActivity extends AppCompatActivity {
 
         TextView location = createTitle(snapshot.getLocationName());
         location.setTextSize(24);
-        location.setTextColor(heroTextColor(night));
+        location.setTextColor(heroTextColor(darkPalette));
         location.setMaxLines(1);
         location.setEllipsize(TextUtils.TruncateAt.END);
         locationRow.addView(location, new LinearLayout.LayoutParams(
@@ -271,12 +285,12 @@ public class WeatherActivity extends AppCompatActivity {
 
         TextView temperature = createTitle(snapshot.formatTemperature(units));
         temperature.setTextSize(56);
-        temperature.setTextColor(heroTextColor(night));
+        temperature.setTextColor(heroTextColor(darkPalette));
         temperature.setIncludeFontPadding(false);
         addTopMargin(temperature, dp(8));
         textColumn.addView(temperature);
 
-        TextView condition = createHeroPill(snapshot.getCondition(), night);
+        TextView condition = createHeroPill(snapshot.getCondition(), darkPalette);
         LinearLayout.LayoutParams conditionParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         conditionParams.topMargin = dp(10);
@@ -284,12 +298,12 @@ public class WeatherActivity extends AppCompatActivity {
 
         TextView updated = createSummary(getString(R.string.weather_last_updated,
                 DateFormat.getTimeFormat(this).format(new Date(snapshot.getFetchedAt()))));
-        updated.setTextColor(heroSubTextColor(night));
+        updated.setTextColor(heroSubTextColor(darkPalette));
         updated.setTextSize(12);
         addTopMargin(updated, dp(8));
         textColumn.addView(updated);
 
-        FrameLayout heroScene = createHeroScene(snapshot);
+        FrameLayout heroScene = createHeroScene(snapshot, weatherNight);
         LinearLayout.LayoutParams sceneParams = new LinearLayout.LayoutParams(dp(132), dp(132));
         sceneParams.leftMargin = dp(14);
         header.addView(heroScene, sceneParams);
@@ -309,7 +323,8 @@ public class WeatherActivity extends AppCompatActivity {
         return pill;
     }
 
-    private LinearLayout createTodayBand(WeatherSnapshot snapshot, boolean night) {
+    private LinearLayout createTodayBand(WeatherSnapshot snapshot, boolean night,
+                                         boolean weatherNight) {
         WeatherSnapshot.ForecastDay today = snapshot.getForecastDays().isEmpty()
                 ? null
                 : snapshot.getForecastDays().get(0);
@@ -323,26 +338,57 @@ public class WeatherActivity extends AppCompatActivity {
         params.topMargin = dp(16);
         band.setLayoutParams(params);
 
-        TextView summary = createSummary(today == null
+        LottieAnimationView icon = createRealtimeWeatherIcon(snapshot, weatherNight);
+        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(22), dp(22));
+        iconParams.rightMargin = dp(8);
+        band.addView(icon, iconParams);
+
+        String summaryText = today == null
                 ? snapshot.getCondition()
-                : getString(R.string.weather_precipitation,
-                today.getPrecipitationProbability()));
+                : snapshot.getCondition() + " - " + getString(R.string.weather_precipitation,
+                today.getPrecipitationProbability());
+        TextView summary = createSummary(summaryText);
         summary.setTextColor(heroSubTextColor(night));
         summary.setTextSize(13);
         summary.setSingleLine(true);
         summary.setEllipsize(TextUtils.TruncateAt.END);
         band.addView(summary, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-        TextView range = createTitle(today == null
-                ? snapshot.formatTemperature(units)
-                : String.format(Locale.US, "%.0f/%.0f%s",
-                today.getMaxTemperature(), today.getMinTemperature(),
-                WeatherSnapshot.unitSuffix(units)));
-        range.setTextColor(heroTextColor(night));
-        range.setTextSize(14);
-        band.addView(range);
+        band.addView(createHighLowPill(today, snapshot, night));
         return band;
+    }
+
+    private LinearLayout createHighLowPill(WeatherSnapshot.ForecastDay today,
+                                           WeatherSnapshot snapshot,
+                                           boolean night) {
+        double high = today == null ? snapshot.getTemperature() : today.getMaxTemperature();
+        double low = today == null ? snapshot.getTemperature() : today.getMinTemperature();
+        String suffix = WeatherSnapshot.unitSuffix(units);
+
+        LinearLayout pill = new LinearLayout(this);
+        pill.setOrientation(LinearLayout.VERTICAL);
+        pill.setGravity(Gravity.CENTER);
+        pill.setPadding(dp(9), dp(5), dp(9), dp(5));
+        pill.setBackground(createRoundedDrawable(night ? 0x24FFFFFF : 0xE6FFFFFF, dp(8)));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.leftMargin = dp(8);
+        pill.setLayoutParams(params);
+
+        TextView highView = createSummary(String.format(Locale.US, "High %.0f%s", high, suffix));
+        highView.setTextColor(heroSubTextColor(night));
+        highView.setTextSize(11);
+        highView.setSingleLine(true);
+        highView.setIncludeFontPadding(false);
+        pill.addView(highView);
+
+        TextView lowView = createTitle(String.format(Locale.US, "Low %.0f%s", low, suffix));
+        lowView.setTextColor(heroTextColor(night));
+        lowView.setTextSize(12);
+        lowView.setSingleLine(true);
+        lowView.setIncludeFontPadding(false);
+        pill.addView(lowView);
+        return pill;
     }
 
     private void addForecastRow(LinearLayout card, WeatherSnapshot.ForecastDay day) {
@@ -356,15 +402,20 @@ public class WeatherActivity extends AppCompatActivity {
                     dp(8)));
         }
 
+        FrameLayout iconHost = new FrameLayout(this);
+        iconHost.setBackground(createRoundedDrawable(isAppDarkMode() ? 0xFF24444D : 0xFFDFF8FE,
+                dp(24)));
         ImageView icon = new ImageView(this);
         icon.setImageResource(WeatherIconMapper.iconForCode(day.getWeatherCode()));
         icon.setContentDescription(day.getCondition());
-        icon.setBackground(createRoundedDrawable(isAppDarkMode() ? 0xFF24444D : 0xFFDFF8FE,
-                dp(24)));
-        icon.setPadding(dp(7), dp(7), dp(7), dp(7));
+        iconHost.addView(icon, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER));
+        iconHost.setPadding(dp(7), dp(7), dp(7), dp(7));
         LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(48), dp(48));
         iconParams.rightMargin = dp(14);
-        row.addView(icon, iconParams);
+        row.addView(iconHost, iconParams);
 
         LinearLayout textColumn = new LinearLayout(this);
         textColumn.setOrientation(LinearLayout.VERTICAL);
@@ -396,7 +447,110 @@ public class WeatherActivity extends AppCompatActivity {
         card.addView(row, rowParams);
     }
 
-    private FrameLayout createHeroScene(WeatherSnapshot snapshot) {
+    private void addHourlyConditions(WeatherSnapshot snapshot, boolean darkPalette) {
+        if (snapshot.getHourlyConditions().isEmpty()) {
+            return;
+        }
+        content.addView(createSection(R.string.weather_hourly_conditions));
+        MaterialCardView card = new MaterialCardView(this);
+        card.setRadius(dp(8));
+        card.setCardElevation(dp(2));
+        card.setCardBackgroundColor(darkPalette ? 0xFF172529 : 0xFFFFFFFF);
+        card.setStrokeColor(darkPalette ? 0xFF2E4247 : 0xFFE0EAF1);
+        card.setStrokeWidth(dp(1));
+
+        HorizontalScrollView scrollView = new HorizontalScrollView(this);
+        scrollView.setHorizontalScrollBarEnabled(false);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(dp(10), dp(12), dp(10), dp(12));
+        scrollView.addView(row, new HorizontalScrollView.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        for (WeatherSnapshot.HourlyCondition hour : snapshot.getHourlyConditions()) {
+            row.addView(createHourlyChip(hour, darkPalette));
+        }
+
+        card.addView(scrollView);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.setMargins(0, 0, 0, dp(16));
+        content.addView(card, params);
+    }
+
+    private LinearLayout createHourlyChip(WeatherSnapshot.HourlyCondition hour,
+                                          boolean darkPalette) {
+        LinearLayout chip = new LinearLayout(this);
+        chip.setOrientation(LinearLayout.VERTICAL);
+        chip.setGravity(Gravity.CENTER);
+        chip.setPadding(dp(8), dp(9), dp(8), dp(9));
+        chip.setBackground(createRoundedDrawable(darkPalette ? 0xFF20343A : 0xFFEAF8FB,
+                dp(8)));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(74),
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.leftMargin = dp(4);
+        params.rightMargin = dp(4);
+        chip.setLayoutParams(params);
+
+        TextView label = createSummary(hour.getLabel());
+        label.setGravity(Gravity.CENTER);
+        label.setTextSize(12);
+        label.setTextColor(darkPalette ? 0xFFB8C8CC : 0xFF5F6B7D);
+        chip.addView(label);
+
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(WeatherIconMapper.iconForCode(hour.getWeatherCode()));
+        icon.setContentDescription(hour.getCondition());
+        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(30), dp(30));
+        iconParams.topMargin = dp(6);
+        chip.addView(icon, iconParams);
+
+        TextView temp = createTitle(String.format(Locale.US, "%.0f%s",
+                hour.getTemperature(), WeatherSnapshot.unitSuffix(units)));
+        temp.setGravity(Gravity.CENTER);
+        temp.setTextSize(14);
+        addTopMargin(temp, dp(6));
+        chip.addView(temp);
+        return chip;
+    }
+
+    private void addAirQuality(WeatherSnapshot snapshot) {
+        content.addView(createSection(R.string.weather_air_quality));
+        LinearLayout card = addCard();
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        card.addView(row, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        LinearLayout textColumn = new LinearLayout(this);
+        textColumn.setOrientation(LinearLayout.VERTICAL);
+        row.addView(textColumn, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView title = createTitle(getString(R.string.weather_us_aqi));
+        title.setTextSize(17);
+        textColumn.addView(title);
+
+        TextView description = createSummary(snapshot.hasAirQuality()
+                ? getString(R.string.weather_aqi_us_scale) + " - "
+                + snapshot.getAirQualityDescription()
+                : getString(R.string.weather_aqi_unavailable));
+        addTopMargin(description, dp(3));
+        textColumn.addView(description);
+
+        TextView value = createTitle(snapshot.hasAirQuality()
+                ? String.valueOf(snapshot.getAirQualityIndex())
+                : "--");
+        value.setTextSize(26);
+        value.setGravity(Gravity.END);
+        row.addView(value);
+    }
+
+    private FrameLayout createHeroScene(WeatherSnapshot snapshot, boolean night) {
         FrameLayout sceneHost = new FrameLayout(this);
         FrameLayout iconTile = new FrameLayout(this);
         iconTile.setBackground(createRoundedDrawable(0xFF86B9DB, dp(24)));
@@ -404,7 +558,7 @@ public class WeatherActivity extends AppCompatActivity {
         iconTile.setPadding(dp(10), dp(10), dp(10), dp(10));
 
         LottieAnimationView animation = createLoopingAnimation(
-                WeatherAnimationMapper.animationFor(snapshot, isNight(snapshot)));
+                WeatherAnimationMapper.animationFor(snapshot, night, units));
         iconTile.addView(animation, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         sceneHost.addView(iconTile, new FrameLayout.LayoutParams(
@@ -425,31 +579,16 @@ public class WeatherActivity extends AppCompatActivity {
         return animation;
     }
 
-    private boolean isNight(WeatherSnapshot snapshot) {
-        int sunrise = parseTimeMinutes(snapshot.getSunrise());
-        int sunset = parseTimeMinutes(snapshot.getSunset());
-        if (sunrise < 0 || sunset < 0) {
-            return false;
-        }
-        Calendar calendar = Calendar.getInstance();
-        calendar.setTimeInMillis(snapshot.getFetchedAt());
-        int current = calendar.get(Calendar.HOUR_OF_DAY) * 60 + calendar.get(Calendar.MINUTE);
-        return current < sunrise || current > sunset;
+    private LottieAnimationView createRealtimeWeatherIcon(WeatherSnapshot snapshot,
+                                                          boolean weatherNight) {
+        LottieAnimationView animation = createLoopingAnimation(
+                WeatherAnimationMapper.animationFor(snapshot, weatherNight, units));
+        animation.setContentDescription(snapshot.getCondition());
+        return animation;
     }
 
-    private int parseTimeMinutes(String value) {
-        if (value == null || value.trim().isEmpty()) {
-            return -1;
-        }
-        String[] parts = value.trim().split(":");
-        if (parts.length < 2) {
-            return -1;
-        }
-        try {
-            return Integer.parseInt(parts[0]) * 60 + Integer.parseInt(parts[1]);
-        } catch (NumberFormatException ignored) {
-            return -1;
-        }
+    private boolean isNight(WeatherSnapshot snapshot) {
+        return WeatherAnimationMapper.isNight(snapshot);
     }
 
     private LinearLayout createMetricRow() {
@@ -462,11 +601,12 @@ public class WeatherActivity extends AppCompatActivity {
         return row;
     }
 
-    private LinearLayout createMetricChip(int labelRes, String value, boolean night) {
+    private LinearLayout createMetricChip(int iconRes, int labelRes, String value, boolean night) {
         LinearLayout chip = new LinearLayout(this);
         chip.setOrientation(LinearLayout.VERTICAL);
         chip.setGravity(Gravity.CENTER);
-        chip.setPadding(dp(8), dp(10), dp(8), dp(10));
+        chip.setPadding(dp(8), dp(9), dp(8), dp(10));
+        chip.setMinimumHeight(dp(78));
         chip.setBackground(createRoundedDrawable(night ? 0x26FFFFFF : 0xE6FFFFFF, dp(8)));
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
@@ -474,10 +614,20 @@ public class WeatherActivity extends AppCompatActivity {
         params.rightMargin = dp(4);
         chip.setLayoutParams(params);
 
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(iconRes);
+        icon.setColorFilter(night ? 0xFFEAF4FF : 0xFF355A78);
+        icon.setAlpha(0.92f);
+        icon.setContentDescription(getString(labelRes));
+        chip.addView(icon, new LinearLayout.LayoutParams(dp(18), dp(18)));
+
         TextView label = createSummary(getString(labelRes));
         label.setGravity(Gravity.CENTER);
-        label.setTextSize(12);
+        label.setTextSize(11);
         label.setTextColor(night ? 0xCCEAF4FF : 0xFF667283);
+        label.setSingleLine(true);
+        label.setEllipsize(TextUtils.TruncateAt.END);
+        addTopMargin(label, dp(2));
         chip.addView(label);
 
         TextView valueView = createTitle(value);
@@ -513,11 +663,11 @@ public class WeatherActivity extends AppCompatActivity {
         if (night) {
             colors = new int[]{0xFF203A5E, 0xFF436A91};
         } else if (code >= 95 && code <= 99) {
-            colors = new int[]{0xFF7E91A9, 0xFFB7D4E5};
+            colors = new int[]{0xFFE6EFF8, 0xFFD7ECF7};
         } else if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) {
-            colors = new int[]{0xFF8DBCD3, 0xFFDDF5FA};
+            colors = new int[]{0xFFE4F4FA, 0xFFF7FCFE};
         } else {
-            colors = new int[]{0xFF94D1EC, 0xFFFFF1D7};
+            colors = new int[]{0xFFEAF8FE, 0xFFFFF5E5};
         }
         GradientDrawable drawable = new GradientDrawable(
                 GradientDrawable.Orientation.TL_BR, colors);
@@ -592,7 +742,11 @@ public class WeatherActivity extends AppCompatActivity {
     }
 
     private TextView createSection(int titleRes) {
-        TextView view = createSummary(getString(titleRes));
+        return createSection(getString(titleRes));
+    }
+
+    private TextView createSection(String title) {
+        TextView view = createSummary(title);
         view.setTextColor(isAppDarkMode() ? 0xFFE7F2F2 : 0xFF0F4C75);
         view.setTypeface(view.getTypeface(), android.graphics.Typeface.BOLD);
         view.setTextSize(18);
@@ -618,8 +772,17 @@ public class WeatherActivity extends AppCompatActivity {
     }
 
     private boolean isAppDarkMode() {
-        int mode = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
-        return mode == Configuration.UI_MODE_NIGHT_YES;
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        String mode = prefs.getString(SettingsKeys.PREF_THEME_MODE, "system");
+        if ("light".equals(mode)) {
+            return false;
+        }
+        if ("dark".equals(mode)) {
+            return true;
+        }
+        int systemMode = getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK;
+        return systemMode == Configuration.UI_MODE_NIGHT_YES;
     }
 
     private void addTopMargin(TextView view, int margin) {

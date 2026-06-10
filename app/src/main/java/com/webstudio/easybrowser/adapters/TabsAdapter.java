@@ -386,9 +386,9 @@ public class TabsAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
             if (tab.getFavicon() != null) {
                 Glide.with(favicon).load(tab.getFavicon())
-                        .placeholder(R.drawable.ic_globe).error(R.drawable.ic_globe).into(favicon);
+                        .placeholder(R.mipmap.ic_launcher).error(R.mipmap.ic_launcher).into(favicon);
             } else {
-                favicon.setImageResource(R.drawable.ic_globe);
+                favicon.setImageResource(R.mipmap.ic_launcher);
             }
 
             Bitmap thumb = tab.isPrivate() ? null : TabThumbnailCache.get(tab.getId());
@@ -459,9 +459,9 @@ public class TabsAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
             if (tab.getFavicon() != null) {
                 Glide.with(favicon).load(tab.getFavicon())
-                        .placeholder(R.drawable.ic_globe).error(R.drawable.ic_globe).into(favicon);
+                        .placeholder(R.mipmap.ic_launcher).error(R.mipmap.ic_launcher).into(favicon);
             } else {
-                favicon.setImageResource(R.drawable.ic_globe);
+                favicon.setImageResource(R.mipmap.ic_launcher);
             }
 
             Bitmap thumb = TabThumbnailCache.get(tab.getId());

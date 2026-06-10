@@ -302,13 +302,13 @@ public class GroupTabsAdapter extends ListAdapter<Tab, GroupTabsAdapter.ViewHold
             String faviconUri = tab.getFaviconUri();
             String fallback = !TextUtils.isEmpty(faviconUri) ? faviconUri : getFaviconUrl(tab.getUrl());
             if (TextUtils.isEmpty(fallback)) {
-                imageView.setImageResource(R.drawable.ic_globe);
+                imageView.setImageResource(R.mipmap.ic_launcher);
                 return;
             }
             Glide.with(imageView)
                     .load(fallback)
-                    .placeholder(R.drawable.ic_globe)
-                    .error(R.drawable.ic_globe)
+                    .placeholder(R.mipmap.ic_launcher)
+                    .error(R.mipmap.ic_launcher)
                     .into(imageView);
         }
 

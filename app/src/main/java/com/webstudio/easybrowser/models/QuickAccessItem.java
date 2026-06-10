@@ -7,6 +7,7 @@ public class QuickAccessItem {
     private String faviconUrl;
     private int visitCount;
     private long lastVisited;
+    private boolean pinned;
 
     public QuickAccessItem(String title, String url) {
         this.id = String.valueOf(System.currentTimeMillis());
@@ -14,6 +15,7 @@ public class QuickAccessItem {
         this.url = url;
         this.visitCount = 0;
         this.lastVisited = System.currentTimeMillis();
+        this.pinned = false;
     }
 
     // Getters and Setters
@@ -68,6 +70,14 @@ public class QuickAccessItem {
 
     public void setLastVisited(long lastVisited) {
         this.lastVisited = lastVisited;
+    }
+
+    public boolean isPinned() {
+        return pinned;
+    }
+
+    public void setPinned(boolean pinned) {
+        this.pinned = pinned;
     }
 
     public void updateLastVisited() {

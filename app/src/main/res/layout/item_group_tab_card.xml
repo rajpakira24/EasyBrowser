@@ -35,7 +35,7 @@
                 android:background="@drawable/bg_tab_chip_inactive"
                 android:contentDescription="@string/tab_favicon"
                 android:padding="5dp"
-                android:src="@drawable/ic_globe" />
+                android:src="@mipmap/ic_launcher" />
 
             <TextView
                 android:id="@+id/tab_title"

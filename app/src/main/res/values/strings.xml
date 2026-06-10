@@ -35,7 +35,7 @@
     <string name="shortcut_private_tab_short">Private</string>
     <string name="shortcut_private_tab_long">Open New Private Tab</string>
     <string name="weather">Weather</string>
-    <string name="weather_summary">Current weather and 7-day forecast from Open-Meteo.</string>
+    <string name="weather_summary">Current weather, hourly conditions, AQI, and 7-day forecast.</string>
     <string name="weather_unavailable">Weather unavailable</string>
     <string name="weather_loading">Loading weather...</string>
     <string name="weather_precise_location_required">Allow precise location to update weather for your current place.</string>
@@ -66,8 +66,13 @@
     <string name="weather_precipitation">Rain %d%%</string>
     <string name="weather_last_updated">Updated %s</string>
     <string name="weather_refresh">Refresh weather</string>
-    <string name="weather_provider">Weather data by Open-Meteo</string>
-    <string name="weather_provider_open">Open Open-Meteo</string>
+    <string name="weather_provider">Weather data by MET Norway and Open-Meteo AQI</string>
+    <string name="weather_provider_open">Open MET Norway</string>
+    <string name="weather_hourly_conditions">Hourly condition</string>
+    <string name="weather_air_quality">Air quality</string>
+    <string name="weather_us_aqi">AQI</string>
+    <string name="weather_aqi_us_scale">US scale</string>
+    <string name="weather_aqi_unavailable">AQI unavailable</string>
     <string name="weather_location_saved">Weather location saved</string>
     <string name="weather_notification_daily_title">Today\'s weather</string>
     <string name="weather_notification_daily_text">%1$s: %2$s, %3$s</string>
@@ -119,6 +124,7 @@
 
     <!-- Tabs -->
     <string name="new_tab">New Tab</string>
+    <string name="new_tab_group">New tab group</string>
     <string name="close_tab">Close Tab</string>
     <string name="close_tab_sentence">Close tab</string>
     <string name="close_all_tabs">Close All Tabs</string>
@@ -203,6 +209,7 @@
 
     <!-- Privacy Settings -->
     <string name="clear_data">Clear Browsing Data</string>
+    <string name="delete_browsing_data">Delete browsing data</string>
     <string name="clear_cache">Clear Cache</string>
     <string name="clear_cookies">Clear Cookies</string>
     <string name="clear_history">Clear History</string>
@@ -429,6 +436,10 @@
     <string name="quick_access_added">Added to Quick Access</string>
     <string name="quick_access_updated">Quick Access Updated</string>
     <string name="quick_access_error">Error updating Quick Access</string>
+    <string name="quick_access_pin_shortcut">Pin this shortcut</string>
+    <string name="quick_access_unpin_shortcut">Unpin this shortcut</string>
+    <string name="quick_access_pinned">Shortcut pinned</string>
+    <string name="quick_access_unpinned">Shortcut unpinned</string>
 
     <!-- Dialogs -->
     <string name="edit">Edit</string>
@@ -721,9 +732,6 @@
     <string name="recently_closed">Recently Closed</string>
     <string name="restore_tab">Restore</string>
     <string name="no_recently_closed">No recently closed tabs</string>
-
-    <!-- Swipe Gestures -->
-    <string name="swipe_to_navigate">Swipe left/right to navigate</string>
 
     <!-- Search Suggestions -->
     <string name="suggestions">Suggestions</string>

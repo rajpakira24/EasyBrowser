@@ -37,6 +37,7 @@ import com.google.android.material.textfield.TextInputLayout;
 import com.webstudio.easybrowser.BuildConfig;
 import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.managers.AnalyticsManager;
+import com.webstudio.easybrowser.managers.BuiltInAdBlockerManager;
 import com.webstudio.easybrowser.managers.RuntimeManager;
 import com.webstudio.easybrowser.repository.BookmarkRepository;
 import com.webstudio.easybrowser.repository.HistoryRepository;
@@ -57,6 +58,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class SettingsActivity extends AppCompatActivity {
+    public static final String EXTRA_OPEN_CLEAR_DATA = "open_clear_data";
+
     private static final int[] ADVANCED_ROW_IDS = new int[]{
             R.id.setting_auto_clear_on_exit,
             R.id.layout_auto_clear_items,
@@ -130,6 +133,9 @@ public class SettingsActivity extends AppCompatActivity {
         loadSettings();
         hideDuplicateSettingsRows();
         setupVisualHierarchy();
+        if (getIntent().getBooleanExtra(EXTRA_OPEN_CLEAR_DATA, false)) {
+            settingClearData.post(this::showClearDataDialog);
+        }
     }
 
     @Override
@@ -232,6 +238,7 @@ public class SettingsActivity extends AppCompatActivity {
         insertSettingsModeCard();
         insertPerformanceBenchmarkRow();
         styleSettingsCards(findViewById(android.R.id.content));
+        applySectionHeadingIcons();
         applyTopLevelRowIcons();
         applyRowMicroInteractions(findViewById(android.R.id.content));
         applyAdvancedVisibility();
@@ -391,8 +398,8 @@ public class SettingsActivity extends AppCompatActivity {
     private void applyTopLevelRowIcons() {
         setRowIcon(R.id.setting_search_engine, R.drawable.ic_search);
         setRowIcon(R.id.setting_homepage, R.drawable.ic_home);
-        setRowIcon(R.id.setting_notifications, R.drawable.ic_settings);
-        setRowIcon(R.id.setting_external_links, R.drawable.ic_globe);
+        setRowIcon(R.id.setting_notifications, R.drawable.ic_notifications);
+        setRowIcon(R.id.setting_external_links, R.drawable.ic_external_link);
         setRowIcon(R.id.setting_ad_blocking, R.drawable.ic_security);
         setRowIcon(R.id.setting_cookie_banners, R.drawable.ic_security);
         setRowIcon(R.id.setting_strip_tracking_params, R.drawable.ic_security);
@@ -400,16 +407,16 @@ public class SettingsActivity extends AppCompatActivity {
         setRowIcon(R.id.setting_do_not_track, R.drawable.ic_security);
         setRowIcon(R.id.setting_save_history, R.drawable.ic_history);
         setRowIcon(R.id.setting_clear_data, R.drawable.ic_clear);
-        setRowIcon(R.id.setting_cookie_manager, R.drawable.ic_globe);
-        setRowIcon(R.id.setting_site_permissions, R.drawable.ic_settings);
+        setRowIcon(R.id.setting_cookie_manager, R.drawable.ic_cookie);
+        setRowIcon(R.id.setting_site_permissions, R.drawable.ic_permissions);
         setRowIcon(R.id.setting_prevent_screenshots, R.drawable.ic_lock);
-        setRowIcon(R.id.setting_terms_of_use, R.drawable.ic_file);
+        setRowIcon(R.id.setting_terms_of_use, R.drawable.ic_article);
         setRowIcon(R.id.setting_privacy_policy, R.drawable.ic_security);
-        setRowIcon(R.id.setting_ip_infringement, R.drawable.ic_file);
-        setRowIcon(R.id.setting_data_compliance, R.drawable.ic_file);
+        setRowIcon(R.id.setting_ip_infringement, R.drawable.ic_copyright);
+        setRowIcon(R.id.setting_data_compliance, R.drawable.ic_compliance);
         setRowIcon(R.id.setting_tabs_and_groups, R.drawable.ic_tabs);
         setRowIcon(R.id.setting_media, R.drawable.ic_video);
-        setRowIcon(R.id.setting_appearance, R.drawable.ic_settings);
+        setRowIcon(R.id.setting_appearance, R.drawable.ic_palette);
         setRowIcon(R.id.setting_new_tab_page, R.drawable.ic_home);
         setRowIcon(R.id.setting_accessibility_subpage, R.drawable.ic_text);
         setRowIcon(R.id.setting_languages, R.drawable.ic_translate);
@@ -422,12 +429,35 @@ public class SettingsActivity extends AppCompatActivity {
         setRowIcon(R.id.setting_javascript, R.drawable.ic_globe);
         setRowIcon(R.id.setting_block_popups, R.drawable.ic_security);
         setRowIcon(R.id.setting_open_links_new_tab, R.drawable.ic_tabs);
-        setRowIcon(R.id.setting_user_agent, R.drawable.ic_globe);
+        setRowIcon(R.id.setting_user_agent, R.drawable.ic_desktop);
         setRowIcon(R.id.setting_user_styles, R.drawable.ic_text);
         setRowIcon(R.id.setting_doh, R.drawable.ic_security);
-        setRowIcon(R.id.setting_remote_debugging, R.drawable.ic_settings);
+        setRowIcon(R.id.setting_remote_debugging, R.drawable.ic_desktop);
         setRowIcon(R.id.setting_help_feedback, R.drawable.ic_help);
         setRowIcon(R.id.setting_about, R.drawable.ic_help);
+    }
+
+    private void applySectionHeadingIcons() {
+        setSectionHeadingIcon(R.id.settings_section_general, R.drawable.ic_settings);
+        setSectionHeadingIcon(R.id.settings_section_privacy, R.drawable.ic_security);
+        setSectionHeadingIcon(R.id.settings_section_downloads, R.drawable.ic_download);
+    }
+
+    private void setSectionHeadingIcon(int headingId, int iconRes) {
+        TextView heading = findViewById(headingId);
+        if (heading == null) {
+            return;
+        }
+        Drawable icon = ContextCompat.getDrawable(this, iconRes);
+        if (icon == null) {
+            return;
+        }
+        icon = DrawableCompat.wrap(icon.mutate());
+        DrawableCompat.setTint(icon, ThemeEngine.homePalette(this).accent);
+        icon.setBounds(0, 0, dp(18), dp(18));
+        heading.setCompoundDrawablesRelative(icon, null, null, null);
+        heading.setCompoundDrawablePadding(dp(8));
+        heading.setGravity(Gravity.CENTER_VERTICAL);
     }
 
     private void setRowIcon(int rowId, int iconRes) {
@@ -1105,6 +1135,7 @@ public class SettingsActivity extends AppCompatActivity {
                 .setCookieBannerModePrivateBrowsing(ContentBlocking.CookieBannerMode.COOKIE_BANNER_MODE_REJECT)
                 .setQueryParameterStrippingEnabled(prefs.getBoolean("strip_tracking_params", true))
                 .setQueryParameterStrippingPrivateBrowsingEnabled(true);
+        BuiltInAdBlockerManager.apply(runtime, prefs);
     }
 
     private void showClearDataDialog() {
@@ -1569,6 +1600,11 @@ public class SettingsActivity extends AppCompatActivity {
         TextView messageView = progressDialog.findViewById(R.id.progress_message);
         messageView.setText(messageResId);
         progressDialog.show();
+        android.view.Window window = progressDialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(
+                    android.graphics.Color.TRANSPARENT));
+        }
     }
 
     private void hideProgress() {

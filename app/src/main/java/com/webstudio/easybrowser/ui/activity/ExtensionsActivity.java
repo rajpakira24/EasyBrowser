@@ -682,7 +682,7 @@ public class ExtensionsActivity extends AppCompatActivity {
     private void addIcon(LinearLayout row, String iconUrl) {
         ImageView icon = createExtensionIconView(row);
         if (TextUtils.isEmpty(iconUrl)) {
-            icon.setImageResource(R.drawable.ic_globe);
+            icon.setImageResource(R.mipmap.ic_launcher);
             return;
         }
         loadIconUrl(icon, iconUrl);
@@ -698,7 +698,7 @@ public class ExtensionsActivity extends AppCompatActivity {
             loadExtensionIconFallback(icon, fallbackIconUrl);
             return;
         }
-        icon.setImageResource(R.drawable.ic_globe);
+        icon.setImageResource(R.mipmap.ic_launcher);
         packagedIcon.getBitmap(dp(64)).accept(bitmap -> runOnUiThread(() -> {
                     if (bitmap != null) {
                         icon.setImageBitmap(bitmap);
@@ -721,7 +721,7 @@ public class ExtensionsActivity extends AppCompatActivity {
 
     private void loadExtensionIconFallback(ImageView icon, String iconUrl) {
         if (TextUtils.isEmpty(iconUrl)) {
-            icon.setImageResource(R.drawable.ic_globe);
+            icon.setImageResource(R.mipmap.ic_launcher);
             return;
         }
         loadIconUrl(icon, iconUrl);
@@ -730,8 +730,8 @@ public class ExtensionsActivity extends AppCompatActivity {
     private void loadIconUrl(ImageView icon, String iconUrl) {
         Glide.with(icon)
                 .load(iconUrl)
-                .placeholder(R.drawable.ic_globe)
-                .error(R.drawable.ic_globe)
+                .placeholder(R.mipmap.ic_launcher)
+                .error(R.mipmap.ic_launcher)
                 .into(icon);
     }
 

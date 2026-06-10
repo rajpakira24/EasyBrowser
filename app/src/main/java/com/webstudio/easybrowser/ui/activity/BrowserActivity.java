@@ -33,11 +33,9 @@ import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.view.Gravity;
-import android.view.GestureDetector;
 import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -45,6 +43,7 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.PopupMenu;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -72,6 +71,7 @@ import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.slider.Slider;
 import com.google.android.material.snackbar.Snackbar;
+import com.bumptech.glide.Glide;
 import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.adapters.QuickTabStripAdapter;
 import com.webstudio.easybrowser.adapters.SuggestionsAdapter;
@@ -121,6 +121,10 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class BrowserActivity extends AppCompatActivity {
+    public static final String EXTRA_URL = "url";
+    public static final String EXTRA_NEW_TAB = "new_tab";
+    public static final String EXTRA_PRIVATE_TAB = "private_tab";
+    public static final String EXTRA_NEW_TAB_IN_GROUP = "new_tab_in_group";
     static final int REQUEST_GECKO_PERMISSIONS = 1001;
     private GeckoView geckoView;
     GeckoSession session;
@@ -175,8 +179,6 @@ public class BrowserActivity extends AppCompatActivity {
     private final SearchSuggestionProvider suggestionProvider = new SearchSuggestionProvider();
 
     private boolean isDesktopMode = false;
-    private GestureDetector gestureDetector;
-    private GestureDetector tabStripGestureDetector;
 
     // F12 — Site info bottom sheet
     GeckoSession.ProgressDelegate.SecurityInformation lastSecurityInfo;
@@ -211,7 +213,6 @@ public class BrowserActivity extends AppCompatActivity {
         setupTabManager();
         attachTabToView(tabManager.getCurrentTab());
         setupBackHandling();
-        setupSwipeGestures();
         // Seed lastAppliedUaPreset so the first onResume() doesn't trigger a spurious reload
         lastAppliedUaPreset = PreferenceManager.getDefaultSharedPreferences(this)
                 .getString(SettingsKeys.PREF_USER_AGENT_PRESET, "mobile");
@@ -512,7 +513,7 @@ public class BrowserActivity extends AppCompatActivity {
         securityButton = findViewById(R.id.btn_security);
         bookmarkButton = findViewById(R.id.btn_bookmark);
         toolbarShortcutButton = findViewById(R.id.btn_toolbar_shortcut);
-        backButton = findViewById(R.id.btn_back);
+        backButton = null;
         swipeRefresh = findViewById(R.id.swipe_refresh);
         browserRoot = findViewById(R.id.browser_root);
 
@@ -531,16 +532,6 @@ public class BrowserActivity extends AppCompatActivity {
         if (securityButton != null) {
             securityButton.setOnClickListener(v -> handleSecurityButtonClick());
         }
-        backButton.setOnClickListener(v -> {
-            if (session != null && canGoBack) {
-                session.goBack();
-            }
-        });
-        backButton.setOnLongClickListener(v -> {
-            showNavigationHistoryDialog();
-            return true;
-        });
-
         bottomNav = findViewById(R.id.bottom_navigation);
         quickTabStripContainer = findViewById(R.id.quick_tab_strip_container);
         quickTabStripShadow = findViewById(R.id.quick_tab_strip_shadow);
@@ -565,19 +556,23 @@ public class BrowserActivity extends AppCompatActivity {
         }
 
         tintChromeButton(backButton, foreground);
-        tintChromeButton(bookmarkButton, foreground);
-        tintChromeButton(toolbarShortcutButton, foreground);
         tintChromeButton(quickTabAdd, foreground);
         updateSmartShieldIndicator();
+
+        int urlForeground = ContextCompat.getColor(this, R.color.browser_url_foreground);
+        tintChromeButton(bookmarkButton, urlForeground);
+        tintChromeButton(toolbarShortcutButton, urlForeground);
 
         if (securityButton != null && securityButton.getParent() instanceof View) {
             View searchContainer = (View) securityButton.getParent();
             searchContainer.setBackground(createChromeRoundedDrawable(
-                    palette.searchBackground, palette.panelBorder, dp(24)));
+                    ContextCompat.getColor(this, R.color.browser_url_background),
+                    ContextCompat.getColor(this, R.color.browser_url_stroke),
+                    dp(12)));
         }
         if (urlInput != null) {
-            urlInput.setTextColor(palette.onSurface);
-            urlInput.setHintTextColor(palette.onSurfaceMuted);
+            urlInput.setTextColor(urlForeground);
+            urlInput.setHintTextColor(ContextCompat.getColor(this, R.color.browser_url_hint));
         }
         if (bottomNav != null) {
             bottomNav.setBackgroundColor(chrome);
@@ -617,11 +612,16 @@ public class BrowserActivity extends AppCompatActivity {
         if (intent != null) {
             String action = intent.getAction();
             String legacyAction = intent.getStringExtra("action");
+            String url = sanitizeIncomingIntentUrl(intent.getStringExtra(EXTRA_URL));
             if ((AppShortcutManager.ACTION_NEW_PRIVATE_TAB.equals(action)
                     || "private_tab".equals(legacyAction)
-                    || intent.getBooleanExtra("private_tab", false))
+                    || intent.getBooleanExtra(EXTRA_PRIVATE_TAB, false))
                     && tabManager != null) {
-                attachTabToView(tabManager.createNewTab(true));
+                if (url != null && !url.isEmpty()) {
+                    openUrlInNewTab(url, true);
+                } else {
+                    attachTabToView(tabManager.createNewTab(true));
+                }
                 return;
             }
             if ((AppShortcutManager.ACTION_NEW_TAB.equals(action)
@@ -630,8 +630,15 @@ public class BrowserActivity extends AppCompatActivity {
                 openShortcutHomepageTab();
                 return;
             }
-            String url = sanitizeIncomingIntentUrl(intent.getStringExtra("url"));
-            if (intent.getBooleanExtra("new_tab", false) && tabManager != null) {
+            if (intent.getBooleanExtra(EXTRA_NEW_TAB_IN_GROUP, false) && tabManager != null) {
+                if (url != null && !url.isEmpty()) {
+                    openUrlInNewTabInGroup(url);
+                } else {
+                    attachTabToView(tabManager.getCurrentTab());
+                }
+                return;
+            }
+            if (intent.getBooleanExtra(EXTRA_NEW_TAB, false) && tabManager != null) {
                 attachTabToView(tabManager.createNewTab(false, url == null || url.isEmpty()));
                 if (url == null || url.isEmpty()) {
                     return;
@@ -707,6 +714,7 @@ public class BrowserActivity extends AppCompatActivity {
         ImageButton popupGo = dialog.findViewById(R.id.btn_search_popup_go);
         RecyclerView suggestionsRecycler = dialog.findViewById(R.id.suggestions_recycler);
         popupMic.setVisibility(View.GONE);
+        bindCurrentPageSearchCard(dialog, searchInput);
 
         SuggestionsAdapter suggestionsAdapter = new SuggestionsAdapter(suggestion -> {
             handleUrlInput(suggestion);
@@ -715,8 +723,7 @@ public class BrowserActivity extends AppCompatActivity {
         suggestionsRecycler.setLayoutManager(new LinearLayoutManager(this));
         suggestionsRecycler.setAdapter(suggestionsAdapter);
 
-        searchInput.setText(urlInput.getText());
-        searchInput.selectAll();
+        searchInput.setText("");
         searchInput.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void afterTextChanged(Editable s) {}
@@ -784,6 +791,84 @@ public class BrowserActivity extends AppCompatActivity {
         });
         dialog.setOnDismissListener(d -> urlInput.clearFocus());
         dialog.show();
+    }
+
+    private void bindCurrentPageSearchCard(Dialog dialog, EditText searchInput) {
+        View card = dialog.findViewById(R.id.current_page_card);
+        if (card == null) {
+            return;
+        }
+        if (!hasCurrentWebPage()) {
+            card.setVisibility(View.GONE);
+            return;
+        }
+
+        ImageView icon = dialog.findViewById(R.id.current_page_icon);
+        TextView title = dialog.findViewById(R.id.current_page_title);
+        TextView host = dialog.findViewById(R.id.current_page_host);
+        ImageButton share = dialog.findViewById(R.id.current_page_share);
+        ImageButton copy = dialog.findViewById(R.id.current_page_copy);
+        ImageButton edit = dialog.findViewById(R.id.current_page_edit);
+
+        String displayHost = UrlUtils.getDisplayHost(currentUrl);
+        String displayTitle = !TextUtils.isEmpty(currentTitle)
+                ? currentTitle
+                : (!TextUtils.isEmpty(displayHost) ? displayHost : currentUrl);
+        title.setText(displayTitle);
+        host.setText(!TextUtils.isEmpty(displayHost) ? displayHost : currentUrl);
+        bindCurrentPageIcon(icon);
+
+        share.setOnClickListener(v -> {
+            dialog.dismiss();
+            shareCurrentPage();
+        });
+        copy.setOnClickListener(v -> {
+            copyToClipboard(currentUrl);
+            dialog.dismiss();
+        });
+        edit.setOnClickListener(v -> {
+            searchInput.setText(getEditableUrlText());
+            searchInput.selectAll();
+            card.setVisibility(View.GONE);
+        });
+        card.setVisibility(View.VISIBLE);
+    }
+
+    private boolean hasCurrentWebPage() {
+        return currentUrl != null
+                && !currentUrl.trim().isEmpty()
+                && !"about:blank".equals(currentUrl)
+                && !UrlUtils.isInternalPageUrl(currentUrl);
+    }
+
+    private void bindCurrentPageIcon(ImageView icon) {
+        if (icon == null) {
+            return;
+        }
+        Tab tab = tabManager != null ? tabManager.getCurrentTab() : null;
+        if (tab != null && tab.getFavicon() != null) {
+            Glide.with(icon).clear(icon);
+            icon.setImageTintList(null);
+            icon.setImageBitmap(tab.getFavicon());
+            return;
+        }
+
+        String faviconUrl = tab != null && !TextUtils.isEmpty(tab.getFaviconUri())
+                ? tab.getFaviconUri()
+                : UrlUtils.getFaviconUrl(currentUrl);
+        if (!TextUtils.isEmpty(faviconUrl)) {
+            icon.setImageTintList(null);
+            Glide.with(icon)
+                    .load(faviconUrl)
+                    .placeholder(R.mipmap.ic_launcher)
+                    .error(R.mipmap.ic_launcher)
+                    .into(icon);
+            return;
+        }
+
+        Glide.with(icon).clear(icon);
+        icon.setImageTintList(null);
+        icon.setImageResource(R.mipmap.ic_launcher);
     }
 
     private void hideKeyboard() {
@@ -1059,9 +1144,6 @@ public class BrowserActivity extends AppCompatActivity {
             currentTitle = tab.getTitle();
             canGoBack = tab.canGoBack();
             canGoForward = tab.canGoForward();
-            if (backButton != null) {
-                backButton.setVisibility(canGoBack ? View.VISIBLE : View.GONE);
-            }
             invalidateOptionsMenu();
 
             updateSmartShieldIndicator();
@@ -1183,7 +1265,17 @@ public class BrowserActivity extends AppCompatActivity {
                 || UrlUtils.isInternalPageUrl(url)) {
             return "";
         }
-        return url;
+        String host = UrlUtils.getDisplayHost(url);
+        return host != null ? host : url;
+    }
+
+    private String getEditableUrlText() {
+        if (currentUrl == null || currentUrl.trim().isEmpty()
+                || "about:blank".equals(currentUrl)
+                || UrlUtils.isInternalPageUrl(currentUrl)) {
+            return urlInput != null ? urlInput.getText().toString() : "";
+        }
+        return currentUrl;
     }
 
     private void updateTabCount() {
@@ -1994,30 +2086,6 @@ public class BrowserActivity extends AppCompatActivity {
             return true;
         });
 
-        tabStripGestureDetector = new GestureDetector(this,
-                new GestureDetector.SimpleOnGestureListener() {
-                    private static final int SWIPE_MIN_DISTANCE = 80;
-                    private static final int SWIPE_MIN_VELOCITY = 160;
-
-                    @Override
-                    public boolean onFling(MotionEvent e1, MotionEvent e2,
-                                           float velocityX, float velocityY) {
-                        if (e1 == null || e2 == null) return false;
-                        float dx = e2.getX() - e1.getX();
-                        float dy = e2.getY() - e1.getY();
-                        if (Math.abs(dy) > Math.abs(dx)) return false;
-                        if (Math.abs(dx) < SWIPE_MIN_DISTANCE
-                                || Math.abs(velocityX) < SWIPE_MIN_VELOCITY) return false;
-                        switchAdjacentTab(dx < 0 ? 1 : -1);
-                        return true;
-                    }
-                });
-        quickTabStrip.setOnTouchListener((v, event) -> {
-            if (tabStripGestureDetector != null) {
-                tabStripGestureDetector.onTouchEvent(event);
-            }
-            return false;
-        });
         updateQuickTabStrip();
     }
 
@@ -2155,31 +2223,6 @@ public class BrowserActivity extends AppCompatActivity {
                 }
             }
         }
-    }
-
-    private void switchAdjacentTab(int direction) {
-        if (tabManager == null) {
-            return;
-        }
-        Tab current = tabManager.getCurrentTab();
-        List<Tab> tabs = getActiveGroupTabs();
-        if (tabs.size() < 2 || current == null) {
-            return;
-        }
-        int index = -1;
-        for (int i = 0; i < tabs.size(); i++) {
-            if (current.getId().equals(tabs.get(i).getId())) {
-                index = i;
-                break;
-            }
-        }
-        if (index == -1) {
-            return;
-        }
-        int nextIndex = (index + direction + tabs.size()) % tabs.size();
-        captureCurrentTabThumbnail();
-        tabManager.switchToTab(tabs.get(nextIndex));
-        updateQuickTabStrip();
     }
 
     private void handleBrowserChromeForScroll(int scrollY) {
@@ -2595,18 +2638,10 @@ public class BrowserActivity extends AppCompatActivity {
             actions.add(() -> startDownload(link, null, null));
         }
 
-        if (!TextUtils.isEmpty(media)) {
-            if (element.type == GeckoSession.ContentDelegate.ContextElement.TYPE_IMAGE) {
-                labels.add(getString(R.string.context_menu_open_image));
-                actions.add(() -> loadUrl(media));
-                labels.add(getString(R.string.context_menu_save_image));
-                actions.add(() -> startDownload(media, null, "image/*"));
-                labels.add(getString(R.string.context_menu_share_image));
-                actions.add(() -> shareText(media));
-            } else {
-                labels.add(getString(R.string.download));
-                actions.add(() -> startDownload(media, null, null));
-            }
+        if (!TextUtils.isEmpty(media)
+                && element.type != GeckoSession.ContentDelegate.ContextElement.TYPE_IMAGE) {
+            labels.add(getString(R.string.download));
+            actions.add(() -> startDownload(media, null, null));
         }
 
         if (labels.isEmpty() && !TextUtils.isEmpty(element.textContent)) {
@@ -3319,39 +3354,6 @@ public class BrowserActivity extends AppCompatActivity {
                 }
             });
         } catch (Exception ignored) {}
-    }
-
-    private void setupSwipeGestures() {
-        gestureDetector = new GestureDetector(this,
-                new GestureDetector.SimpleOnGestureListener() {
-                    private static final int SWIPE_MIN_DISTANCE = 120;
-                    private static final int SWIPE_MIN_VELOCITY = 200;
-
-                    @Override
-                    public boolean onFling(MotionEvent e1, MotionEvent e2,
-                            float velocityX, float velocityY) {
-                        if (e1 == null || e2 == null) return false;
-                        float dx = e2.getX() - e1.getX();
-                        float dy = e2.getY() - e1.getY();
-                        if (Math.abs(dy) > Math.abs(dx)) return false;
-                        if (Math.abs(dx) < SWIPE_MIN_DISTANCE
-                                || Math.abs(velocityX) < SWIPE_MIN_VELOCITY) return false;
-                        if (dx > 0 && canGoBack && session != null) {
-                            session.goBack();
-                            return true;
-                        } else if (dx < 0 && canGoForward && session != null) {
-                            session.goForward();
-                            return true;
-                        }
-                        return false;
-                    }
-                });
-    }
-
-    @Override
-    public boolean dispatchTouchEvent(MotionEvent ev) {
-        if (gestureDetector != null) gestureDetector.onTouchEvent(ev);
-        return super.dispatchTouchEvent(ev);
     }
 
 }

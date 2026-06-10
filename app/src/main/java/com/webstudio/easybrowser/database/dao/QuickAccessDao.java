@@ -13,10 +13,10 @@ import java.util.List;
 
 @Dao
 public interface QuickAccessDao {
-    @Query("SELECT * FROM quick_access ORDER BY visitCount DESC, lastVisited DESC")
+    @Query("SELECT * FROM quick_access ORDER BY pinned DESC, visitCount DESC, lastVisited DESC")
     List<QuickAccessEntity> getAllQuickAccess();
 
-    @Query("SELECT * FROM quick_access ORDER BY visitCount DESC LIMIT :limit")
+    @Query("SELECT * FROM quick_access ORDER BY pinned DESC, visitCount DESC, lastVisited DESC LIMIT :limit")
     List<QuickAccessEntity> getMostVisited(int limit);
 
     @Query("SELECT * FROM quick_access WHERE url = :url LIMIT 1")

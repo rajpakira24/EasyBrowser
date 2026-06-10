@@ -26,6 +26,7 @@ import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.KeyEvent;
 import android.view.Gravity;
+import android.view.Menu;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -35,6 +36,7 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ImageView;
+import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -58,6 +60,7 @@ import com.google.android.material.textfield.TextInputEditText;
 import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.adapters.QuickAccessAdapter;
 import com.webstudio.easybrowser.managers.AnalyticsManager;
+import com.webstudio.easybrowser.managers.AppDownloadManager;
 import com.webstudio.easybrowser.managers.AppShortcutManager;
 import com.webstudio.easybrowser.managers.PrivacyStatsManager;
 import com.webstudio.easybrowser.managers.WeatherAlertManager;
@@ -92,6 +95,15 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
     private static final int HOME_SCROLL_BOTTOM_GAP_DP = 28;
     private static final long HOME_ENTRANCE_DURATION_MS = 360L;
     private static final long HOME_ENTRANCE_STAGGER_MS = 65L;
+    private static final int QUICK_ACCESS_MENU_OPEN_NEW_TAB = 1;
+    private static final int QUICK_ACCESS_MENU_OPEN_NEW_TAB_IN_GROUP = 2;
+    private static final int QUICK_ACCESS_MENU_OPEN_PRIVATE_TAB = 3;
+    private static final int QUICK_ACCESS_MENU_DOWNLOAD_LINK = 4;
+    private static final int QUICK_ACCESS_MENU_REMOVE = 5;
+    private static final int QUICK_ACCESS_MENU_PIN = 6;
+    private static final int QUICK_ACCESS_MAX_VISIBLE_ITEMS = 5;
+    private static final int QUICK_ACCESS_LOAD_LIMIT = 8;
+    private static final int QUICK_ACCESS_MIN_ITEM_WIDTH_DP = 56;
 
     private EditText urlInput;
     private ImageButton micButton;
@@ -244,7 +256,7 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
 
         AnalyticsManager.logNavigationSubmitted(this, input, false);
         Intent intent = new Intent(this, BrowserActivity.class);
-        intent.putExtra("url", UrlUtils.getUrlOrSearchUrl(this, input));
+        intent.putExtra(BrowserActivity.EXTRA_URL, UrlUtils.getUrlOrSearchUrl(this, input));
         startActivity(intent);
     }
 
@@ -304,7 +316,7 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         Intent browserIntent = new Intent(this, BrowserActivity.class)
                 .setAction(action)
                 .putExtra(AppShortcutManager.EXTRA_FROM_APP_SHORTCUT, true)
-                .putExtra(privateTab ? "private_tab" : "new_tab", true);
+                .putExtra(privateTab ? BrowserActivity.EXTRA_PRIVATE_TAB : BrowserActivity.EXTRA_NEW_TAB, true);
         startActivity(browserIntent);
     }
 
@@ -359,9 +371,13 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
                 this, LinearLayoutManager.HORIZONTAL, false));
         quickAccessAdapter = new QuickAccessAdapter(new ArrayList<>(), this);
         quickAccessRecycler.setAdapter(quickAccessAdapter);
+        quickAccessRecycler.addOnLayoutChangeListener((v, left, top, right, bottom,
+                                                       oldLeft, oldTop, oldRight, oldBottom) ->
+                updateQuickAccessItemWidth());
+        quickAccessRecycler.post(this::updateQuickAccessItemWidth);
 
         // Load quick access items
-        quickAccessRepository.getMostVisitedItems(8, new QuickAccessRepository.QuickAccessCallback() {
+        quickAccessRepository.getMostVisitedItems(QUICK_ACCESS_LOAD_LIMIT, new QuickAccessRepository.QuickAccessCallback() {
             @Override
             public void onQuickAccessItemsLoaded(List<QuickAccessItem> items) {
                 runOnUiThread(() -> quickAccessAdapter.updateItems(items));
@@ -379,8 +395,29 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         });
     }
 
+    private void updateQuickAccessItemWidth() {
+        if (quickAccessRecycler == null || quickAccessAdapter == null) {
+            return;
+        }
+
+        int rowWidth = quickAccessRecycler.getWidth();
+        if (rowWidth <= 0) {
+            return;
+        }
+
+        int minItemWidth = dp(QUICK_ACCESS_MIN_ITEM_WIDTH_DP);
+        int visibleItems = Math.max(1, rowWidth / minItemWidth);
+        visibleItems = Math.min(visibleItems, QUICK_ACCESS_MAX_VISIBLE_ITEMS);
+        int trailingInset = rowWidth % visibleItems;
+        if (quickAccessRecycler.getPaddingEnd() != trailingInset) {
+            quickAccessRecycler.setPaddingRelative(0, quickAccessRecycler.getPaddingTop(),
+                    trailingInset, quickAccessRecycler.getPaddingBottom());
+        }
+        quickAccessAdapter.setItemWidth((rowWidth - trailingInset) / visibleItems);
+    }
+
     private void reloadQuickAccess() {
-        quickAccessRepository.getMostVisitedItems(8, new QuickAccessRepository.QuickAccessCallback() {
+        quickAccessRepository.getMostVisitedItems(QUICK_ACCESS_LOAD_LIMIT, new QuickAccessRepository.QuickAccessCallback() {
             @Override
             public void onQuickAccessItemsLoaded(List<QuickAccessItem> items) {
                 runOnUiThread(() -> quickAccessAdapter.updateItems(items));
@@ -726,7 +763,8 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         if (weatherIcon == null) {
             return;
         }
-        weatherIcon.setAnimation(WeatherAnimationMapper.animationFor(snapshot, false));
+        weatherIcon.setAnimation(WeatherAnimationMapper.animationFor(snapshot,
+                weatherRepository.getUnits()));
         weatherIcon.setRepeatCount(LottieDrawable.INFINITE);
         weatherIcon.setRepeatMode(LottieDrawable.RESTART);
         weatherIcon.playAnimation();
@@ -1224,19 +1262,113 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
 
     @Override
     public void onQuickAccessLongClick(QuickAccessItem item, View view) {
-        // Show options menu for the quick access item
-        new MaterialAlertDialogBuilder(this)
-                .setItems(new String[]{
-                        getString(R.string.edit),
-                        getString(R.string.remove)
-                }, (dialog, which) -> {
-                    if (which == 0) {
-                        showEditQuickAccessDialog(item);
-                    } else {
-                        removeQuickAccessItem(item);
-                    }
-                })
-                .show();
+        PopupMenu menu = new PopupMenu(this, view);
+        menu.getMenu().add(Menu.NONE, QUICK_ACCESS_MENU_OPEN_NEW_TAB,
+                Menu.NONE, R.string.context_menu_open_new_tab);
+        menu.getMenu().add(Menu.NONE, QUICK_ACCESS_MENU_OPEN_NEW_TAB_IN_GROUP,
+                Menu.NONE, R.string.context_menu_open_new_tab_in_group);
+        menu.getMenu().add(Menu.NONE, QUICK_ACCESS_MENU_OPEN_PRIVATE_TAB,
+                Menu.NONE, R.string.context_menu_open_private_tab);
+        menu.getMenu().add(Menu.NONE, QUICK_ACCESS_MENU_DOWNLOAD_LINK,
+                Menu.NONE, R.string.context_menu_download_link);
+        menu.getMenu().add(Menu.NONE, QUICK_ACCESS_MENU_REMOVE,
+                Menu.NONE, R.string.remove);
+        menu.getMenu().add(Menu.NONE, QUICK_ACCESS_MENU_PIN,
+                Menu.NONE, item.isPinned()
+                        ? R.string.quick_access_unpin_shortcut
+                        : R.string.quick_access_pin_shortcut);
+        menu.setOnMenuItemClickListener(menuItem -> {
+            switch (menuItem.getItemId()) {
+                case QUICK_ACCESS_MENU_OPEN_NEW_TAB:
+                    openQuickAccessInBrowser(item, true, false, false);
+                    return true;
+                case QUICK_ACCESS_MENU_OPEN_NEW_TAB_IN_GROUP:
+                    openQuickAccessInBrowser(item, false, true, false);
+                    return true;
+                case QUICK_ACCESS_MENU_OPEN_PRIVATE_TAB:
+                    openQuickAccessInBrowser(item, false, false, true);
+                    return true;
+                case QUICK_ACCESS_MENU_DOWNLOAD_LINK:
+                    downloadQuickAccessLink(item);
+                    return true;
+                case QUICK_ACCESS_MENU_REMOVE:
+                    removeQuickAccessItem(item);
+                    return true;
+                case QUICK_ACCESS_MENU_PIN:
+                    setQuickAccessPinned(item, !item.isPinned());
+                    return true;
+                default:
+                    return false;
+            }
+        });
+        menu.show();
+    }
+
+    private void openQuickAccessInBrowser(QuickAccessItem item, boolean newTab,
+                                          boolean newTabInGroup, boolean privateTab) {
+        String url = getSafeQuickAccessUrl(item);
+        if (url == null) {
+            return;
+        }
+        Intent intent = new Intent(this, BrowserActivity.class)
+                .putExtra(BrowserActivity.EXTRA_URL, url);
+        if (privateTab) {
+            intent.putExtra(BrowserActivity.EXTRA_PRIVATE_TAB, true);
+        } else if (newTabInGroup) {
+            intent.putExtra(BrowserActivity.EXTRA_NEW_TAB_IN_GROUP, true);
+        } else if (newTab) {
+            intent.putExtra(BrowserActivity.EXTRA_NEW_TAB, true);
+        }
+        startActivity(intent);
+        if (!privateTab) {
+            quickAccessRepository.updateQuickAccessItem(item);
+        }
+    }
+
+    private void downloadQuickAccessLink(QuickAccessItem item) {
+        String url = getSafeQuickAccessUrl(item);
+        if (url == null) {
+            return;
+        }
+        AnalyticsManager.logDownloadStarted(this, null);
+        AppDownloadManager.getInstance().startDownload(this, url, null, null);
+    }
+
+    private void setQuickAccessPinned(QuickAccessItem item, boolean pinned) {
+        quickAccessRepository.setPinned(item, pinned, new QuickAccessRepository.QuickAccessCallback() {
+            @Override
+            public void onQuickAccessItemsLoaded(List<QuickAccessItem> items) {}
+
+            @Override
+            public void onQuickAccessItemAdded(QuickAccessItem item) {
+                runOnUiThread(() -> {
+                    reloadQuickAccess();
+                    Toast.makeText(MainActivity.this,
+                            pinned ? R.string.quick_access_pinned : R.string.quick_access_unpinned,
+                            Toast.LENGTH_SHORT).show();
+                });
+            }
+
+            @Override
+            public void onQuickAccessItemRemoved(QuickAccessItem item) {}
+        });
+    }
+
+    private String getSafeQuickAccessUrl(QuickAccessItem item) {
+        if (item == null || item.getUrl() == null) {
+            Toast.makeText(this, R.string.error_invalid_url, Toast.LENGTH_SHORT).show();
+            return null;
+        }
+        String url = UrlUtils.getQuickAccessUrl(item.getUrl());
+        if (url == null) {
+            url = UrlUtils.getUrlOrSearchUrl(this, item.getUrl());
+        }
+        String lower = url != null ? url.trim().toLowerCase(Locale.US) : "";
+        if (!lower.startsWith("http://") && !lower.startsWith("https://")) {
+            Toast.makeText(this, R.string.error_invalid_url, Toast.LENGTH_SHORT).show();
+            return null;
+        }
+        return url.trim();
     }
 
     private void showEditQuickAccessDialog(QuickAccessItem item) {

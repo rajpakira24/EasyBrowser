@@ -31,6 +31,10 @@
         <item name="colorSurfaceVariant">@color/surface_variant</item>
         <item name="colorOnSurfaceVariant">@color/text_secondary</item>
         <item name="colorOutline">@color/border_color</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.EasyBrowser.RoundedAlertDialog</item>
+        <item name="alertDialogTheme">@style/ThemeOverlay.EasyBrowser.RoundedAlertDialog</item>
+        <item name="popupMenuStyle">@style/Widget.EasyBrowser.RoundedPopupMenu</item>
+        <item name="android:popupMenuStyle">@style/Widget.EasyBrowser.RoundedPopupMenu</item>
 
         <!-- Enable edge-to-edge display -->
         <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="p">shortEdges</item>
@@ -87,6 +91,20 @@
     <style name="ThemeOverlay.App.BottomNavigationView" parent="">
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorSurface">@color/browser_chrome_background</item>
+    </style>
+
+    <style name="ThemeOverlay.EasyBrowser.RoundedAlertDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="backgroundTint">@color/colorSurface</item>
+        <item name="shapeAppearanceOverlay">@style/ShapeAppearanceOverlay_EasyBrowser_RoundedDialog</item>
+    </style>
+
+    <style name="ShapeAppearanceOverlay_EasyBrowser_RoundedDialog">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">26dp</item>
+    </style>
+
+    <style name="Widget.EasyBrowser.RoundedPopupMenu" parent="Widget.AppCompat.PopupMenu">
+        <item name="android:popupBackground">@drawable/bg_popup_menu_rounded</item>
     </style>
 
     <!-- Custom Button Styles -->

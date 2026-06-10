@@ -24,6 +24,10 @@
     <color name="app_bar_foreground">#DCE8E6</color>
     <color name="browser_chrome_background">#172529</color>
     <color name="browser_chrome_foreground">#DCE8E6</color>
+    <color name="browser_url_background">#34383B</color>
+    <color name="browser_url_stroke">#34383B</color>
+    <color name="browser_url_foreground">#F4FAFB</color>
+    <color name="browser_url_hint">#C8D2D5</color>
     <color name="section_heading">#DCE8E6</color>
     <color name="brandBlue">#84C8E8</color>
     <color name="brandRed">#FF7A5C</color>
@@ -95,6 +99,8 @@
     <color name="home_panel_background">#172529</color>
     <color name="home_panel_border">#2E4247</color>
     <color name="home_quick_access_icon_bg">#213238</color>
+    <color name="home_quick_access_glass_background">#99FFFFFF</color>
+    <color name="home_quick_access_glass_border">#55FFFFFF</color>
     <color name="home_accent_warm">#FF7A5C</color>
     <color name="home_accent_blue">#84C8E8</color>
     <color name="home_accent_mint">#64D3AD</color>

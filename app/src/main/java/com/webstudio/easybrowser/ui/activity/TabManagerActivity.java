@@ -2,6 +2,9 @@ package com.webstudio.easybrowser.ui.activity;
 
 import android.content.Intent;
 import android.content.res.ColorStateList;
+import android.content.res.Configuration;
+import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.transition.AutoTransition;
@@ -121,6 +124,41 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
     private boolean overviewOrderDirty;
     private boolean animateNextOverviewChange;
     private boolean pendingInitialOverviewScroll = true;
+    private static final int TAB_MENU_NEW_TAB = 1;
+    private static final int TAB_MENU_NEW_PRIVATE_TAB = 2;
+    private static final int TAB_MENU_NEW_TAB_GROUP = 3;
+    private static final int TAB_MENU_CLOSE_ALL = 4;
+    private static final int TAB_MENU_SELECT_TABS = 5;
+    private static final int TAB_MENU_DELETE_BROWSING_DATA = 6;
+    private static final int TAB_MENU_SETTINGS = 7;
+
+    private static final class TabManagerPalette {
+        final int background;
+        final int panel;
+        final int panelSelected;
+        final int search;
+        final int text;
+        final int textSecondary;
+        final int chrome;
+        final int fab;
+        final int onFab;
+        final TabGroupAdapter.ThemeColors adapterColors;
+
+        TabManagerPalette(int background, int panel, int panelSelected, int search,
+                          int text, int textSecondary, int chrome, int fab, int onFab,
+                          TabGroupAdapter.ThemeColors adapterColors) {
+            this.background = background;
+            this.panel = panel;
+            this.panelSelected = panelSelected;
+            this.search = search;
+            this.text = text;
+            this.textSecondary = textSecondary;
+            this.chrome = chrome;
+            this.fab = fab;
+            this.onFab = onFab;
+            this.adapterColors = adapterColors;
+        }
+    }
 
     private static class PendingClosedTab {
         final Tab tab;
@@ -152,27 +190,47 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
         setupRecycler();
         setupSearch();
         applyTabManagerThemeChrome();
-        binding.fabNewTab.setOnClickListener(this::showNewTabMenu);
+        binding.fabNewTab.setOnClickListener(this::showTabManagerActionMenu);
         binding.fabNewTab.setOnLongClickListener(v -> {
-            showFabLongPressMenu(v);
+            showTabManagerActionMenu(v);
             return true;
         });
         refreshCounts();
         loadGroups();
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        applyTabManagerThemeChrome();
+    }
+
     private void applyTabManagerSystemBars() {
-        int chrome = ThemeEngine.settingsChromeColor(this);
-        SystemBarUtils.apply(this, chrome, chrome, ThemeEngine.useDarkSystemBarIcons(chrome));
+        TabManagerPalette colors = createTabManagerPalette();
+        SystemBarUtils.apply(this, colors.chrome, colors.chrome,
+                ThemeEngine.useDarkSystemBarIcons(colors.chrome));
     }
 
     private void applyTabManagerThemeChrome() {
-        ThemeEngine.Palette palette = ThemeEngine.homePalette(this);
-        int chrome = ThemeEngine.settingsChromeColor(this);
+        TabManagerPalette colors = createTabManagerPalette();
+        int chrome = colors.chrome;
         int foreground = ThemeEngine.foregroundFor(chrome);
         applyTabManagerSystemBars();
+        binding.getRoot().setBackgroundColor(colors.background);
         binding.topBar.setBackgroundColor(chrome);
         binding.selectionBar.setBackgroundColor(chrome);
+        binding.groupsRecycler.setBackgroundColor(colors.background);
+        binding.emptyView.setTextColor(colors.textSecondary);
+        binding.searchLayout.setBackground(createRoundedDrawable(colors.search, dp(28)));
+        binding.searchInput.setTextColor(colors.text);
+        binding.searchInput.setHintTextColor(colors.textSecondary);
+        binding.modeSelector.setBackground(createRoundedDrawable(colors.panel, dp(30)));
+        binding.regularSegment.setBackground(createRoundedDrawable(colors.panelSelected, dp(24)));
+        binding.regularTabCount.setBackground(createRoundedStrokeDrawable(
+                Color.TRANSPARENT, foreground, dp(4), dp(2)));
+        binding.inactiveItemsCard.setCardBackgroundColor(colors.panel);
+        binding.inactiveItemsTitle.setTextColor(colors.text);
+        binding.inactiveItemsSubtitle.setTextColor(colors.textSecondary);
         binding.backButton.setColorFilter(foreground);
         binding.viewToggle.setColorFilter(foreground);
         binding.privateSegment.setColorFilter(foreground);
@@ -183,9 +241,74 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
         binding.actionMerge.setTextColor(foreground);
         binding.actionDelete.setTextColor(foreground);
         binding.actionArchive.setTextColor(foreground);
-        binding.fabNewTab.setBackgroundTintList(ColorStateList.valueOf(palette.accent));
-        binding.fabNewTab.setImageTintList(
-                ColorStateList.valueOf(ThemeEngine.foregroundFor(palette.accent)));
+        binding.fabNewTab.setBackgroundTintList(ColorStateList.valueOf(colors.fab));
+        binding.fabNewTab.setImageTintList(ColorStateList.valueOf(colors.onFab));
+        if (adapter != null) {
+            adapter.setThemeColors(colors.adapterColors);
+        }
+    }
+
+    private TabManagerPalette createTabManagerPalette() {
+        ThemeEngine.Palette themePalette = ThemeEngine.homePalette(this);
+        boolean light = isEffectiveLightMode();
+        int fab = themePalette.accent;
+        int onFab = ThemeEngine.foregroundFor(fab);
+        if (light) {
+            return new TabManagerPalette(
+                    0xFFFAFAFA,
+                    0xFFFFFFFF,
+                    0xFFEEF3FF,
+                    0xFFF1F2F4,
+                    0xFF313851,
+                    0xFF6F7482,
+                    ThemeEngine.settingsChromeColor(this),
+                    fab,
+                    onFab,
+                    TabGroupAdapter.ThemeColors.light());
+        }
+        return new TabManagerPalette(
+                0xFF101A1D,
+                0xFF172529,
+                0xFF213238,
+                0xFF18272C,
+                0xFFDCE8E6,
+                0xFF9AA8AC,
+                0xFF172529,
+                themePalette.accent,
+                onFab,
+                TabGroupAdapter.ThemeColors.dark());
+    }
+
+    private boolean isEffectiveLightMode() {
+        String mode = PreferenceManager.getDefaultSharedPreferences(this)
+                .getString(SettingsKeys.PREF_THEME_MODE, "system");
+        if ("light".equals(mode)) {
+            return true;
+        }
+        if ("dark".equals(mode)) {
+            return false;
+        }
+        int nightMode = getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK;
+        return nightMode != Configuration.UI_MODE_NIGHT_YES;
+    }
+
+    private GradientDrawable createRoundedDrawable(int color, int radius) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(color);
+        drawable.setCornerRadius(radius);
+        return drawable;
+    }
+
+    private GradientDrawable createRoundedStrokeDrawable(int color, int strokeColor,
+                                                        int radius, int strokeWidth) {
+        GradientDrawable drawable = createRoundedDrawable(color, radius);
+        drawable.setStroke(strokeWidth, strokeColor);
+        return drawable;
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
     private void setupActivityResult() {
@@ -2075,39 +2198,57 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
         }
     }
 
-    private void showNewTabMenu(View anchor) {
+    private void showTabManagerActionMenu(View anchor) {
         PopupMenu menu = new PopupMenu(this, anchor);
-        menu.getMenu().add(Menu.NONE, 1, Menu.NONE, R.string.new_tab);
-        menu.getMenu().add(Menu.NONE, 2, Menu.NONE, R.string.new_private_tab);
+        addTabMenuItem(menu, TAB_MENU_NEW_TAB, R.string.new_tab, R.drawable.ic_add);
+        addTabMenuItem(menu, TAB_MENU_NEW_PRIVATE_TAB, R.string.new_private_tab,
+                R.drawable.ic_incognito);
+        addTabMenuItem(menu, TAB_MENU_NEW_TAB_GROUP, R.string.new_tab_group,
+                R.drawable.ic_view_grid);
+        addTabMenuItem(menu, TAB_MENU_CLOSE_ALL, R.string.close_all_tabs,
+                R.drawable.ic_close);
+        addTabMenuItem(menu, TAB_MENU_SELECT_TABS, R.string.select_tabs,
+                R.drawable.ic_check);
+        addTabMenuItem(menu, TAB_MENU_DELETE_BROWSING_DATA, R.string.delete_browsing_data,
+                R.drawable.ic_clear);
+        addTabMenuItem(menu, TAB_MENU_SETTINGS, R.string.settings,
+                R.drawable.ic_settings);
+        forceShowMenuIcons(menu);
         menu.setOnMenuItemClickListener(item -> {
-            if (item.getItemId() == 1) {
-                createPrivateTab = false;
-                finishWithResult();
-                return true;
-            } else if (item.getItemId() == 2) {
-                createPrivateTab = true;
-                finishWithResult();
-                return true;
+            switch (item.getItemId()) {
+                case TAB_MENU_NEW_TAB:
+                    createPrivateTab = false;
+                    finishWithResult();
+                    return true;
+                case TAB_MENU_NEW_PRIVATE_TAB:
+                    createPrivateTab = true;
+                    finishWithResult();
+                    return true;
+                case TAB_MENU_NEW_TAB_GROUP:
+                    createPrivateTab = privateMode;
+                    createTabGroupId = UUID.randomUUID().toString();
+                    createTabGroupName = getString(R.string.tab_group);
+                    createTabGroupColor = TabRepository.getDefaultGroupColor(this);
+                    groupsChanged = true;
+                    finishWithResult();
+                    return true;
+                case TAB_MENU_CLOSE_ALL:
+                    confirmCloseAllTabs();
+                    return true;
+                case TAB_MENU_SELECT_TABS:
+                    selectionMode = true;
+                    updateSelectionUi();
+                    return true;
+                case TAB_MENU_DELETE_BROWSING_DATA:
+                    startActivity(new Intent(this, SettingsActivity.class)
+                            .putExtra(SettingsActivity.EXTRA_OPEN_CLEAR_DATA, true));
+                    return true;
+                case TAB_MENU_SETTINGS:
+                    startActivity(new Intent(this, SettingsActivity.class));
+                    return true;
+                default:
+                    return false;
             }
-            return false;
-        });
-        menu.show();
-    }
-
-    private void showFabLongPressMenu(View anchor) {
-        PopupMenu menu = new PopupMenu(this, anchor);
-        menu.getMenu().add(Menu.NONE, 1, Menu.NONE, R.string.select_tabs);
-        menu.getMenu().add(Menu.NONE, 2, Menu.NONE, R.string.close_all_tabs);
-        menu.setOnMenuItemClickListener(item -> {
-            if (item.getItemId() == 1) {
-                selectionMode = true;
-                updateSelectionUi();
-                return true;
-            } else if (item.getItemId() == 2) {
-                confirmCloseAllTabs();
-                return true;
-            }
-            return false;
         });
         menu.show();
     }

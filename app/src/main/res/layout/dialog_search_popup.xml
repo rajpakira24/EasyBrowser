@@ -72,6 +72,89 @@
                 app:tint="@color/edge_search_foreground" />
         </LinearLayout>
 
+        <LinearLayout
+            android:id="@+id/current_page_card"
+            android:layout_width="match_parent"
+            android:layout_height="76dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_search_current_page_card"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="12dp"
+            android:paddingEnd="8dp"
+            android:visibility="gone"
+            tools:visibility="visible">
+
+            <ImageView
+                android:id="@+id/current_page_icon"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@drawable/bg_edge_home_search_icon"
+                android:contentDescription="@string/current_tab"
+                android:padding="8dp"
+                android:scaleType="centerInside"
+                android:src="@mipmap/ic_launcher" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/current_page_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/edge_search_foreground"
+                    android:textSize="16sp"
+                    tools:text="IPL 2026 | Live Cricket Score" />
+
+                <TextView
+                    android:id="@+id/current_page_host"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/home_accent_warm"
+                    android:textSize="14sp"
+                    tools:text="cricbuzz.com" />
+            </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/current_page_share"
+                android:layout_width="44dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/share"
+                android:padding="10dp"
+                android:src="@drawable/ic_share"
+                app:tint="@color/edge_search_foreground" />
+
+            <ImageButton
+                android:id="@+id/current_page_copy"
+                android:layout_width="44dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/copy_link"
+                android:padding="10dp"
+                android:src="@drawable/ic_duplicate_tab"
+                app:tint="@color/edge_search_foreground" />
+
+            <ImageButton
+                android:id="@+id/current_page_edit"
+                android:layout_width="44dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/edit"
+                android:padding="10dp"
+                android:src="@drawable/ic_edit"
+                app:tint="@color/edge_search_foreground" />
+        </LinearLayout>
+
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/suggestions_recycler"
             android:layout_width="match_parent"

@@ -1,4 +1,4 @@
-# Aggressive ad/tracker blocklist — one hostname substring per line.
+# Aggressive ad/tracker blocklist - one hostname or URL substring per line.
 # Lines starting with # are ignored. Reload the app to pick up changes.
 ads.
 .ads.
@@ -13,3 +13,29 @@ analytics
 pixel
 beacon
 affiliate
+ad.doubleclick.net
+adclick.g.doubleclick.net
+ads.mgid.com
+ads.pubmatic.com
+ads.rubiconproject.com
+adtech
+adtraffic
+advertising.com
+adzerk
+appnexus
+bidder
+bidr.io
+clickserve
+creativecdn
+doubleclick
+googlesyndication
+googleadservices
+googletagservices
+imasdk.googleapis.com
+outbrain
+prebid
+pubads
+scorecardresearch
+taboola
+tradedoubler
+yieldmo

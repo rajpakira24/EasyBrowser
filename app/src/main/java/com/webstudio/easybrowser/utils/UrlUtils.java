@@ -45,6 +45,9 @@ public class UrlUtils {
     // Data: URIs above this size are dropped to avoid hitting GeckoView's
     // ERROR_DATA_URI_TOO_LONG limit and to keep the new-tab payload bounded.
     private static final int MAX_NEW_TAB_HTML_BYTES = 1_000_000;
+    private static final int BROWSER_QUICK_ACCESS_VISIBLE_ITEMS = 5;
+    private static final int BROWSER_QUICK_ACCESS_RENDER_LIMIT = 8;
+    private static final int BROWSER_QUICK_ACCESS_TILE_GAP_PX = 8;
     private static final String[] COMMON_SITE_PREFIXES = {
             "www", "m", "mobile", "amp", "touch", "lite"
     };
@@ -163,8 +166,11 @@ public class UrlUtils {
         PrivacyStatsManager.Stats stats = PrivacyStatsManager.getStats(context);
         HomeBackgroundProvider.Photo backgroundPhoto = HomeBackgroundProvider.nextPhoto();
         List<QuickAccessItem> quickAccessItems = showQuickAccess
-                ? new QuickAccessRepository(context).getMostVisitedItemsSnapshot(8, 260)
+                ? new QuickAccessRepository(context).getMostVisitedItemsSnapshot(BROWSER_QUICK_ACCESS_RENDER_LIMIT, 260)
                 : new ArrayList<>();
+        int quickAccessTotalGapPx = BROWSER_QUICK_ACCESS_TILE_GAP_PX * (BROWSER_QUICK_ACCESS_VISIBLE_ITEMS - 1);
+        String quickAccessTileWidth = "calc((100% - " + quickAccessTotalGapPx + "px)/"
+                + BROWSER_QUICK_ACCESS_VISIBLE_ITEMS + ")";
         String background = cssColor(context, R.color.home_background);
         String surface = cssColor(context, R.color.home_panel_background);
         String accent = cssColor(context, R.color.home_accent_blue);
@@ -182,6 +188,10 @@ public class UrlUtils {
         String statsGlassStart = cssColorWithAlpha(context, R.color.home_glass_background_strong, 0.88f);
         String statsGlassEnd = cssColorWithAlpha(context, R.color.home_glass_background_strong, 0.72f);
         String glassBorder = cssColor(context, R.color.home_glass_border);
+        String quickAccessIconBackground = cssColorWithResourceAlpha(context,
+                R.color.home_quick_access_glass_background);
+        String quickAccessIconBorder = cssColorWithResourceAlpha(context,
+                R.color.home_quick_access_glass_border);
         String shadow = cssColorWithAlpha(context, R.color.home_accent_ink, 0.08f);
         String searchShadow = cssColorWithAlpha(context, R.color.home_accent_ink, 0.18f);
         String backgroundImage = backgroundPhoto.getImageUrl();
@@ -235,19 +245,19 @@ public class UrlUtils {
                 + ".title{font-size:17px;font-weight:700;color:" + onImageText + ";opacity:.96;text-shadow:0 1px 2px rgba(0,0,0,.28);}"
                 + ".summary,.empty{color:" + onImageMuted + ";font-size:14px;line-height:1.45;opacity:.92;}"
                 + ".empty{margin-top:12px;padding:14px;background:" + glassBackground + ";border:1px solid " + glassBorder + ";border-radius:14px;}"
-                + ".tiles{display:flex;flex-wrap:nowrap;gap:16px;margin:16px -4px 0;padding:0 4px 8px;overflow-x:auto;"
+                + ".tiles{display:flex;flex-wrap:nowrap;gap:" + BROWSER_QUICK_ACCESS_TILE_GAP_PX + "px;margin:16px -4px 0;padding:0 4px 8px;overflow-x:auto;overflow-y:hidden;"
                 + "overscroll-behavior-x:contain;scrollbar-width:none;}"
                 + ".tiles::-webkit-scrollbar{display:none;}"
-                + ".tile{display:block;flex:0 0 74px;min-width:0;text-align:center;text-decoration:none;color:" + onImageText + ";}"
-                + ".tileIcon{display:flex;align-items:center;justify-content:center;width:56px;height:56px;margin:0 auto 8px;"
-                + "border-radius:28px;background:rgba(255,255,255,.88);overflow:hidden;}"
-                + ".tileIcon img{width:34px;height:34px;object-fit:contain;}"
+                + ".tile{display:block;flex:0 0 " + quickAccessTileWidth + ";width:" + quickAccessTileWidth + ";min-width:52px;text-align:center;text-decoration:none;color:" + onImageText + ";}"
+                + ".tileIcon{display:flex;align-items:center;justify-content:center;width:52px;height:52px;margin:0 auto 8px;"
+                + "border-radius:26px;background:" + quickAccessIconBackground + ";border:1px solid " + quickAccessIconBorder + ";overflow:hidden;}"
+                + ".tileIcon img{display:block;width:32px;height:32px;min-width:32px;min-height:32px;object-fit:contain;}"
                 + ".fallback{align-items:center;justify-content:center;width:100%;height:100%;font-size:20px;font-weight:700;color:" + accent + ";}"
                 + ".tileTitle{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:" + onImageText + ";font-size:13px;line-height:1.2;text-shadow:0 1px 2px rgba(0,0,0,.38);}"
                 + ".credit{position:fixed;left:18px;bottom:184px;bottom:calc(184px + env(safe-area-inset-bottom));z-index:9;display:inline-flex;max-width:calc(100% - 36px);"
                 + "padding:6px 10px;border-radius:14px;background:" + glassBackground + ";border:1px solid " + glassBorder + ";color:" + onImageText + ";font-size:12px;text-decoration:none;text-shadow:0 1px 3px rgba(0,0,0,.55);"
                 + "-webkit-backdrop-filter:blur(14px) saturate(115%);backdrop-filter:blur(14px) saturate(115%);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}"
-                + "@media(max-width:360px){.wrap{padding-left:14px;padding-right:14px}.searchPanel{left:14px;right:14px;bottom:110px;bottom:calc(110px + env(safe-area-inset-bottom));}.credit{left:14px;bottom:176px;bottom:calc(176px + env(safe-area-inset-bottom));max-width:calc(100% - 28px);}.logo{font-size:26px}.tile{flex-basis:68px}.tileIcon{width:50px;height:50px;border-radius:16px}.tiles{gap:13px}.tileTitle{font-size:12px}}"
+                + "@media(max-width:360px){.wrap{padding-left:14px;padding-right:14px}.searchPanel{left:14px;right:14px;bottom:110px;bottom:calc(110px + env(safe-area-inset-bottom));}.credit{left:14px;bottom:176px;bottom:calc(176px + env(safe-area-inset-bottom));max-width:calc(100% - 28px);}.logo{font-size:26px}.tileTitle{font-size:12px}}"
                 + "</style></head><body><main class='wrap'><div class='shell'>"
                 + "<section class='brand'><div class='mark' aria-hidden='true'>&#10003;</div><div>"
                 + "<div class='logo'>" + appName + "</div>"
@@ -307,9 +317,7 @@ public class UrlUtils {
             if (isBlank(title)) {
                 title = url;
             }
-            String faviconUrl = !isBlank(item.getFaviconUrl())
-                    ? item.getFaviconUrl()
-                    : getFaviconUrl(url);
+            String faviconUrl = getFaviconUrl(url);
             String initial = getFallbackInitial(title);
 
             html.append("<a class='tile' href='")
@@ -331,6 +339,9 @@ public class UrlUtils {
                     .append(escapeHtml(title))
                     .append("</span></a>");
             rendered++;
+            if (rendered >= BROWSER_QUICK_ACCESS_RENDER_LIMIT) {
+                break;
+            }
         }
         html.append("</div>");
 
@@ -373,6 +384,15 @@ public class UrlUtils {
                 + "," + android.graphics.Color.green(color)
                 + "," + android.graphics.Color.blue(color)
                 + "," + clampedAlpha + ")";
+    }
+
+    private static String cssColorWithResourceAlpha(Context context, int colorRes) {
+        int color = ContextCompat.getColor(context, colorRes);
+        float alpha = android.graphics.Color.alpha(color) / 255f;
+        return "rgba(" + android.graphics.Color.red(color)
+                + "," + android.graphics.Color.green(color)
+                + "," + android.graphics.Color.blue(color)
+                + "," + alpha + ")";
     }
 
     /**
