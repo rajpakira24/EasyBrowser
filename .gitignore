@@ -11,6 +11,9 @@ build/
 .idea/
 .DS_Store
 
+# Markdown docs
+*.md
+
 # Local config - never commit
 local.properties
 keystore.properties
