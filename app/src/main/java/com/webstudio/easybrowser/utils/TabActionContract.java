@@ -2,7 +2,6 @@ package com.webstudio.easybrowser.utils;
 
 import java.net.URLDecoder;
 import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -39,6 +38,7 @@ public final class TabActionContract {
     private static final String FIELD_SEPARATOR = "&";
     private static final String KEY_VALUE_SEPARATOR = "=";
     private static final String LIST_SEPARATOR = ",";
+    private static final String UTF_8 = "UTF-8";
 
     private TabActionContract() {
     }
@@ -143,11 +143,19 @@ public final class TabActionContract {
     }
 
     private static String encode(String value) {
-        return URLEncoder.encode(value != null ? value : "", StandardCharsets.UTF_8);
+        try {
+            return URLEncoder.encode(value != null ? value : "", UTF_8);
+        } catch (java.io.UnsupportedEncodingException e) {
+            return "";
+        }
     }
 
     private static String decode(String value) {
-        return URLDecoder.decode(value != null ? value : "", StandardCharsets.UTF_8);
+        try {
+            return URLDecoder.decode(value != null ? value : "", UTF_8);
+        } catch (IllegalArgumentException | java.io.UnsupportedEncodingException e) {
+            return "";
+        }
     }
 
     public static final class Action {
@@ -157,11 +165,11 @@ public final class TabActionContract {
         }
 
         public String getType() {
-            return values.getOrDefault(KEY_TYPE, "");
+            return getValue(KEY_TYPE, "");
         }
 
         public String getTabId() {
-            return values.getOrDefault(KEY_TAB_ID, "");
+            return getValue(KEY_TAB_ID, "");
         }
 
         public List<String> getTabIds() {
@@ -169,35 +177,40 @@ public final class TabActionContract {
         }
 
         public boolean isPrivate() {
-            return Boolean.parseBoolean(values.getOrDefault(KEY_PRIVATE, "false"));
+            return Boolean.parseBoolean(getValue(KEY_PRIVATE, "false"));
         }
 
         public String getUrl() {
-            return values.getOrDefault(KEY_URL, "");
+            return getValue(KEY_URL, "");
         }
 
         public String getGroupId() {
-            return values.getOrDefault(KEY_GROUP_ID, "");
+            return getValue(KEY_GROUP_ID, "");
         }
 
         public String getGroupName() {
-            return values.getOrDefault(KEY_GROUP_NAME, "");
+            return getValue(KEY_GROUP_NAME, "");
         }
 
         public int getGroupColor(int defaultColor) {
             try {
-                return Integer.parseInt(values.getOrDefault(KEY_GROUP_COLOR, ""));
+                return Integer.parseInt(getValue(KEY_GROUP_COLOR, ""));
             } catch (NumberFormatException ignored) {
                 return defaultColor;
             }
         }
 
         public boolean isPinned() {
-            return Boolean.parseBoolean(values.getOrDefault(KEY_PINNED, "false"));
+            return Boolean.parseBoolean(getValue(KEY_PINNED, "false"));
         }
 
         public boolean isLocked() {
-            return Boolean.parseBoolean(values.getOrDefault(KEY_LOCKED, "false"));
+            return Boolean.parseBoolean(getValue(KEY_LOCKED, "false"));
+        }
+
+        private String getValue(String key, String fallback) {
+            String value = values.get(key);
+            return value != null ? value : fallback;
         }
 
         private static Action parse(String line) {

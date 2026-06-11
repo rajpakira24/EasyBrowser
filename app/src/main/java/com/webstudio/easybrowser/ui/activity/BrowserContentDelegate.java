@@ -12,6 +12,7 @@ import org.mozilla.geckoview.GeckoSession;
 import org.mozilla.geckoview.WebResponse;
 
 class BrowserContentDelegate implements GeckoSession.ContentDelegate {
+    private static final String PAGE_URL_TITLE_PREFIX = "__EASY_BROWSER_PAGE_URL__";
 
     private final BrowserActivity activity;
 
@@ -21,6 +22,11 @@ class BrowserContentDelegate implements GeckoSession.ContentDelegate {
 
     @Override
     public void onTitleChange(@NonNull GeckoSession session, String title) {
+        if (title != null && title.startsWith(PAGE_URL_TITLE_PREFIX)) {
+            activity.syncUrlFromPageScript(session,
+                    title.substring(PAGE_URL_TITLE_PREFIX.length()));
+            return;
+        }
         activity.currentTitle = title;
         Tab tab = activity.tabManager != null ? activity.tabManager.getCurrentTab() : null;
         if (tab != null && tab.getSession() == session) {

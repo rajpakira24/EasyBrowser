@@ -5,11 +5,14 @@ import android.app.NotificationManager;
 import android.content.Context;
 import android.os.Build;
 
+import androidx.annotation.RequiresApi;
+
 import com.webstudio.easybrowser.R;
 
 public final class AppNotificationChannels {
     public static final String CHANNEL_BROWSER = "browser_alerts";
     public static final String CHANNEL_DOWNLOADS = "downloads";
+    public static final String CHANNEL_MEDIA = "media_playback";
     public static final String CHANNEL_PRIVACY = "privacy";
     public static final String CHANNEL_WEATHER = "weather";
     public static final String CHANNEL_REWARDS = "rewards";
@@ -35,6 +38,10 @@ public final class AppNotificationChannels {
                 context.getString(R.string.notification_channel_downloads),
                 context.getString(R.string.notification_channel_downloads_description),
                 NotificationManager.IMPORTANCE_LOW);
+        create(manager, CHANNEL_MEDIA,
+                context.getString(R.string.notification_channel_media),
+                context.getString(R.string.notification_channel_media_description),
+                NotificationManager.IMPORTANCE_LOW);
         create(manager, CHANNEL_PRIVACY,
                 context.getString(R.string.notification_channel_privacy),
                 context.getString(R.string.notification_channel_privacy_description),
@@ -57,6 +64,7 @@ public final class AppNotificationChannels {
                 NotificationManager.IMPORTANCE_DEFAULT);
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     private static void create(NotificationManager manager, String id, String name,
                                String description, int importance) {
         NotificationChannel channel = new NotificationChannel(id, name, importance);

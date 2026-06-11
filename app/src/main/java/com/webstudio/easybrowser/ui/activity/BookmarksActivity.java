@@ -1,8 +1,10 @@
 package com.webstudio.easybrowser.ui.activity;
 
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
 import android.text.Editable;
+import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.view.View;
 import android.widget.ArrayAdapter;
@@ -31,6 +33,7 @@ import com.webstudio.easybrowser.utils.ThemeEngine;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class BookmarksActivity extends AppCompatActivity implements BookmarksAdapter.OnBookmarkClickListener {
     private RecyclerView bookmarksRecycler;
@@ -285,11 +288,13 @@ public class BookmarksActivity extends AppCompatActivity implements BookmarksAda
     }
 
     private void addBookmark(String title, String url, String folder) {
-        if (!url.startsWith("http://") && !url.startsWith("https://")) {
-            url = "https://" + url;
+        String normalizedUrl = normalizeBookmarkUrl(url);
+        if (normalizedUrl.isEmpty()) {
+            Toast.makeText(this, R.string.error_invalid_url, Toast.LENGTH_SHORT).show();
+            return;
         }
 
-        Bookmark bookmark = new Bookmark(title, url);
+        Bookmark bookmark = new Bookmark(title, normalizedUrl);
         bookmark.setFolder(folder == null ? "" : folder);
         repository.addBookmark(bookmark, new BookmarkRepository.BookmarkCallback() {
             @Override
@@ -374,9 +379,10 @@ public class BookmarksActivity extends AppCompatActivity implements BookmarksAda
                     String folder = folderInput.getText() != null
                             ? folderInput.getText().toString().trim() : "";
 
-                    if (!title.isEmpty() && !url.isEmpty()) {
+                    String normalizedUrl = normalizeBookmarkUrl(url);
+                    if (!title.isEmpty() && !normalizedUrl.isEmpty()) {
                         bookmark.setTitle(title);
-                        bookmark.setUrl(url);
+                        bookmark.setUrl(normalizedUrl);
                         bookmark.setFolder(folder);
                         updateBookmark(bookmark);
                     } else {
@@ -403,6 +409,66 @@ public class BookmarksActivity extends AppCompatActivity implements BookmarksAda
             @Override
             public void onBookmarkRemoved(Bookmark bookmark) {}
         });
+    }
+
+    private String normalizeBookmarkUrl(String url) {
+        String value = url == null ? "" : url.trim();
+        if (value.isEmpty() || containsWhitespace(value)) {
+            return "";
+        }
+        String lower = value.toLowerCase(Locale.US);
+        if (lower.startsWith("http://")) {
+            return normalizeHttpBookmarkUrl("http", value.substring("http://".length()));
+        }
+        if (lower.startsWith("https://")) {
+            return normalizeHttpBookmarkUrl("https", value.substring("https://".length()));
+        }
+        if (lower.contains("://")) {
+            return "";
+        }
+        return normalizeHttpBookmarkUrl("https", value);
+    }
+
+    private String normalizeHttpBookmarkUrl(String scheme, String remainder) {
+        String cleanRemainder = remainder == null ? "" : remainder.trim();
+        if (cleanRemainder.isEmpty() || containsWhitespace(cleanRemainder)) {
+            return "";
+        }
+        String authority = getAuthorityPart(cleanRemainder);
+        if (authority.isEmpty() || authority.endsWith(":") || authority.contains("://")) {
+            return "";
+        }
+        String candidate = scheme + "://" + cleanRemainder;
+        try {
+            Uri parsed = Uri.parse(candidate);
+            if (!scheme.equals(parsed.getScheme()) || TextUtils.isEmpty(parsed.getHost())) {
+                return "";
+            }
+        } catch (Exception e) {
+            return "";
+        }
+        return candidate;
+    }
+
+    private String getAuthorityPart(String remainder) {
+        int end = remainder.length();
+        for (int i = 0; i < remainder.length(); i++) {
+            char c = remainder.charAt(i);
+            if (c == '/' || c == '?' || c == '#') {
+                end = i;
+                break;
+            }
+        }
+        return remainder.substring(0, end);
+    }
+
+    private boolean containsWhitespace(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            if (Character.isWhitespace(value.charAt(i))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void confirmDeleteBookmark(Bookmark bookmark) {

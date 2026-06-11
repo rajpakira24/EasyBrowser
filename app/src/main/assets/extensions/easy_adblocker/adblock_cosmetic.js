@@ -1,4 +1,10 @@
 (function () {
+    var host = String(location.hostname || '').toLowerCase();
+    if (host === 'youtube.com' || host.endsWith('.youtube.com') ||
+            host === 'youtu.be' || host.endsWith('.youtu.be')) {
+        return;
+    }
+
     if (window.__easyBrowserAdBlockerInstalled) {
         if (window.__easyBrowserRunAdBlocker) {
             window.__easyBrowserRunAdBlocker();

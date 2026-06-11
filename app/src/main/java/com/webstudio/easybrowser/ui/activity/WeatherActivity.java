@@ -17,6 +17,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -38,6 +39,7 @@ import com.webstudio.easybrowser.managers.WeatherAlertManager;
 import com.webstudio.easybrowser.models.WeatherSnapshot;
 import com.webstudio.easybrowser.repository.WeatherRepository;
 import com.webstudio.easybrowser.utils.SettingsKeys;
+import com.webstudio.easybrowser.utils.SystemBarUtils;
 import com.webstudio.easybrowser.utils.ThemeEngine;
 import com.webstudio.easybrowser.utils.WeatherAnimationMapper;
 import com.webstudio.easybrowser.utils.WeatherIconMapper;
@@ -47,6 +49,18 @@ import java.util.Date;
 import java.util.Locale;
 
 public class WeatherActivity extends AppCompatActivity {
+    public static final String EXTRA_REQUEST_CURRENT_LOCATION = "request_current_location";
+
+    private static final int EDGE_TOP_BAR = 0xFF071015;
+    private static final int EDGE_BACKGROUND_TOP = 0xFF2D3944;
+    private static final int EDGE_BACKGROUND_BOTTOM = 0xFF151E24;
+    private static final int EDGE_SURFACE = 0xCC202A32;
+    private static final int EDGE_SURFACE_STRONG = 0xEE24313A;
+    private static final int EDGE_STROKE = 0x40596B76;
+    private static final int EDGE_TEXT = 0xFFF4F7FA;
+    private static final int EDGE_TEXT_MUTED = 0xFFB8C2CA;
+    private static final int EDGE_BLUE = 0xFF1A5CC8;
+
     private WeatherRepository repository;
     private LinearLayout content;
     private String units;
@@ -57,7 +71,6 @@ public class WeatherActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         repository = new WeatherRepository(this);
         units = repository.getUnits();
-        ThemeEngine.applyChrome(this, null);
         setupLocationPermissionLauncher();
         buildShell();
         WeatherSnapshot cached = repository.getCachedSnapshot();
@@ -66,40 +79,112 @@ public class WeatherActivity extends AppCompatActivity {
         } else {
             showLoading();
         }
-        loadWeatherWithPermission(false);
+        boolean requestCurrentLocation =
+                getIntent().getBooleanExtra(EXTRA_REQUEST_CURRENT_LOCATION, false);
+        if (requestCurrentLocation && !repository.isUsingCurrentLocation()) {
+            repository.saveCurrentLocationEnabled(true);
+        }
+        loadWeatherWithPermission(requestCurrentLocation);
     }
 
     private void buildShell() {
+        SystemBarUtils.apply(this, EDGE_TOP_BAR, EDGE_BACKGROUND_BOTTOM, false);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackground(isAppDarkMode()
-                ? createVerticalGradient(0xFF101A1D, 0xFF0B1215)
-                : createVerticalGradient(0xFFF5FBFF, 0xFFFFFCF6));
+        root.setBackground(createVerticalGradient(EDGE_BACKGROUND_TOP, EDGE_BACKGROUND_BOTTOM));
         setContentView(root);
 
-        Toolbar toolbar = new Toolbar(this);
-        toolbar.setTitle(R.string.weather);
-        toolbar.setNavigationIcon(R.drawable.ic_arrow_back);
-        toolbar.setNavigationOnClickListener(v -> finish());
-        MenuItem refresh = toolbar.getMenu().add(R.string.weather_refresh);
-        refresh.setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER);
-        toolbar.setOnMenuItemClickListener(item -> {
-            showLoading();
-            loadWeatherWithPermission(true);
-            return true;
-        });
-        ThemeEngine.applyChrome(this, toolbar);
-        root.addView(toolbar, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, getActionBarSize()));
+        root.addView(createWeatherTopBar(), new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(64)));
 
         NestedScrollView scrollView = new NestedScrollView(this);
+        scrollView.setFillViewport(false);
         content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(16), dp(16), dp(16), dp(24));
+        content.setPadding(dp(16), dp(18), dp(16), dp(26));
         scrollView.addView(content, new NestedScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         root.addView(scrollView, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+    }
+
+    private LinearLayout createWeatherTopBar() {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding(dp(10), 0, dp(10), 0);
+        bar.setBackgroundColor(EDGE_TOP_BAR);
+
+        ImageButton back = createTopBarButton(R.drawable.ic_arrow_back,
+                getString(R.string.backward));
+        back.setOnClickListener(v -> finish());
+        bar.addView(back, new LinearLayout.LayoutParams(dp(48), dp(48)));
+
+        View spacer = new View(this);
+        bar.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
+
+        bar.addView(createUnitSwitcher(), new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)));
+
+        ImageButton refresh = createTopBarButton(R.drawable.ic_reload,
+                getString(R.string.weather_refresh));
+        refresh.setOnClickListener(v -> {
+            showLoading();
+            loadWeatherWithPermission(true);
+        });
+        LinearLayout.LayoutParams refreshParams = new LinearLayout.LayoutParams(dp(48), dp(48));
+        refreshParams.leftMargin = dp(4);
+        bar.addView(refresh, refreshParams);
+        return bar;
+    }
+
+    private ImageButton createTopBarButton(int iconRes, String description) {
+        ImageButton button = new ImageButton(this);
+        button.setImageResource(iconRes);
+        button.setColorFilter(EDGE_TEXT);
+        button.setBackgroundColor(Color.TRANSPARENT);
+        button.setContentDescription(description);
+        button.setPadding(dp(12), dp(12), dp(12), dp(12));
+        return button;
+    }
+
+    private LinearLayout createUnitSwitcher() {
+        LinearLayout switcher = new LinearLayout(this);
+        switcher.setOrientation(LinearLayout.HORIZONTAL);
+        switcher.setGravity(Gravity.CENTER);
+        switcher.setPadding(dp(3), dp(3), dp(3), dp(3));
+        switcher.setBackground(createRoundedDrawable(0x222A3640, dp(14)));
+        switcher.addView(createUnitChip(WeatherRepository.UNITS_FAHRENHEIT, "\u00B0F"));
+        switcher.addView(createUnitChip(WeatherRepository.UNITS_CELSIUS, "\u00B0C"));
+        return switcher;
+    }
+
+    private TextView createUnitChip(String value, String label) {
+        TextView chip = new TextView(this);
+        boolean selected = value.equals(units);
+        chip.setText(label);
+        chip.setGravity(Gravity.CENTER);
+        chip.setTextSize(14);
+        chip.setTypeface(chip.getTypeface(), selected ? Typeface.BOLD : Typeface.NORMAL);
+        chip.setTextColor(selected ? EDGE_TEXT : EDGE_TEXT_MUTED);
+        chip.setBackground(createRoundedDrawable(selected ? 0xFF2E3942 : Color.TRANSPARENT,
+                dp(11)));
+        chip.setOnClickListener(v -> setWeatherUnits(value));
+        chip.setMinWidth(dp(42));
+        return chip;
+    }
+
+    private void setWeatherUnits(String value) {
+        if (value.equals(units)) {
+            return;
+        }
+        units = value;
+        PreferenceManager.getDefaultSharedPreferences(this)
+                .edit()
+                .putString(SettingsKeys.PREF_WEATHER_UNITS, value)
+                .apply();
+        showLoading();
+        loadWeatherWithPermission(true);
     }
 
     private void setupLocationPermissionLauncher() {
@@ -156,7 +241,7 @@ public class WeatherActivity extends AppCompatActivity {
     }
 
     private void openWeatherProvider() {
-        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://api.met.no/"));
+        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://open-meteo.com/"));
         try {
             startActivity(intent);
         } catch (Exception ignored) {
@@ -197,55 +282,15 @@ public class WeatherActivity extends AppCompatActivity {
         content.removeAllViews();
 
         boolean weatherNight = isNight(snapshot);
-        boolean darkPalette = isAppDarkMode();
-        LinearLayout current = addHeroPanel(snapshot, darkPalette);
-        current.addView(createHeroHeader(snapshot, darkPalette, weatherNight));
-        current.addView(createTodayBand(snapshot, darkPalette, weatherNight));
+        LinearLayout current = addHeroPanel(snapshot, weatherNight);
+        current.addView(createHeroHeader(snapshot, true, weatherNight));
+        current.addView(createTodayBand(snapshot, true, weatherNight));
+        addEdgeMetricStrip(snapshot);
+        addSunMoonPanel(snapshot);
+        addHealthActivitiesPanel(snapshot);
+        addHourlyConditions(snapshot, true);
 
-        LinearLayout metricGrid = new LinearLayout(this);
-        metricGrid.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams metricGridParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        metricGridParams.topMargin = dp(12);
-        current.addView(metricGrid, metricGridParams);
-
-        LinearLayout row1 = createMetricRow();
-        row1.addView(createMetricChip(R.drawable.ic_weather_temperature,
-                R.string.weather_metric_feels_like,
-                snapshot.formatFeelsLike(units), darkPalette));
-        row1.addView(createMetricChip(R.drawable.ic_weather_humidity,
-                R.string.weather_metric_humidity,
-                snapshot.getHumidity() + "%", darkPalette));
-        row1.addView(createMetricChip(R.drawable.ic_weather_wind,
-                R.string.weather_metric_wind,
-                String.format(Locale.US, "%.0f", snapshot.getWindSpeed()), darkPalette));
-        metricGrid.addView(row1);
-
-        LinearLayout row2 = createMetricRow();
-        row2.addView(createMetricChip(R.drawable.ic_weather_sunrise,
-                R.string.weather_metric_sunrise,
-                snapshot.getSunrise().isEmpty() ? "--" : snapshot.getSunrise(), darkPalette));
-        row2.addView(createMetricChip(R.drawable.ic_weather_sunset,
-                R.string.weather_metric_sunset,
-                snapshot.getSunset().isEmpty() ? "--" : snapshot.getSunset(), darkPalette));
-        row2.addView(createMetricChip(R.drawable.ic_weather_updated,
-                R.string.weather_metric_updated,
-                DateFormat.getTimeFormat(this).format(new Date(snapshot.getFetchedAt())), darkPalette));
-        metricGrid.addView(row2);
-
-        TextView provider = createSummary(getString(R.string.weather_provider));
-        provider.setTextColor(heroSubTextColor(darkPalette));
-        provider.setGravity(Gravity.CENTER);
-        provider.setTextSize(13);
-        provider.setContentDescription(getString(R.string.weather_provider_open));
-        provider.setOnClickListener(v -> openWeatherProvider());
-        addTopMargin(provider, dp(14));
-        current.addView(provider);
-
-        addHourlyConditions(snapshot, darkPalette);
-        addAirQuality(snapshot);
-
-        TextView forecastTitle = createSection(R.string.weather_forecast);
+        TextView forecastTitle = createSection(R.string.weather_daily_forecast);
         content.addView(forecastTitle);
         LinearLayout forecast = addCard();
         for (WeatherSnapshot.ForecastDay day : snapshot.getForecastDays()) {
@@ -256,57 +301,78 @@ public class WeatherActivity extends AppCompatActivity {
     private LinearLayout createHeroHeader(WeatherSnapshot snapshot, boolean darkPalette,
                                           boolean weatherNight) {
         LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-
-        LinearLayout textColumn = new LinearLayout(this);
-        textColumn.setOrientation(LinearLayout.VERTICAL);
-        textColumn.setGravity(Gravity.CENTER_VERTICAL);
-        header.addView(textColumn, new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        header.setOrientation(LinearLayout.VERTICAL);
 
         LinearLayout locationRow = new LinearLayout(this);
         locationRow.setOrientation(LinearLayout.HORIZONTAL);
         locationRow.setGravity(Gravity.CENTER_VERTICAL);
-        LottieAnimationView locationPin = createLoopingAnimation(R.raw.weather_location_pin);
-        LinearLayout.LayoutParams pinParams = new LinearLayout.LayoutParams(dp(24), dp(24));
-        pinParams.rightMargin = dp(5);
-        locationRow.addView(locationPin, pinParams);
 
-        TextView location = createTitle(snapshot.getLocationName());
-        location.setTextSize(24);
-        location.setTextColor(heroTextColor(darkPalette));
+        TextView location = createTitle(snapshot.getLocationName() + " \u25BE");
+        location.setTextSize(22);
+        location.setTextColor(EDGE_TEXT);
         location.setMaxLines(1);
         location.setEllipsize(TextUtils.TruncateAt.END);
         locationRow.addView(location, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        textColumn.addView(locationRow, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        TextView updated = createSummary(DateFormat.getTimeFormat(this)
+                .format(new Date(snapshot.getFetchedAt())));
+        updated.setTextColor(EDGE_TEXT_MUTED);
+        updated.setTextSize(13);
+        updated.setGravity(Gravity.END);
+        locationRow.addView(updated, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        header.addView(locationRow);
+
+        TextView currentLabel = createSummary(getString(R.string.weather_current_weather));
+        currentLabel.setTextColor(0xCCE8EEF2);
+        currentLabel.setTextSize(13);
+        currentLabel.setTypeface(currentLabel.getTypeface(), Typeface.BOLD);
+        addTopMargin(currentLabel, dp(16));
+        header.addView(currentLabel);
+
+        LinearLayout weatherRow = new LinearLayout(this);
+        weatherRow.setOrientation(LinearLayout.HORIZONTAL);
+        weatherRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowParams.topMargin = dp(8);
+        header.addView(weatherRow, rowParams);
+
+        LottieAnimationView icon = createRealtimeWeatherIcon(snapshot, weatherNight);
+        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(112), dp(112));
+        iconParams.rightMargin = dp(12);
+        weatherRow.addView(icon, iconParams);
 
         TextView temperature = createTitle(snapshot.formatTemperature(units));
-        temperature.setTextSize(56);
-        temperature.setTextColor(heroTextColor(darkPalette));
+        temperature.setTextSize(62);
+        temperature.setTextColor(EDGE_TEXT);
         temperature.setIncludeFontPadding(false);
-        addTopMargin(temperature, dp(8));
-        textColumn.addView(temperature);
+        temperature.setSingleLine(true);
+        weatherRow.addView(temperature, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        TextView condition = createHeroPill(snapshot.getCondition(), darkPalette);
-        LinearLayout.LayoutParams conditionParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        conditionParams.topMargin = dp(10);
-        textColumn.addView(condition, conditionParams);
+        LinearLayout conditionColumn = new LinearLayout(this);
+        conditionColumn.setOrientation(LinearLayout.VERTICAL);
+        conditionColumn.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams conditionColumnParams = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        conditionColumnParams.leftMargin = dp(14);
+        weatherRow.addView(conditionColumn, conditionColumnParams);
 
-        TextView updated = createSummary(getString(R.string.weather_last_updated,
-                DateFormat.getTimeFormat(this).format(new Date(snapshot.getFetchedAt()))));
-        updated.setTextColor(heroSubTextColor(darkPalette));
-        updated.setTextSize(12);
-        addTopMargin(updated, dp(8));
-        textColumn.addView(updated);
+        TextView condition = createTitle(snapshot.getCondition());
+        condition.setTextSize(21);
+        condition.setTextColor(EDGE_TEXT);
+        condition.setMaxLines(2);
+        condition.setEllipsize(TextUtils.TruncateAt.END);
+        conditionColumn.addView(condition);
 
-        FrameLayout heroScene = createHeroScene(snapshot, weatherNight);
-        LinearLayout.LayoutParams sceneParams = new LinearLayout.LayoutParams(dp(132), dp(132));
-        sceneParams.leftMargin = dp(14);
-        header.addView(heroScene, sceneParams);
+        TextView feels = createSummary(getString(R.string.weather_feels_like,
+                snapshot.formatFeelsLike(units)));
+        feels.setTextColor(EDGE_TEXT_MUTED);
+        feels.setTextSize(15);
+        addTopMargin(feels, dp(4));
+        conditionColumn.addView(feels);
         return header;
     }
 
@@ -391,6 +457,260 @@ public class WeatherActivity extends AppCompatActivity {
         return pill;
     }
 
+    private void addEdgeMetricStrip(WeatherSnapshot snapshot) {
+        HorizontalScrollView scrollView = new HorizontalScrollView(this);
+        scrollView.setHorizontalScrollBarEnabled(false);
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(0, dp(2), 0, dp(2));
+        scrollView.addView(row, new HorizontalScrollView.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        row.addView(createEdgeMetricChip(R.drawable.ic_weather_humidity,
+                getString(R.string.weather_metric_air_quality),
+                snapshot.hasAirQuality()
+                        ? String.valueOf(snapshot.getAirQualityIndex())
+                        : "--"));
+        row.addView(createEdgeMetricChip(R.drawable.ic_weather_wind,
+                getString(R.string.weather_metric_wind),
+                String.format(Locale.US, "%.0f %s",
+                        snapshot.getWindSpeed(),
+                        WeatherRepository.UNITS_FAHRENHEIT.equals(units) ? "mph" : "km/h")));
+        row.addView(createEdgeMetricChip(R.drawable.ic_weather_humidity,
+                getString(R.string.weather_metric_humidity),
+                snapshot.getHumidity() + "%"));
+        row.addView(createEdgeMetricChip(R.drawable.ic_weather_temperature,
+                getString(R.string.weather_metric_feels_like),
+                snapshot.formatFeelsLike(units)));
+
+        WeatherSnapshot.ForecastDay today = snapshot.getForecastDays().isEmpty()
+                ? null
+                : snapshot.getForecastDays().get(0);
+        row.addView(createEdgeMetricChip(R.drawable.ic_weather_rain,
+                getString(R.string.weather_metric_rain),
+                today == null ? "--" : today.getPrecipitationProbability() + "%"));
+
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.setMargins(0, 0, 0, dp(14));
+        content.addView(scrollView, params);
+    }
+
+    private LinearLayout createEdgeMetricChip(int iconRes, String label, String value) {
+        LinearLayout chip = new LinearLayout(this);
+        chip.setOrientation(LinearLayout.VERTICAL);
+        chip.setGravity(Gravity.CENTER_VERTICAL);
+        chip.setPadding(dp(12), dp(10), dp(12), dp(10));
+        chip.setMinimumHeight(dp(78));
+        chip.setBackground(createRoundedStrokeDrawable(0x8826323B, EDGE_STROKE, dp(12), dp(1)));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(122),
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.rightMargin = dp(8);
+        chip.setLayoutParams(params);
+
+        LinearLayout labelRow = new LinearLayout(this);
+        labelRow.setOrientation(LinearLayout.HORIZONTAL);
+        labelRow.setGravity(Gravity.CENTER_VERTICAL);
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(iconRes);
+        icon.setColorFilter(0xFF7AC8E6);
+        labelRow.addView(icon, new LinearLayout.LayoutParams(dp(18), dp(18)));
+
+        TextView labelView = createSummary(label + " \u203A");
+        labelView.setTextColor(EDGE_TEXT_MUTED);
+        labelView.setTextSize(12);
+        labelView.setSingleLine(true);
+        labelView.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        labelParams.leftMargin = dp(6);
+        labelRow.addView(labelView, labelParams);
+        chip.addView(labelRow, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        TextView valueView = createTitle(value);
+        valueView.setTextColor(EDGE_TEXT);
+        valueView.setTextSize(20);
+        valueView.setSingleLine(true);
+        valueView.setEllipsize(TextUtils.TruncateAt.END);
+        addTopMargin(valueView, dp(8));
+        chip.addView(valueView);
+        return chip;
+    }
+
+    private void addSunMoonPanel(WeatherSnapshot snapshot) {
+        LinearLayout box = addWeatherInfoCard(R.string.weather_sun_moon_title);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.addView(createInsightTile(R.drawable.ic_weather_sunrise,
+                getString(R.string.weather_metric_sunrise),
+                snapshot.getSunrise().isEmpty() ? "--" : snapshot.getSunrise()));
+        row.addView(createInsightTile(R.drawable.ic_weather_sunset,
+                getString(R.string.weather_metric_sunset),
+                snapshot.getSunset().isEmpty() ? "--" : snapshot.getSunset()));
+        box.addView(row, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        addInsightRow(box, R.drawable.ic_weather_sunny,
+                getString(R.string.weather_daylight),
+                getDaylightSummary(snapshot));
+        addInsightRow(box, R.drawable.ic_weather_partly_cloudy,
+                getString(R.string.weather_moon),
+                getMoonSummary(snapshot));
+    }
+
+    private void addHealthActivitiesPanel(WeatherSnapshot snapshot) {
+        WeatherSnapshot.ForecastDay today = snapshot.getForecastDays().isEmpty()
+                ? null
+                : snapshot.getForecastDays().get(0);
+        int rainChance = today == null ? 0 : today.getPrecipitationProbability();
+
+        LinearLayout box = addWeatherInfoCard(R.string.weather_health_activities_title);
+        addInsightRow(box, R.drawable.ic_weather_partly_cloudy,
+                getString(R.string.weather_outdoor_activity),
+                getOutdoorActivitySummary(snapshot, rainChance));
+        addInsightRow(box, R.drawable.ic_weather_humidity,
+                getString(R.string.weather_metric_air_quality),
+                snapshot.hasAirQuality()
+                        ? snapshot.getAirQualityIndex() + " - " + snapshot.getAirQualityDescription()
+                        : getString(R.string.weather_aqi_unavailable));
+        addInsightRow(box, R.drawable.ic_weather_rain,
+                getString(R.string.weather_metric_rain),
+                getString(R.string.weather_precipitation, rainChance));
+        addInsightRow(box, R.drawable.ic_weather_humidity,
+                getString(R.string.weather_hydration),
+                getHydrationSummary(snapshot));
+    }
+
+    private LinearLayout addWeatherInfoCard(int titleRes) {
+        MaterialCardView card = new MaterialCardView(this);
+        card.setRadius(dp(8));
+        card.setCardElevation(dp(3));
+        card.setCardBackgroundColor(EDGE_SURFACE);
+        card.setStrokeColor(EDGE_STROKE);
+        card.setStrokeWidth(dp(1));
+
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(14), dp(14), dp(14), dp(14));
+        card.addView(box);
+
+        TextView title = createTitle(getString(titleRes));
+        title.setTextSize(19);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        titleParams.bottomMargin = dp(12);
+        box.addView(title, titleParams);
+
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.setMargins(0, 0, 0, dp(16));
+        content.addView(card, params);
+        return box;
+    }
+
+    private LinearLayout createInsightTile(int iconRes, String label, String value) {
+        LinearLayout tile = new LinearLayout(this);
+        tile.setOrientation(LinearLayout.VERTICAL);
+        tile.setGravity(Gravity.CENTER);
+        tile.setPadding(dp(12), dp(12), dp(12), dp(12));
+        tile.setBackground(createRoundedDrawable(0xFF253640, dp(8)));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        params.leftMargin = dp(4);
+        params.rightMargin = dp(4);
+        tile.setLayoutParams(params);
+
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(iconRes);
+        icon.setColorFilter(0xFF8AD2F0);
+        tile.addView(icon, new LinearLayout.LayoutParams(dp(28), dp(28)));
+
+        TextView valueView = createTitle(value);
+        valueView.setTextSize(20);
+        valueView.setGravity(Gravity.CENTER);
+        valueView.setSingleLine(true);
+        valueView.setEllipsize(TextUtils.TruncateAt.END);
+        addTopMargin(valueView, dp(8));
+        tile.addView(valueView);
+
+        TextView labelView = createSummary(label);
+        labelView.setTextSize(12);
+        labelView.setGravity(Gravity.CENTER);
+        labelView.setSingleLine(true);
+        labelView.setEllipsize(TextUtils.TruncateAt.END);
+        addTopMargin(labelView, dp(2));
+        tile.addView(labelView);
+        return tile;
+    }
+
+    private void addInsightRow(LinearLayout box, int iconRes, String label, String value) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(2), dp(10), dp(2), dp(2));
+
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(iconRes);
+        icon.setColorFilter(0xFF8AD2F0);
+        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(22), dp(22));
+        iconParams.rightMargin = dp(10);
+        row.addView(icon, iconParams);
+
+        LinearLayout textColumn = new LinearLayout(this);
+        textColumn.setOrientation(LinearLayout.VERTICAL);
+        row.addView(textColumn, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView labelView = createTitle(label);
+        labelView.setTextSize(15);
+        textColumn.addView(labelView);
+
+        TextView valueView = createSummary(value);
+        valueView.setTextSize(13);
+        valueView.setMaxLines(2);
+        valueView.setEllipsize(TextUtils.TruncateAt.END);
+        addTopMargin(valueView, dp(2));
+        textColumn.addView(valueView);
+        box.addView(row);
+    }
+
+    private String getDaylightSummary(WeatherSnapshot snapshot) {
+        String sunrise = snapshot.getSunrise().isEmpty() ? "--" : snapshot.getSunrise();
+        String sunset = snapshot.getSunset().isEmpty() ? "--" : snapshot.getSunset();
+        return getString(R.string.weather_daylight_summary, sunrise, sunset);
+    }
+
+    private String getMoonSummary(WeatherSnapshot snapshot) {
+        if (snapshot.getWeatherCode() >= 51 || snapshot.getHumidity() >= 90) {
+            return getString(R.string.weather_moon_cloudy);
+        }
+        return getString(R.string.weather_moon_clear);
+    }
+
+    private String getOutdoorActivitySummary(WeatherSnapshot snapshot, int rainChance) {
+        if (snapshot.getWeatherCode() >= 95 || rainChance >= 70) {
+            return getString(R.string.weather_activity_indoor);
+        }
+        if (snapshot.hasAirQuality() && snapshot.getAirQualityIndex() >= 150) {
+            return getString(R.string.weather_activity_limited);
+        }
+        if (snapshot.getHumidity() >= 85) {
+            return getString(R.string.weather_activity_humid);
+        }
+        return getString(R.string.weather_activity_good);
+    }
+
+    private String getHydrationSummary(WeatherSnapshot snapshot) {
+        double highFeelsLike = WeatherRepository.UNITS_FAHRENHEIT.equals(units) ? 90d : 32d;
+        if (snapshot.getHumidity() >= 85 || snapshot.getFeelsLike() >= highFeelsLike) {
+            return getString(R.string.weather_hydration_high);
+        }
+        return getString(R.string.weather_hydration_normal);
+    }
+
     private void addForecastRow(LinearLayout card, WeatherSnapshot.ForecastDay day) {
         int index = card.getChildCount();
         LinearLayout row = new LinearLayout(this);
@@ -398,13 +718,11 @@ public class WeatherActivity extends AppCompatActivity {
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(10), dp(12), dp(10), dp(12));
         if (index == 0) {
-            row.setBackground(createRoundedDrawable(isAppDarkMode() ? 0xFF20343A : 0xFFEAF8FB,
-                    dp(8)));
+            row.setBackground(createRoundedDrawable(0xAA2B3A44, dp(8)));
         }
 
         FrameLayout iconHost = new FrameLayout(this);
-        iconHost.setBackground(createRoundedDrawable(isAppDarkMode() ? 0xFF24444D : 0xFFDFF8FE,
-                dp(24)));
+        iconHost.setBackground(createRoundedDrawable(0xFF274653, dp(24)));
         ImageView icon = new ImageView(this);
         icon.setImageResource(WeatherIconMapper.iconForCode(day.getWeatherCode()));
         icon.setContentDescription(day.getCondition());
@@ -451,12 +769,12 @@ public class WeatherActivity extends AppCompatActivity {
         if (snapshot.getHourlyConditions().isEmpty()) {
             return;
         }
-        content.addView(createSection(R.string.weather_hourly_conditions));
+        content.addView(createSection(R.string.weather_today_forecast));
         MaterialCardView card = new MaterialCardView(this);
         card.setRadius(dp(8));
         card.setCardElevation(dp(2));
-        card.setCardBackgroundColor(darkPalette ? 0xFF172529 : 0xFFFFFFFF);
-        card.setStrokeColor(darkPalette ? 0xFF2E4247 : 0xFFE0EAF1);
+        card.setCardBackgroundColor(EDGE_SURFACE);
+        card.setStrokeColor(EDGE_STROKE);
         card.setStrokeWidth(dp(1));
 
         HorizontalScrollView scrollView = new HorizontalScrollView(this);
@@ -485,8 +803,7 @@ public class WeatherActivity extends AppCompatActivity {
         chip.setOrientation(LinearLayout.VERTICAL);
         chip.setGravity(Gravity.CENTER);
         chip.setPadding(dp(8), dp(9), dp(8), dp(9));
-        chip.setBackground(createRoundedDrawable(darkPalette ? 0xFF20343A : 0xFFEAF8FB,
-                dp(8)));
+        chip.setBackground(createRoundedDrawable(0xFF253640, dp(8)));
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(74),
                 ViewGroup.LayoutParams.WRAP_CONTENT);
         params.leftMargin = dp(4);
@@ -496,7 +813,7 @@ public class WeatherActivity extends AppCompatActivity {
         TextView label = createSummary(hour.getLabel());
         label.setGravity(Gravity.CENTER);
         label.setTextSize(12);
-        label.setTextColor(darkPalette ? 0xFFB8C8CC : 0xFF5F6B7D);
+        label.setTextColor(EDGE_TEXT_MUTED);
         chip.addView(label);
 
         ImageView icon = new ImageView(this);
@@ -642,12 +959,12 @@ public class WeatherActivity extends AppCompatActivity {
     private LinearLayout addHeroPanel(WeatherSnapshot snapshot, boolean night) {
         MaterialCardView card = new MaterialCardView(this);
         card.setRadius(dp(8));
-        card.setCardElevation(dp(8));
+        card.setCardElevation(dp(6));
         card.setCardBackgroundColor(Color.TRANSPARENT);
         card.setStrokeWidth(0);
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(18), dp(18), dp(18), dp(16));
+        box.setPadding(dp(18), dp(18), dp(18), dp(14));
         box.setBackground(createWeatherGradient(snapshot, night));
         card.addView(box);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
@@ -661,13 +978,13 @@ public class WeatherActivity extends AppCompatActivity {
         int code = snapshot.getWeatherCode();
         int[] colors;
         if (night) {
-            colors = new int[]{0xFF203A5E, 0xFF436A91};
+            colors = new int[]{0xFF1D2E3A, 0xFF344B5F};
         } else if (code >= 95 && code <= 99) {
-            colors = new int[]{0xFFE6EFF8, 0xFFD7ECF7};
+            colors = new int[]{0xFF26303A, 0xFF43505C};
         } else if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) {
-            colors = new int[]{0xFFE4F4FA, 0xFFF7FCFE};
+            colors = new int[]{0xFF263743, 0xFF3E5663};
         } else {
-            colors = new int[]{0xFFEAF8FE, 0xFFFFF5E5};
+            colors = new int[]{0xFF253746, 0xFF41556B};
         }
         GradientDrawable drawable = new GradientDrawable(
                 GradientDrawable.Orientation.TL_BR, colors);
@@ -676,11 +993,11 @@ public class WeatherActivity extends AppCompatActivity {
     }
 
     private int heroTextColor(boolean night) {
-        return night ? 0xFFFFFFFF : 0xFF26324E;
+        return EDGE_TEXT;
     }
 
     private int heroSubTextColor(boolean night) {
-        return night ? 0xDDEAF4FF : 0xFF5F6B7D;
+        return EDGE_TEXT_MUTED;
     }
 
     private GradientDrawable createVerticalGradient(int startColor, int endColor) {
@@ -692,6 +1009,13 @@ public class WeatherActivity extends AppCompatActivity {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(color);
         drawable.setCornerRadius(radius);
+        return drawable;
+    }
+
+    private GradientDrawable createRoundedStrokeDrawable(int color, int strokeColor,
+                                                         int radius, int strokeWidth) {
+        GradientDrawable drawable = createRoundedDrawable(color, radius);
+        drawable.setStroke(strokeWidth, strokeColor);
         return drawable;
     }
 
@@ -718,10 +1042,8 @@ public class WeatherActivity extends AppCompatActivity {
         MaterialCardView card = new MaterialCardView(this);
         card.setRadius(dp(8));
         card.setCardElevation(dp(2));
-        card.setCardBackgroundColor(isAppDarkMode()
-                ? 0xFF172529
-                : ContextCompat.getColor(this, R.color.settings_card_background));
-        card.setStrokeColor(isAppDarkMode() ? 0xFF2E4247 : 0xFFE0EAF1);
+        card.setCardBackgroundColor(EDGE_SURFACE);
+        card.setStrokeColor(EDGE_STROKE);
         card.setStrokeWidth(dp(1));
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -747,9 +1069,9 @@ public class WeatherActivity extends AppCompatActivity {
 
     private TextView createSection(String title) {
         TextView view = createSummary(title);
-        view.setTextColor(isAppDarkMode() ? 0xFFE7F2F2 : 0xFF0F4C75);
+        view.setTextColor(EDGE_TEXT);
         view.setTypeface(view.getTypeface(), android.graphics.Typeface.BOLD);
-        view.setTextSize(18);
+        view.setTextSize(17);
         view.setPadding(dp(2), 0, 0, dp(6));
         return view;
     }
@@ -757,7 +1079,7 @@ public class WeatherActivity extends AppCompatActivity {
     private TextView createTitle(String title) {
         TextView view = new TextView(this);
         view.setText(title);
-        view.setTextColor(isAppDarkMode() ? 0xFFE7F2F2 : 0xFF26324E);
+        view.setTextColor(EDGE_TEXT);
         view.setTextSize(16);
         view.setTypeface(view.getTypeface(), android.graphics.Typeface.BOLD);
         return view;
@@ -766,23 +1088,13 @@ public class WeatherActivity extends AppCompatActivity {
     private TextView createSummary(String summary) {
         TextView view = new TextView(this);
         view.setText(summary);
-        view.setTextColor(isAppDarkMode() ? 0xFFB8C8CC : 0xFF5F6B7D);
+        view.setTextColor(EDGE_TEXT_MUTED);
         view.setTextSize(14);
         return view;
     }
 
     private boolean isAppDarkMode() {
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
-        String mode = prefs.getString(SettingsKeys.PREF_THEME_MODE, "system");
-        if ("light".equals(mode)) {
-            return false;
-        }
-        if ("dark".equals(mode)) {
-            return true;
-        }
-        int systemMode = getResources().getConfiguration().uiMode
-                & Configuration.UI_MODE_NIGHT_MASK;
-        return systemMode == Configuration.UI_MODE_NIGHT_YES;
+        return true;
     }
 
     private void addTopMargin(TextView view, int margin) {

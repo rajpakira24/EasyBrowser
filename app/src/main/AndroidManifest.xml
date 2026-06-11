@@ -14,6 +14,8 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <!-- Hardware features -->
     <uses-feature
@@ -32,7 +34,7 @@
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
-        android:label="@string/app_name"
+        android:label="${appLabel}"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.EasyBrowser"
@@ -187,6 +189,11 @@
             android:name=".ui.activity.WidgetsDashboardActivity"
             android:exported="false"
             android:parentActivityName=".ui.activity.MainActivity" />
+
+        <service
+            android:name=".managers.BackgroundMediaService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <!-- File provider for sharing files -->
         <provider

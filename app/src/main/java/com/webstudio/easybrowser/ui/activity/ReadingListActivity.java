@@ -9,6 +9,7 @@ import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
+import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -110,9 +111,18 @@ public class ReadingListActivity extends AppCompatActivity implements ReadingLis
             Toast.makeText(this, R.string.reading_list_file_missing, Toast.LENGTH_SHORT).show();
             return;
         }
-        Intent intent = new Intent(this, BrowserActivity.class);
-        intent.putExtra("url", "file://" + file.getAbsolutePath());
-        startActivity(intent);
+        Uri uri = FileProvider.getUriForFile(
+                this,
+                getPackageName() + ".fileprovider",
+                file);
+        Intent intent = new Intent(Intent.ACTION_VIEW);
+        intent.setDataAndType(uri, "application/pdf");
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        try {
+            startActivity(intent);
+        } catch (Exception e) {
+            Toast.makeText(this, R.string.error_opening_file, Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void openInBrowser(String url) {

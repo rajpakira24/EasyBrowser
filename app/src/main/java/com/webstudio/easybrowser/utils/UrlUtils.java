@@ -1,6 +1,7 @@
 package com.webstudio.easybrowser.utils;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import androidx.core.content.ContextCompat;
 import androidx.preference.PreferenceManager;
@@ -127,8 +128,11 @@ public class UrlUtils {
     }
 
     public static String getSearchUrl(Context context, String query) {
-        String searchEngineUrl = PreferenceManager.getDefaultSharedPreferences(context)
-                .getString(SettingsKeys.PREF_SEARCH_ENGINE_URL, DEFAULT_SEARCH_ENGINE);
+        return getSearchUrl(context, query, false);
+    }
+
+    public static String getSearchUrl(Context context, String query, boolean privateMode) {
+        String searchEngineUrl = getSearchEngineUrl(context, privateMode);
         if (searchEngineUrl == null || searchEngineUrl.trim().isEmpty()) {
             searchEngineUrl = DEFAULT_SEARCH_ENGINE;
         }
@@ -136,6 +140,19 @@ public class UrlUtils {
             return searchEngineUrl.replace("%s", Uri.encode(query));
         }
         return searchEngineUrl + Uri.encode(query);
+    }
+
+    public static String getSearchEngineUrl(Context context, boolean privateMode) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        String standard = prefs.getString(SettingsKeys.PREF_SEARCH_ENGINE_URL, DEFAULT_SEARCH_ENGINE);
+        if (standard == null || standard.trim().isEmpty()) {
+            standard = DEFAULT_SEARCH_ENGINE;
+        }
+        if (!privateMode) {
+            return standard;
+        }
+        String privateEngine = prefs.getString(SettingsKeys.PREF_PRIVATE_SEARCH_ENGINE_URL, standard);
+        return privateEngine == null || privateEngine.trim().isEmpty() ? standard : privateEngine;
     }
 
     public static String getHomepageUrl(Context context) {
@@ -151,8 +168,12 @@ public class UrlUtils {
     }
 
     public static String getNewTabPageUrl(Context context) {
-        boolean showQuickAccess = PreferenceManager.getDefaultSharedPreferences(context)
-                .getBoolean(SettingsKeys.PREF_SHOW_QUICK_ACCESS, true);
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        boolean showQuickAccess = prefs.getBoolean(SettingsKeys.PREF_SHOW_QUICK_ACCESS, true);
+        boolean searchSuggestionsEnabled = prefs.getBoolean(
+                SettingsKeys.PREF_SEARCH_SUGGESTIONS_ENABLED, false);
+        String configuredSearchEngine = prefs.getString(
+                SettingsKeys.PREF_SEARCH_ENGINE_URL, DEFAULT_SEARCH_ENGINE);
         String appName = escapeHtml(context.getString(R.string.app_name));
         String subtitle = escapeHtml(context.getString(R.string.home_chrome_style_subtitle));
         String hint = escapeHtml(context.getString(R.string.search_or_type_url));
@@ -163,6 +184,10 @@ public class UrlUtils {
         String itemsBlocked = escapeHtml(context.getString(R.string.items_blocked));
         String timeSaved = escapeHtml(context.getString(R.string.time_saved));
         String searchEngine = sanitizeSearchEngineForScript(getSearchUrl(context, ""));
+        String suggestionEndpoint = sanitizeScriptUrl(
+                getSuggestionUrl(configuredSearchEngine),
+                "https://ac.duckduckgo.com/ac/?q=");
+        String suggestionScript = buildSuggestionScript(searchSuggestionsEnabled, suggestionEndpoint);
         PrivacyStatsManager.Stats stats = PrivacyStatsManager.getStats(context);
         HomeBackgroundProvider.Photo backgroundPhoto = HomeBackgroundProvider.nextPhoto();
         List<QuickAccessItem> quickAccessItems = showQuickAccess
@@ -282,20 +307,30 @@ public class UrlUtils {
                 + "<script>"
                 + "var q=document.getElementById('q'),box=document.getElementById('suggestions'),timer=0;"
                 + "function search(v){v=(v||'').trim();if(v){location.href='" + escapeJs(searchEngine) + "'+encodeURIComponent(v);}}"
-                + "function fallback(v){return [v,v+' news',v+' images',v+' wikipedia'];}"
                 + "function show(items){box.innerHTML='';if(!items||!items.length){box.style.display='none';return;}"
                 + "items.slice(0,6).forEach(function(s){var d=document.createElement('div');d.className='suggestion';"
                 + "d.textContent=s;d.onclick=function(){search(s);};box.appendChild(d);});box.style.display='block';}"
-                + "q.addEventListener('input',function(){clearTimeout(timer);var v=q.value.trim();"
-                + "if(!v){show([]);return;}timer=setTimeout(function(){fetch('https://ac.duckduckgo.com/ac/?q='+encodeURIComponent(v)+'&type=list')"
-                + ".then(function(r){return r.json();}).then(function(j){var items=j&&j[1]?j[1]:[];show(items.length?items:fallback(v));})"
-                + ".catch(function(){show(fallback(v));});},180);});"
+                + suggestionScript
                 + "</script>"
                 + "</div></main></body></html>";
         if (html.length() > MAX_NEW_TAB_HTML_BYTES) {
             return DEFAULT_HOMEPAGE;
         }
         return "data:text/html;charset=utf-8," + Uri.encode(html);
+    }
+
+    private static String buildSuggestionScript(boolean enabled, String suggestionEndpoint) {
+        if (!enabled) {
+            return "q.addEventListener('input',function(){clearTimeout(timer);show([]);});";
+        }
+        String endpoint = escapeJs(suggestionEndpoint);
+        return "var suggestionBase='" + endpoint + "';"
+                + "function fallback(v){return [v,v+' news',v+' images',v+' wikipedia'];}"
+                + "q.addEventListener('input',function(){clearTimeout(timer);var v=q.value.trim();"
+                + "if(!v){show([]);return;}timer=setTimeout(function(){var u=suggestionBase+encodeURIComponent(v)"
+                + "+(suggestionBase.indexOf('duckduckgo.com')>=0?'&type=list':'');"
+                + "fetch(u).then(function(r){return r.json();}).then(function(j){var items=j&&j[1]?j[1]:[];"
+                + "show(items.length?items:fallback(v));}).catch(function(){show(fallback(v));});},180);});";
     }
 
     private static String buildQuickAccessTilesHtml(List<QuickAccessItem> items, String emptySummary) {
@@ -401,14 +436,18 @@ public class UrlUtils {
      * outside a small whitelist of URL characters.
      */
     private static String sanitizeSearchEngineForScript(String value) {
+        return sanitizeScriptUrl(value, DEFAULT_SEARCH_ENGINE);
+    }
+
+    private static String sanitizeScriptUrl(String value, String fallback) {
         if (value == null || value.isEmpty()) {
-            return DEFAULT_SEARCH_ENGINE;
+            return fallback;
         }
         if (!value.startsWith("https://") && !value.startsWith("http://")) {
-            return DEFAULT_SEARCH_ENGINE;
+            return fallback;
         }
         if (value.length() > 512) {
-            return DEFAULT_SEARCH_ENGINE;
+            return fallback;
         }
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
@@ -418,18 +457,22 @@ public class UrlUtils {
             if (c < 0x20 || c == 0x7F || c == '"' || c == '\'' || c == '\\'
                     || c == '<' || c == '>' || c == '`' || c == ' '
                     || c == 0x2028 || c == 0x2029) {
-                return DEFAULT_SEARCH_ENGINE;
+                return fallback;
             }
         }
         return value;
     }
 
     public static String getUrlOrSearchUrl(Context context, String input) {
+        return getUrlOrSearchUrl(context, input, false);
+    }
+
+    public static String getUrlOrSearchUrl(Context context, String input, boolean privateMode) {
         if (input == null || input.trim().isEmpty()) {
             return getHomepageUrl(context);
         }
         input = input.trim();
-        return isSearchQuery(input) ? getSearchUrl(context, input) : sanitizeUrl(input);
+        return isSearchQuery(input) ? getSearchUrl(context, input, privateMode) : sanitizeUrl(input);
     }
 
     public static boolean isSearchResultsUrl(Context context, String url) {

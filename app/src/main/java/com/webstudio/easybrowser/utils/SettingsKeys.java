@@ -1,6 +1,9 @@
 package com.webstudio.easybrowser.utils;
 
 public final class SettingsKeys {
+    public static final String ACTION_BACKGROUND_PLAY_CHANGED =
+            "com.webstudio.easybrowser.action.BACKGROUND_PLAY_CHANGED";
+
     public static final String VALUE_ASK = "ask";
     public static final String VALUE_ALLOW = "allow";
     public static final String VALUE_DENY = "deny";
@@ -19,6 +22,11 @@ public final class SettingsKeys {
     public static final String PREF_DESKTOP_SITE_DEFAULT = "desktop_site_default";
     public static final String PREF_HOMEPAGE = "homepage";
     public static final String PREF_SEARCH_ENGINE_URL = "search_engine_url";
+    public static final String PREF_PRIVATE_SEARCH_ENGINE_URL = "private_search_engine_url";
+    public static final String PREF_BROWSER_SUGGESTIONS_ENABLED =
+            "browser_suggestions_enabled";
+    public static final String PREF_SEARCH_SUGGESTIONS_ENABLED =
+            "search_suggestions_enabled";
     public static final String PREF_CUSTOM_SEARCH_ENGINES = "custom_search_engines";
     public static final String PREF_USER_AGENT_PRESET = "user_agent_preset";
     public static final String PREF_USER_AGENT_CUSTOM_STRING = "user_agent_custom_string";
@@ -91,6 +99,8 @@ public final class SettingsKeys {
     public static final String PREF_WALLPAPER_OFFLINE_PACK = "wallpaper_offline_pack";
     public static final String PREF_COLLAPSED_TAB_GROUPS = "collapsed_tab_groups";
     public static final String PREF_SETTINGS_ADVANCED_VISIBLE = "settings_advanced_visible";
+    public static final String PREF_DEFAULT_BROWSER_CARD_DISMISSED =
+            "default_browser_card_dismissed";
 
     public static final String PREF_MENU_NEW_TAB = "menu_action_new_tab";
     public static final String PREF_MENU_NEW_PRIVATE_TAB = "menu_action_new_private_tab";

@@ -16,7 +16,7 @@
     <string name="items_blocked">Items blocked</string>
     <string name="time_saved">Time saved</string>
     <string name="new_tab_info_title">Easy Browser New Tab</string>
-    <string name="new_tab_info_message">This is a local Easy Browser page. Search, suggestions, privacy stats, and Quick Access shortcuts stay inside the browser until you open a web page.</string>
+    <string name="new_tab_info_message">This is a local Easy Browser page. Privacy stats and Quick Access shortcuts stay inside the browser; searches open your selected search provider.</string>
     <string name="quick_access_home_summary">Your most visited pages appear here automatically.</string>
     <string name="show_privacy_stats">Show Privacy Stats</string>
     <string name="show_privacy_stats_summary">Show protection counters on the home screen.</string>
@@ -35,6 +35,7 @@
     <string name="shortcut_private_tab_short">Private</string>
     <string name="shortcut_private_tab_long">Open New Private Tab</string>
     <string name="weather">Weather</string>
+    <string name="weather_edge_brand">easy weather</string>
     <string name="weather_summary">Current weather, hourly conditions, AQI, and 7-day forecast.</string>
     <string name="weather_unavailable">Weather unavailable</string>
     <string name="weather_loading">Loading weather...</string>
@@ -51,7 +52,10 @@
     <string name="weather_units_celsius">Celsius</string>
     <string name="weather_units_fahrenheit">Fahrenheit</string>
     <string name="weather_current">Current</string>
+    <string name="weather_current_weather">Current weather</string>
     <string name="weather_forecast">Forecast</string>
+    <string name="weather_today_forecast">Today\'s forecast</string>
+    <string name="weather_daily_forecast">10 Day</string>
     <string name="weather_feels_like">Feels like %s</string>
     <string name="weather_humidity">Humidity %d%%</string>
     <string name="weather_wind">Wind %.0f</string>
@@ -63,11 +67,30 @@
     <string name="weather_metric_sunrise">Sunrise</string>
     <string name="weather_metric_sunset">Sunset</string>
     <string name="weather_metric_updated">Updated</string>
+    <string name="weather_metric_air_quality">Air quality</string>
+    <string name="weather_metric_rain">Rain</string>
     <string name="weather_precipitation">Rain %d%%</string>
     <string name="weather_last_updated">Updated %s</string>
     <string name="weather_refresh">Refresh weather</string>
-    <string name="weather_provider">Weather data by MET Norway and Open-Meteo AQI</string>
-    <string name="weather_provider_open">Open MET Norway</string>
+    <string name="weather_provider">Weather data by Open-Meteo and MET Norway</string>
+    <string name="weather_provider_open">Open Open-Meteo</string>
+    <string name="weather_map_title">Weather map</string>
+    <string name="weather_map_action">Open source</string>
+    <string name="weather_sun_moon_title">Sun &amp; Moon</string>
+    <string name="weather_daylight">Daylight</string>
+    <string name="weather_daylight_summary">%1$s to %2$s</string>
+    <string name="weather_moon">Moon</string>
+    <string name="weather_moon_clear">Good sky window if clouds stay low.</string>
+    <string name="weather_moon_cloudy">Moon visibility may be limited by clouds or haze.</string>
+    <string name="weather_health_activities_title">Health &amp; Activities</string>
+    <string name="weather_outdoor_activity">Outdoor activity</string>
+    <string name="weather_activity_good">Good for outdoor plans.</string>
+    <string name="weather_activity_humid">Humid conditions. Take breaks.</string>
+    <string name="weather_activity_limited">Limit outdoor time if sensitive to air quality.</string>
+    <string name="weather_activity_indoor">Indoor-friendly conditions right now.</string>
+    <string name="weather_hydration">Hydration</string>
+    <string name="weather_hydration_high">Drink water often and avoid long exposure.</string>
+    <string name="weather_hydration_normal">Normal hydration is enough for light activity.</string>
     <string name="weather_hourly_conditions">Hourly condition</string>
     <string name="weather_air_quality">Air quality</string>
     <string name="weather_us_aqi">AQI</string>
@@ -98,6 +121,8 @@
     <string name="stop">Stop</string>
     <string name="forward">Forward</string>
     <string name="backward">Back</string>
+    <string name="media_action_play">Play</string>
+    <string name="media_action_pause">Pause</string>
     <string name="share">Share</string>
     <string name="copy_link">Copy Link</string>
     <string name="download">Download</string>
@@ -146,6 +171,12 @@
     <string name="support">Support</string>
     <string name="legal_settings">Legal</string>
     <string name="notifications_summary">Manage Android notification permission and download alerts.</string>
+    <string name="settings_search_hint">Search settings</string>
+    <string name="settings_search_no_results">No settings found</string>
+    <string name="set_default_browser">Set as default browser</string>
+    <string name="set_default_browser_summary">Open links from other apps with Easy Browser.</string>
+    <string name="dismiss_default_browser_card">Dismiss default browser prompt</string>
+    <string name="default_browser_already_set">Easy Browser is already your default browser</string>
     <string name="open_external_links">Open External Links</string>
     <string name="open_external_links_summary">Choose Easy Browser as the default browser in Android settings.</string>
     <string name="open_external_links_message">Easy Browser can open http and https links and text shared from other apps. Set it as your default browser in Android settings to route links here automatically.</string>
@@ -166,6 +197,26 @@
     <string name="about_easy_browser">About Easy Browser</string>
     <string name="about_easy_browser_summary">Version and app information.</string>
     <string name="about_easy_browser_message">Easy Browser\nVersion %1$s (%2$d)\nCodename %3$s</string>
+    <string name="help_feedback_page_summary">Send feedback with app and device details, check permissions, or open support-related settings.</string>
+    <string name="send_feedback">Send feedback</string>
+    <string name="send_feedback_summary">Share a message with version and device details included.</string>
+    <string name="copy_support_details">Copy support details</string>
+    <string name="copy_support_details_summary">Copy app version, build, Android version, and device model.</string>
+    <string name="support_details_copied">Support details copied</string>
+    <string name="feedback_no_app">No feedback app found. Support details were copied instead.</string>
+    <string name="about_page_summary">App version, browser engine, Android build, support, and legal information.</string>
+    <string name="about_browser_summary">A local-first browser built around privacy controls and tab management.</string>
+    <string name="about_version">Version</string>
+    <string name="about_version_summary_format">%1$s (%2$d)</string>
+    <string name="about_codename">Codename</string>
+    <string name="about_build_type">Build type</string>
+    <string name="about_build_debug">Debug</string>
+    <string name="about_build_release">Release</string>
+    <string name="about_package_name">Package name</string>
+    <string name="about_browser_engine">Browser engine</string>
+    <string name="about_browser_engine_summary">GeckoView</string>
+    <string name="about_android_version">Android version</string>
+    <string name="about_device">Device</string>
     <string name="settings_mode">Settings mode</string>
     <string name="settings_mode_summary">Keep everyday controls visible. Turn on Advanced for developer, DNS, user-agent, user-style, and auto-clear options.</string>
     <string name="performance_benchmark">Performance benchmark</string>
@@ -193,6 +244,10 @@
 
     <!-- General Settings -->
     <string name="default_search_engine">Default Search Engine</string>
+    <string name="search_engine_settings">Search Engine</string>
+    <string name="currently_used_search_engines">Currently used search engines</string>
+    <string name="standard_tab_search_engine">Standard tab search engine</string>
+    <string name="private_tab_search_engine">Private tab search engine</string>
     <string name="homepage">Homepage</string>
     <string name="text_size">Text Size</string>
     <string name="text_size_percent">%d%%</string>
@@ -271,6 +326,10 @@
     <string name="unknown_site">Unknown site</string>
     <string name="site_permission_request_title">%s request</string>
     <string name="site_permission_request_message">%1$s wants to use %2$s.</string>
+    <string name="site_location_permission_title">%1$s wants to use your device\'s location</string>
+    <string name="site_permission_allow_while_visiting">Allow while visiting the site</string>
+    <string name="site_permission_allow_this_time">Allow this time</string>
+    <string name="site_permission_never_allow">Never allow</string>
 
     <!-- Security -->
     <string name="secure_connection">Secure Connection</string>
@@ -505,6 +564,7 @@
     <string name="extension_permissions">Permissions</string>
     <string name="extension_origins">Site access</string>
     <string name="choose_file">Choose file</string>
+    <string name="upload_file_too_large">Some selected files are too large to upload.</string>
     <string name="error_no_app_for_link">No app can open this link</string>
     <string name="downloads">Downloads</string>
     <string name="history">History</string>
@@ -595,6 +655,8 @@
     <string name="notification_channel_browser_description">Browser alerts and general notifications</string>
     <string name="notification_channel_downloads">Downloads</string>
     <string name="notification_channel_downloads_description">Download progress and completion notifications</string>
+    <string name="notification_channel_media">Media playback</string>
+    <string name="notification_channel_media_description">Background audio and video playback controls</string>
     <string name="notification_channel_privacy">Privacy</string>
     <string name="notification_channel_privacy_description">Security alerts and tracker reports</string>
     <string name="notification_channel_weather">Weather</string>
@@ -643,6 +705,7 @@
     <string name="open_in_new_tab">Open in New Tab</string>
     <string name="link_copied">Link copied to clipboard</string>
     <string name="private_copy_blocked">Copy disabled in private tabs</string>
+    <string name="private_share_blocked">Sharing disabled in private tabs</string>
 
     <!-- Menu Items -->
     <string name="action_clear_history">Clear History</string>
@@ -735,6 +798,10 @@
 
     <!-- Search Suggestions -->
     <string name="suggestions">Suggestions</string>
+    <string name="browser_suggestions_enabled">Browser suggestions</string>
+    <string name="browser_suggestions_enabled_summary">Show suggestions from bookmarks and saved browsing history.</string>
+    <string name="search_suggestions_enabled">Search suggestions</string>
+    <string name="search_suggestions_enabled_summary">When enabled, typed queries are sent to your selected search provider for suggestions. This stays off in private tabs.</string>
 
     <!-- Custom Downloads Folder -->
     <string name="downloads_folder">Downloads Folder</string>
@@ -758,7 +825,8 @@
     <string name="no_site_permissions">No site permissions stored</string>
     <string name="revoke_permission">Revoke</string>
     <string name="permission_revoked">Permission revoked</string>
-    <string name="granted_permissions">Granted Permissions</string>
+    <string name="granted_permissions">Saved Permissions</string>
+    <string name="permission_status_format">%1$s - %2$s</string>
 
     <!-- Tab Groups -->
     <string name="tab_group">Group</string>
@@ -1214,7 +1282,7 @@
     <string name="privacy_websites_title">Websites you visit</string>
     <string name="privacy_websites_summary">When you open a page, that website and its network providers receive normal browser requests, which can include your IP address, user agent mode or custom user agent, cookies, form entries, uploaded files you choose, and other data you provide to the site.</string>
     <string name="privacy_search_suggestions_title">Search and suggestions</string>
-    <string name="privacy_search_suggestions_summary">Address-bar searches are sent to your selected search engine. Suggestions are requested from the matching provider where supported: DuckDuckGo, Google, Bing, Brave Search, Ecosia, Yahoo, or another configured provider. The generated new-tab page uses DuckDuckGo suggestions by default.</string>
+    <string name="privacy_search_suggestions_summary">Address-bar searches are sent to your selected search engine. Search suggestions are off by default. When enabled, suggestions are requested from the matching provider where supported: DuckDuckGo, Google, Bing, Brave Search, Ecosia, Yahoo, or another configured provider.</string>
     <string name="privacy_extensions_marketplace_title">Extensions and marketplace</string>
     <string name="privacy_extensions_marketplace_summary">The Extensions screen requests extension listings and icons from addons.mozilla.org, and extension installs load XPI files from their source URL. Installed extensions run under GeckoView and may collect or access data according to the permissions you approve and the extension developer policy.</string>
     <string name="privacy_dns_translate_title">DNS and translation</string>
@@ -1229,7 +1297,7 @@
     <string name="privacy_file_upload_title">File upload access</string>
     <string name="privacy_file_upload_summary">When a website asks for file input, Easy Browser opens Android file picker. Files you choose are copied into app cache as temporary upload files and then handed to GeckoView for the website request. Files you do not choose are not uploaded by this flow.</string>
     <string name="privacy_site_permissions_title">Site permission storage</string>
-    <string name="privacy_site_permissions_summary">Allowed site permissions are stored as host and permission type in app preferences. You can revoke saved permissions in Site Settings, and the app asks GeckoView to clear matching browser permission data for that host.</string>
+    <string name="privacy_site_permissions_summary">Allowed and blocked site permissions are stored as host, permission type, and status in app preferences. You can revoke saved permissions in Site Settings, and the app asks GeckoView to clear matching browser permission data for that host.</string>
     <string name="privacy_section_private_mode">Private Tabs</string>
     <string name="privacy_private_tabs_title">What private tabs do</string>
     <string name="privacy_private_tabs_summary">Private tabs start on about:blank, are marked private in GeckoView, are skipped by history recording, are skipped by regular tab persistence, skip navigation analytics in app code, and block copying links to the Android clipboard from private tabs.</string>
@@ -1281,7 +1349,7 @@
     <string name="data_compliance_sdk_inventory_title">SDK and library inventory</string>
     <string name="data_compliance_sdk_inventory_summary">Key libraries include GeckoView for browsing, Firebase Analytics and optional Crashlytics, OkHttp for app network calls, Glide for image loading, Room for local storage, Gson and org.json for JSON parsing, Material and AndroidX UI libraries, and Android platform services such as MediaStore, FileProvider, print, notifications, and shortcuts.</string>
     <string name="data_compliance_network_inventory_title">Network destinations</string>
-    <string name="data_compliance_network_inventory_summary">Network destinations can include websites opened by the user, selected search and suggestion providers, DuckDuckGo suggestions on the generated new-tab page, addons.mozilla.org marketplace and icons, extension install URLs, DNS-over-HTTPS providers, Google Translate, download URLs, Firebase services when configured, and browser-engine services used by GeckoView.</string>
+    <string name="data_compliance_network_inventory_summary">Network destinations can include websites opened by the user, selected search and optional suggestion providers, addons.mozilla.org marketplace and icons, extension install URLs, DNS-over-HTTPS providers, Google Translate, download URLs, Firebase services when configured, and browser-engine services used by GeckoView.</string>
     <string name="data_compliance_section_practices">Data Practices</string>
     <string name="data_compliance_local_first_title">Local-first storage</string>
     <string name="data_compliance_local_first_summary">Core browser records are stored on the device by default. Android backup is disabled and backup rules exclude app databases, preferences, files, cache, and external app data to reduce unintended cloud copies.</string>

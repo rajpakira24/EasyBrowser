@@ -1,7 +1,9 @@
 package com.webstudio.easybrowser.ui.activity;
 
 import android.content.SharedPreferences;
+import android.net.Uri;
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
@@ -24,10 +26,17 @@ import org.mozilla.geckoview.StorageController;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class SitePermissionsActivity extends AppCompatActivity {
 
     public static final String PREF_GRANTED_PERMISSIONS = "granted_permissions";
+    private static final String KEY_ORIGIN = "origin";
+    private static final String KEY_HOST = "host";
+    private static final String KEY_TYPE = "type";
+    private static final String KEY_STATUS = "status";
+    private static final String STATUS_ALLOW = "allow";
+    private static final String STATUS_DENY = "deny";
 
     private LinearLayout permissionList;
     private SharedPreferences prefs;
@@ -92,11 +101,18 @@ public class SitePermissionsActivity extends AppCompatActivity {
     }
 
     private void addPermissionRow(List<JSONObject> all, int index, JSONObject entry) {
-        String host, type;
+        String origin, host, type, status;
         try {
-            host = entry.getString("host");
-            type = entry.getString("type");
+            origin = entry.optString(KEY_ORIGIN);
+            host = entry.optString(KEY_HOST);
+            type = entry.getString(KEY_TYPE);
+            status = entry.optString(KEY_STATUS, STATUS_ALLOW);
         } catch (Exception e) {
+            return;
+        }
+        String displayOrigin = !TextUtils.isEmpty(origin) ? origin : host;
+        String clearHost = !TextUtils.isEmpty(host) ? host : hostFromOrigin(displayOrigin);
+        if (TextUtils.isEmpty(displayOrigin)) {
             return;
         }
 
@@ -111,13 +127,16 @@ public class SitePermissionsActivity extends AppCompatActivity {
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
         TextView hostView = new TextView(this);
-        hostView.setText(host);
+        hostView.setText(displayOrigin);
         hostView.setTextSize(15);
         hostView.setTextColor(ContextCompat.getColor(this, R.color.colorOnSurface));
         textCol.addView(hostView);
 
         TextView typeView = new TextView(this);
-        typeView.setText(type);
+        String statusLabel = STATUS_DENY.equals(status)
+                ? getString(R.string.blocked)
+                : getString(R.string.allowed);
+        typeView.setText(getString(R.string.permission_status_format, type, statusLabel));
         typeView.setTextSize(12);
         typeView.setTextColor(ContextCompat.getColor(this, R.color.gray));
         textCol.addView(typeView);
@@ -129,7 +148,7 @@ public class SitePermissionsActivity extends AppCompatActivity {
         revokeBtn.setTextSize(13);
         revokeBtn.setTextColor(ContextCompat.getColor(this, R.color.colorPrimary));
         revokeBtn.setPadding(dpToPx(8), 0, 0, 0);
-        revokeBtn.setOnClickListener(v -> revokePermission(all, index, host, row));
+        revokeBtn.setOnClickListener(v -> revokePermission(all, index, clearHost, row));
         row.addView(revokeBtn);
 
         View divider = new View(this);
@@ -147,10 +166,12 @@ public class SitePermissionsActivity extends AppCompatActivity {
         for (JSONObject obj : all) updated.put(obj);
         prefs.edit().putString(PREF_GRANTED_PERMISSIONS, updated.toString()).apply();
 
-        try {
-            RuntimeManager.getRuntime(this).getStorageController()
-                    .clearDataFromHost(host, StorageController.ClearFlags.PERMISSIONS);
-        } catch (Exception ignored) {}
+        if (!TextUtils.isEmpty(host)) {
+            try {
+                RuntimeManager.getRuntime(this).getStorageController()
+                        .clearDataFromHost(host, StorageController.ClearFlags.PERMISSIONS);
+            } catch (Exception ignored) {}
+        }
 
         int idx = permissionList.indexOfChild(row);
         if (idx >= 0) {
@@ -161,16 +182,27 @@ public class SitePermissionsActivity extends AppCompatActivity {
         Toast.makeText(this, R.string.permission_revoked, Toast.LENGTH_SHORT).show();
     }
 
-    public static boolean hasPermission(SharedPreferences prefs, String host, String type) {
-        if (prefs == null || host == null || type == null) {
+    public static boolean hasPermission(SharedPreferences prefs, String origin, String type) {
+        return hasPermissionStatus(prefs, origin, type, STATUS_ALLOW);
+    }
+
+    public static boolean isPermissionDenied(SharedPreferences prefs, String origin, String type) {
+        return hasPermissionStatus(prefs, origin, type, STATUS_DENY);
+    }
+
+    private static boolean hasPermissionStatus(SharedPreferences prefs, String origin,
+                                               String type, String status) {
+        if (prefs == null || TextUtils.isEmpty(origin) || TextUtils.isEmpty(type)) {
             return false;
         }
+        String host = hostFromOrigin(origin);
         String json = prefs.getString(PREF_GRANTED_PERMISSIONS, "[]");
         try {
             JSONArray arr = new JSONArray(json);
             for (int i = 0; i < arr.length(); i++) {
                 JSONObject obj = arr.getJSONObject(i);
-                if (host.equals(obj.optString("host")) && type.equals(obj.optString("type"))) {
+                if (matchesSitePermission(obj, origin, host, type)
+                        && status.equals(obj.optString(KEY_STATUS, STATUS_ALLOW))) {
                     return true;
                 }
             }
@@ -184,15 +216,24 @@ public class SitePermissionsActivity extends AppCompatActivity {
         if (prefs == null || host == null) {
             return permissions;
         }
+        String normalizedHost = host.toLowerCase(Locale.US);
         String json = prefs.getString(PREF_GRANTED_PERMISSIONS, "[]");
         try {
             JSONArray arr = new JSONArray(json);
             for (int i = 0; i < arr.length(); i++) {
                 JSONObject obj = arr.getJSONObject(i);
-                if (host.equals(obj.optString("host"))) {
-                    String type = obj.optString("type");
+                String origin = obj.optString(KEY_ORIGIN);
+                String storedHost = obj.optString(KEY_HOST);
+                if (normalizedHost.equals(storedHost)
+                        || normalizedHost.equals(hostFromOrigin(origin))) {
+                    String type = obj.optString(KEY_TYPE);
+                    String status = obj.optString(KEY_STATUS, STATUS_ALLOW);
                     if (type != null && !type.trim().isEmpty() && !permissions.contains(type)) {
-                        permissions.add(type);
+                        if (STATUS_DENY.equals(status)) {
+                            permissions.add(type + " (blocked)");
+                        } else {
+                            permissions.add(type);
+                        }
                     }
                 }
             }
@@ -201,22 +242,83 @@ public class SitePermissionsActivity extends AppCompatActivity {
         return permissions;
     }
 
-    public static void recordPermission(SharedPreferences prefs, String host, String type) {
+    public static void recordPermission(SharedPreferences prefs, String origin, String type) {
+        recordPermissionDecision(prefs, origin, type, STATUS_ALLOW);
+    }
+
+    public static void recordDeniedPermission(SharedPreferences prefs, String origin, String type) {
+        recordPermissionDecision(prefs, origin, type, STATUS_DENY);
+    }
+
+    private static void recordPermissionDecision(SharedPreferences prefs, String origin,
+                                                 String type, String status) {
+        if (prefs == null || TextUtils.isEmpty(origin) || TextUtils.isEmpty(type)) {
+            return;
+        }
+        String host = hostFromOrigin(origin);
+        if (TextUtils.isEmpty(host)) {
+            return;
+        }
         String json = prefs.getString(PREF_GRANTED_PERMISSIONS, "[]");
         try {
             JSONArray arr = new JSONArray(json);
+            JSONArray updated = new JSONArray();
             for (int i = 0; i < arr.length(); i++) {
                 JSONObject obj = arr.getJSONObject(i);
-                if (host.equals(obj.optString("host")) && type.equals(obj.optString("type"))) {
-                    return;
+                if (!matchesSitePermission(obj, origin, host, type)) {
+                    updated.put(obj);
                 }
             }
             JSONObject entry = new JSONObject();
-            entry.put("host", host);
-            entry.put("type", type);
-            arr.put(entry);
-            prefs.edit().putString(PREF_GRANTED_PERMISSIONS, arr.toString()).apply();
+            entry.put(KEY_ORIGIN, origin);
+            entry.put(KEY_HOST, host);
+            entry.put(KEY_TYPE, type);
+            entry.put(KEY_STATUS, status);
+            updated.put(entry);
+            prefs.edit().putString(PREF_GRANTED_PERMISSIONS, updated.toString()).apply();
         } catch (Exception ignored) {}
+    }
+
+    private static boolean matchesSitePermission(JSONObject obj, String origin, String host,
+                                                 String type) {
+        if (obj == null || !type.equals(obj.optString(KEY_TYPE))) {
+            return false;
+        }
+        String storedOrigin = obj.optString(KEY_ORIGIN);
+        if (origin.equals(storedOrigin)) {
+            return true;
+        }
+        if (TextUtils.isEmpty(host)) {
+            return false;
+        }
+        String storedHost = obj.optString(KEY_HOST);
+        return host.equals(storedHost) || host.equals(hostFromOrigin(storedOrigin));
+    }
+
+    private static String hostFromOrigin(String origin) {
+        if (TextUtils.isEmpty(origin)) {
+            return "";
+        }
+        try {
+            String host = Uri.parse(origin).getHost();
+            if (!TextUtils.isEmpty(host)) {
+                return host.toLowerCase(Locale.US);
+            }
+        } catch (Exception ignored) {
+        }
+        if (!origin.contains("://") && !containsWhitespace(origin)) {
+            return origin.toLowerCase(Locale.US);
+        }
+        return "";
+    }
+
+    private static boolean containsWhitespace(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            if (Character.isWhitespace(value.charAt(i))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private int dpToPx(int dp) {

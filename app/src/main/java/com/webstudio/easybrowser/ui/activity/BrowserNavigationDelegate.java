@@ -46,6 +46,7 @@ class BrowserNavigationDelegate implements GeckoSession.NavigationDelegate {
                 }
                 // F14: Inject user CSS style if configured for this host
                 activity.injectUserStyleIfNeeded(session, url);
+                activity.injectPageUrlSyncIfNeeded(session, url);
             }
         });
     }
@@ -97,11 +98,14 @@ class BrowserNavigationDelegate implements GeckoSession.NavigationDelegate {
     @Override
     public GeckoResult<AllowOrDeny> onLoadRequest(GeckoSession session,
                                                   GeckoSession.NavigationDelegate.LoadRequest request) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(activity);
+        if (isJavascriptUri(request.uri) && activity.isTrustedJavascriptUri(request.uri)) {
+            return GeckoResult.allow();
+        }
         if (shouldOpenExternally(request.uri)) {
             openExternalUri(request.uri);
             return GeckoResult.deny();
         }
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(activity);
         if (prefs.getBoolean("https_only", true)
                 && request.uri != null
                 && request.uri.startsWith("http://")
@@ -116,7 +120,7 @@ class BrowserNavigationDelegate implements GeckoSession.NavigationDelegate {
         if (prefs.getBoolean("https_only", true)
                 && request.uri != null
                 && isTopLevelNavigation(request)
-                && (request.uri.startsWith("data:") || request.uri.startsWith("javascript:"))
+                && (request.uri.startsWith("data:") || isJavascriptUri(request.uri))
                 && !UrlUtils.isInternalPageUrl(request.uri)) {
             return GeckoResult.deny();
         }
@@ -150,6 +154,17 @@ class BrowserNavigationDelegate implements GeckoSession.NavigationDelegate {
                 && (request.isDirectNavigation
                 || request.target == GeckoSession.NavigationDelegate.TARGET_WINDOW_CURRENT
                 || request.target == GeckoSession.NavigationDelegate.TARGET_WINDOW_NEW);
+    }
+
+    private boolean isJavascriptUri(String uri) {
+        if (uri == null) {
+            return false;
+        }
+        try {
+            return "javascript".equalsIgnoreCase(Uri.parse(uri).getScheme());
+        } catch (RuntimeException ignored) {
+            return false;
+        }
     }
 
     @Override
@@ -383,6 +398,7 @@ class BrowserNavigationDelegate implements GeckoSession.NavigationDelegate {
                 && !"https".equalsIgnoreCase(scheme)
                 && !"about".equalsIgnoreCase(scheme)
                 && !"data".equalsIgnoreCase(scheme)
+                && !"javascript".equalsIgnoreCase(scheme)
                 && !"blob".equalsIgnoreCase(scheme)
                 && !"file".equalsIgnoreCase(scheme);
     }

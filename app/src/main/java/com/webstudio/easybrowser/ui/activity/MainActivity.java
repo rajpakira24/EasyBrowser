@@ -70,6 +70,7 @@ import com.webstudio.easybrowser.repository.QuickAccessRepository;
 import com.webstudio.easybrowser.repository.TabRepository;
 import com.webstudio.easybrowser.repository.WeatherRepository;
 import com.webstudio.easybrowser.utils.AppSettings;
+import com.webstudio.easybrowser.utils.BrowserSuggestionProvider;
 import com.webstudio.easybrowser.utils.EasyMotion;
 import com.webstudio.easybrowser.utils.HomeBackgroundProvider;
 import com.webstudio.easybrowser.utils.SearchSuggestionProvider;
@@ -437,7 +438,8 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
             return;
         }
         weatherWidget.setOnClickListener(v ->
-                startActivity(new Intent(MainActivity.this, WeatherActivity.class)));
+                startActivity(new Intent(MainActivity.this, WeatherActivity.class)
+                        .putExtra(WeatherActivity.EXTRA_REQUEST_CURRENT_LOCATION, true)));
         if (!PreferenceManager.getDefaultSharedPreferences(this)
                 .getBoolean(SettingsKeys.PREF_SHOW_WEATHER_WIDGET, true)) {
             return;
@@ -1074,10 +1076,15 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         ImageButton popupMic = dialog.findViewById(R.id.btn_search_popup_mic);
         ImageButton popupGo = dialog.findViewById(R.id.btn_search_popup_go);
         RecyclerView suggestionsRecycler = dialog.findViewById(R.id.suggestions_recycler);
+        if (searchInput == null || popupMic == null || popupGo == null
+                || suggestionsRecycler == null) {
+            dialog.dismiss();
+            return;
+        }
 
         SuggestionsAdapter suggestionsAdapter = new SuggestionsAdapter(suggestion -> {
-            handleUrlInput(suggestion);
             dialog.dismiss();
+            handleUrlInput(suggestion);
         });
         suggestionsRecycler.setLayoutManager(
                 new androidx.recyclerview.widget.LinearLayoutManager(this));
@@ -1086,39 +1093,85 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         searchInput.setText(urlInput.getText());
         searchInput.selectAll();
 
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        final int[] suggestionRequest = {0};
         searchInput.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void afterTextChanged(Editable s) {}
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
                 String query = s.toString().trim();
+                int requestId = ++suggestionRequest[0];
                 if (query.isEmpty()) {
                     suggestionsRecycler.setVisibility(View.GONE);
                     return;
                 }
-                suggestionProvider.fetchSuggestions(query, suggestions -> runOnUiThread(() -> {
-                    if (suggestions.isEmpty()) {
-                        suggestionsRecycler.setVisibility(View.GONE);
-                    } else {
-                        suggestionsAdapter.setSuggestions(suggestions);
-                        suggestionsRecycler.setVisibility(View.VISIBLE);
+                boolean browserSuggestions = prefs.getBoolean(
+                        SettingsKeys.PREF_BROWSER_SUGGESTIONS_ENABLED, true);
+                boolean searchSuggestions = prefs.getBoolean(
+                        SettingsKeys.PREF_SEARCH_SUGGESTIONS_ENABLED, false);
+                if (!browserSuggestions && !searchSuggestions) {
+                    suggestionsRecycler.setVisibility(View.GONE);
+                    return;
+                }
+
+                class SuggestionRequest {
+                    void show(List<String> suggestions) {
+                        if (requestId != suggestionRequest[0]) {
+                            return;
+                        }
+                        if (!isSearchDialogActive(dialog)) {
+                            return;
+                        }
+                        if (suggestions == null || suggestions.isEmpty()) {
+                            suggestionsRecycler.setVisibility(View.GONE);
+                        } else {
+                            suggestionsAdapter.setSuggestions(suggestions);
+                            suggestionsRecycler.setVisibility(View.VISIBLE);
+                        }
                     }
-                }));
+
+                    void fetchSearch(List<String> browserResults) {
+                        String searchEngine = UrlUtils.getSearchEngineUrl(MainActivity.this, false);
+                        suggestionProvider.fetchSuggestions(query, searchEngine,
+                                searchResults -> runOnUiThread(() -> {
+                                    if (isSearchDialogActive(dialog)) {
+                                        show(mergeSuggestions(browserResults, searchResults));
+                                    }
+                                }));
+                    }
+                }
+
+                SuggestionRequest request = new SuggestionRequest();
+                if (browserSuggestions) {
+                    BrowserSuggestionProvider.fetchSuggestions(MainActivity.this, query,
+                            browserResults -> runOnUiThread(() -> {
+                                if (!isSearchDialogActive(dialog)) {
+                                    return;
+                                }
+                                request.show(browserResults);
+                                if (searchSuggestions) {
+                                    request.fetchSearch(browserResults);
+                                }
+                            }));
+                } else if (searchSuggestions) {
+                    request.fetchSearch(new ArrayList<>());
+                }
             }
         });
 
         popupMic.setOnClickListener(v -> startVoiceRecognition());
         popupGo.setOnClickListener(v -> {
-            handleUrlInput(searchInput.getText().toString());
             dialog.dismiss();
+            handleUrlInput(searchInput.getText().toString());
         });
         searchInput.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_GO ||
                     actionId == EditorInfo.IME_ACTION_SEARCH ||
                     (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER &&
                             event.getAction() == KeyEvent.ACTION_DOWN)) {
-                handleUrlInput(searchInput.getText().toString());
                 dialog.dismiss();
+                handleUrlInput(searchInput.getText().toString());
                 return true;
             }
             return false;
@@ -1150,6 +1203,32 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
             showKeyboard(searchInput);
         });
         dialog.show();
+    }
+
+    private boolean isSearchDialogActive(android.app.Dialog dialog) {
+        return dialog != null
+                && dialog.isShowing()
+                && !isFinishing()
+                && (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR1 || !isDestroyed());
+    }
+
+    private List<String> mergeSuggestions(List<String> primary, List<String> secondary) {
+        List<String> merged = new ArrayList<>();
+        addUniqueSuggestions(merged, primary);
+        addUniqueSuggestions(merged, secondary);
+        return merged.size() > 8 ? new ArrayList<>(merged.subList(0, 8)) : merged;
+    }
+
+    private void addUniqueSuggestions(List<String> target, List<String> source) {
+        if (source == null) {
+            return;
+        }
+        for (String suggestion : source) {
+            if (suggestion != null && !suggestion.trim().isEmpty()
+                    && !target.contains(suggestion)) {
+                target.add(suggestion);
+            }
+        }
     }
 
     private void showHomeMoreMenu() {

@@ -127,6 +127,40 @@ public class AppDownloadManager {
         startExistingDownload(appContext, item);
     }
 
+    public static String sanitizeCustomDownloadsFolder(String folder) {
+        if (TextUtils.isEmpty(folder)) {
+            return "";
+        }
+        String trimmed = folder.trim();
+        StringBuilder cleaned = new StringBuilder(trimmed.length());
+        boolean lastWasSeparator = false;
+        for (int i = 0; i < trimmed.length(); i++) {
+            char c = trimmed.charAt(i);
+            boolean unsafe = c < 0x20 || c == 0x7F
+                    || c == '\\' || c == '/' || c == ':' || c == '*'
+                    || c == '?' || c == '"' || c == '<' || c == '>' || c == '|';
+            if (unsafe) {
+                if (!lastWasSeparator && cleaned.length() > 0) {
+                    cleaned.append('_');
+                    lastWasSeparator = true;
+                }
+                continue;
+            }
+            cleaned.append(c);
+            lastWasSeparator = c == '_' || Character.isWhitespace(c);
+        }
+        String result = cleaned.toString()
+                .replaceAll("[\\s_]+", "_")
+                .replaceAll("^\\.+", "")
+                .replaceAll("\\.+$", "")
+                .replaceAll("^_+", "")
+                .replaceAll("_+$", "");
+        if (result.isEmpty() || ".".equals(result) || "..".equals(result)) {
+            return "";
+        }
+        return result.length() > 64 ? result.substring(0, 64) : result;
+    }
+
     public void startExistingDownload(Context context, DownloadItem item) {
         if (item == null || !isHttpDownloadUrl(item.getUrl())) {
             return;
@@ -506,7 +540,7 @@ public class AppDownloadManager {
         if (Build.VERSION.SDK_INT >= 29) {
             publishWithMediaStore(context, item, sourceFile);
         } else {
-            publishToPublicDownloadsLegacy(item, sourceFile);
+            publishToPublicDownloadsLegacy(context, item, sourceFile);
         }
     }
 
@@ -521,6 +555,7 @@ public class AppDownloadManager {
         String customFolder = PreferenceManager
                 .getDefaultSharedPreferences(context)
                 .getString(SettingsKeys.PREF_DOWNLOADS_FOLDER_CUSTOM, "");
+        customFolder = sanitizeCustomDownloadsFolder(customFolder);
         String relativePath = Environment.DIRECTORY_DOWNLOADS + "/"
                 + (customFolder.isEmpty() ? "Easy Browser" : customFolder);
         values.put(MediaStore.Downloads.RELATIVE_PATH, relativePath);
@@ -548,9 +583,14 @@ public class AppDownloadManager {
         sourceFile.delete();
     }
 
-    private void publishToPublicDownloadsLegacy(DownloadItem item, File sourceFile) throws IOException {
+    private void publishToPublicDownloadsLegacy(Context context, DownloadItem item, File sourceFile) throws IOException {
+        String customFolder = PreferenceManager
+                .getDefaultSharedPreferences(context)
+                .getString(SettingsKeys.PREF_DOWNLOADS_FOLDER_CUSTOM, "");
+        customFolder = sanitizeCustomDownloadsFolder(customFolder);
         File publicDir = new File(Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_DOWNLOADS), "Easy Browser");
+                Environment.DIRECTORY_DOWNLOADS),
+                customFolder.isEmpty() ? "Easy Browser" : customFolder);
         if (!publicDir.exists() && !publicDir.mkdirs()) {
             throw new IOException("Cannot create public Downloads folder");
         }

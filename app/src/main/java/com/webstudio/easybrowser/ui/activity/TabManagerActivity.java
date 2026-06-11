@@ -1811,6 +1811,10 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
         if (tab == null || tab.getUrl() == null) {
             return;
         }
+        if (tab.isPrivate()) {
+            Toast.makeText(this, R.string.private_share_blocked, Toast.LENGTH_SHORT).show();
+            return;
+        }
         Intent intent = new Intent(Intent.ACTION_SEND);
         intent.setType("text/plain");
         intent.putExtra(Intent.EXTRA_TEXT, tab.getUrl());

@@ -473,6 +473,13 @@ public class GroupTabsActivity extends AppCompatActivity implements GroupTabsAda
 
     @Override
     public void onShareTab(Tab tab) {
+        if (tab == null || tab.getUrl() == null || tab.getUrl().trim().isEmpty()) {
+            return;
+        }
+        if (tab.isPrivate()) {
+            Toast.makeText(this, R.string.private_share_blocked, Toast.LENGTH_SHORT).show();
+            return;
+        }
         Intent intent = new Intent(Intent.ACTION_SEND);
         intent.setType("text/plain");
         intent.putExtra(Intent.EXTRA_TEXT, tab.getUrl());
@@ -939,6 +946,12 @@ public class GroupTabsActivity extends AppCompatActivity implements GroupTabsAda
         if (tabs.isEmpty()) {
             Toast.makeText(this, R.string.select_tabs_first, Toast.LENGTH_SHORT).show();
             return;
+        }
+        for (Tab tab : tabs) {
+            if (tab != null && tab.isPrivate()) {
+                Toast.makeText(this, R.string.private_share_blocked, Toast.LENGTH_SHORT).show();
+                return;
+            }
         }
         StringBuilder text = new StringBuilder();
         for (Tab tab : tabs) {

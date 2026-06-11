@@ -335,10 +335,7 @@ public class DownloadsActivity extends AppCompatActivity implements DownloadsAda
         item.setStatus(DownloadItem.Status.DOWNLOADING);
         item.setErrorMessage(null);
         item.setDownloadedBytes(0);
-        File file = item.getDestinationPath() != null ? new File(item.getDestinationPath()) : null;
-        if (file != null && file.exists()) {
-            file.delete();
-        }
+        deleteDownloadedFile(item);
         repository.saveDownload(item, new DownloadRepository.DownloadCallback() {
             @Override
             public void onDownloadsLoaded(List<DownloadItem> downloads) {}
@@ -365,12 +362,7 @@ public class DownloadsActivity extends AppCompatActivity implements DownloadsAda
 
     private void deleteDownload(DownloadItem item) {
         AppDownloadManager.getInstance().cancelDownload(item.getId());
-        if (item.getDestinationPath() != null) {
-            File file = new File(item.getDestinationPath());
-            if (file.exists()) {
-                file.delete();
-            }
-        }
+        deleteDownloadedFile(item);
         repository.removeDownload(item, new DownloadRepository.DownloadCallback() {
             @Override
             public void onDownloadsLoaded(List<DownloadItem> downloads) {}
@@ -384,6 +376,24 @@ public class DownloadsActivity extends AppCompatActivity implements DownloadsAda
                 Toast.makeText(DownloadsActivity.this, R.string.download_deleted, Toast.LENGTH_SHORT).show();
             }
         });
+    }
+
+    private void deleteDownloadedFile(DownloadItem item) {
+        String path = item != null ? item.getDestinationPath() : null;
+        if (path == null || path.trim().isEmpty()) {
+            return;
+        }
+        if (path.startsWith("content://")) {
+            try {
+                getContentResolver().delete(Uri.parse(path), null, null);
+            } catch (SecurityException | IllegalArgumentException ignored) {
+            }
+            return;
+        }
+        File file = new File(path);
+        if (file.exists()) {
+            file.delete();
+        }
     }
 
     private void shareFile(DownloadItem item) {

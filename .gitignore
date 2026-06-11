@@ -23,3 +23,7 @@ google-services.json
 .graphify_python
 graphify-out/
 *.logcat
+
+# Local review artifacts
+test_screens/**/*.xml
+vlc-help.txt

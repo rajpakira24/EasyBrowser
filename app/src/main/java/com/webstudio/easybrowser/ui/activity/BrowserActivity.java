@@ -1,5 +1,6 @@
 package com.webstudio.easybrowser.ui.activity;
 
+import android.Manifest;
 import android.util.Log;
 import android.app.Dialog;
 import android.content.BroadcastReceiver;
@@ -14,6 +15,7 @@ import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
@@ -30,8 +32,11 @@ import android.os.Handler;
 import android.os.Looper;
 import androidx.preference.PreferenceManager;
 import android.text.Editable;
+import android.text.SpannableString;
+import android.text.Spanned;
 import android.text.TextUtils;
 import android.text.TextWatcher;
+import android.text.style.ForegroundColorSpan;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.Menu;
@@ -79,6 +84,7 @@ import com.webstudio.easybrowser.adapters.TabItemTouchHelperCallback;
 import com.webstudio.easybrowser.managers.AnalyticsManager;
 import com.webstudio.easybrowser.managers.AppShortcutManager;
 import com.webstudio.easybrowser.managers.AppDownloadManager;
+import com.webstudio.easybrowser.managers.BackgroundMediaService;
 import com.webstudio.easybrowser.managers.PrivacyStatsManager;
 import com.webstudio.easybrowser.managers.RuntimeManager;
 import com.webstudio.easybrowser.managers.TabManager;
@@ -94,6 +100,7 @@ import com.webstudio.easybrowser.repository.QuickAccessRepository;
 import com.webstudio.easybrowser.repository.ReadingListRepository;
 import com.webstudio.easybrowser.repository.TabRepository;
 import com.webstudio.easybrowser.models.ReadingListItem;
+import com.webstudio.easybrowser.utils.BrowserSuggestionProvider;
 import com.webstudio.easybrowser.utils.EasyMotion;
 import com.webstudio.easybrowser.utils.ScreenshotProtection;
 import com.webstudio.easybrowser.utils.SearchSuggestionProvider;
@@ -108,6 +115,7 @@ import org.mozilla.geckoview.GeckoResult;
 import org.mozilla.geckoview.GeckoSession;
 import org.mozilla.geckoview.GeckoSessionSettings;
 import org.mozilla.geckoview.GeckoView;
+import org.mozilla.geckoview.MediaSession;
 import org.mozilla.geckoview.StorageController;
 
 import java.io.File;
@@ -118,7 +126,10 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class BrowserActivity extends AppCompatActivity {
@@ -127,6 +138,8 @@ public class BrowserActivity extends AppCompatActivity {
     public static final String EXTRA_PRIVATE_TAB = "private_tab";
     public static final String EXTRA_NEW_TAB_IN_GROUP = "new_tab_in_group";
     static final int REQUEST_GECKO_PERMISSIONS = 1001;
+    private static final long MAX_UPLOAD_CACHE_BYTES = 100L * 1024L * 1024L;
+    private static final long TRUSTED_JAVASCRIPT_URI_TTL_MS = 5_000L;
     private GeckoView geckoView;
     GeckoSession session;
     private BrowserViewModel browserViewModel;
@@ -135,6 +148,61 @@ public class BrowserActivity extends AppCompatActivity {
     ProgressBar progressBar;
     SwipeRefreshLayout swipeRefresh;
     private ImageButton securityButton;
+    private final Set<String> trustedJavascriptUris =
+            Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private final Set<GeckoSession> playingMediaSessions =
+            Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private final Map<GeckoSession, MediaSession> geckoMediaSessions =
+            new ConcurrentHashMap<>();
+    private final Map<GeckoSession, MediaSession.Metadata> geckoMediaMetadata =
+            new ConcurrentHashMap<>();
+    private GeckoSession notificationMediaSession;
+    private final MediaSession.Delegate mediaSessionDelegate = new MediaSession.Delegate() {
+        @Override
+        public void onActivated(@NonNull GeckoSession mediaSession,
+                                @NonNull MediaSession geckoMediaSession) {
+            geckoMediaSessions.put(mediaSession, geckoMediaSession);
+            if (notificationMediaSession == null) {
+                notificationMediaSession = mediaSession;
+            }
+        }
+
+        @Override
+        public void onMetadata(@NonNull GeckoSession mediaSession,
+                               @NonNull MediaSession geckoMediaSession,
+                               @NonNull MediaSession.Metadata metadata) {
+            geckoMediaSessions.put(mediaSession, geckoMediaSession);
+            geckoMediaMetadata.put(mediaSession, metadata);
+            if (mediaSession == notificationMediaSession) {
+                updateBackgroundMediaNotification(mediaSession,
+                        playingMediaSessions.contains(mediaSession));
+            }
+        }
+
+        @Override
+        public void onPlay(@NonNull GeckoSession mediaSession,
+                           @NonNull MediaSession geckoMediaSession) {
+            updateMediaSessionPlaybackState(mediaSession, geckoMediaSession, true);
+        }
+
+        @Override
+        public void onPause(@NonNull GeckoSession mediaSession,
+                            @NonNull MediaSession geckoMediaSession) {
+            handleMediaSessionPaused(mediaSession, geckoMediaSession);
+        }
+
+        @Override
+        public void onStop(@NonNull GeckoSession mediaSession,
+                           @NonNull MediaSession geckoMediaSession) {
+            handleMediaSessionEnded(mediaSession);
+        }
+
+        @Override
+        public void onDeactivated(@NonNull GeckoSession mediaSession,
+                                  @NonNull MediaSession geckoMediaSession) {
+            handleMediaSessionEnded(mediaSession);
+        }
+    };
     private ImageButton bookmarkButton;
     private ImageButton toolbarShortcutButton;
     ImageButton backButton;
@@ -169,18 +237,27 @@ public class BrowserActivity extends AppCompatActivity {
     private static final long RESUME_REATTACH_DELAY_MS = 220L;
     private static final long RECENT_RESUME_WINDOW_MS = 120_000L;
     private static final long RELOAD_STUCK_TIMEOUT_MS = 8_000L;
+    private static final long BACKGROUND_MEDIA_RESUME_DELAY_MS = 450L;
+    private static final long USER_MEDIA_PAUSE_SUPPRESSION_MS = 3_000L;
     private View browserRoot;
     private ConnectivityManager connectivityManager;
     private ConnectivityManager.NetworkCallback connectivityCallback;
     private BroadcastReceiver connectivityReceiver;
+    private BroadcastReceiver backgroundPlayReceiver;
     private final Handler connectivityHandler = new Handler(Looper.getMainLooper());
     private final Handler browserHandler = new Handler(Looper.getMainLooper());
+    private final Handler mediaHandler = new Handler(Looper.getMainLooper());
     private Boolean lastOnlineState;
     private long lastStoppedAtMs;
     private long lastResumedAtMs;
     private long lastProgressChangedAtMs;
     private int lastPageProgress = 100;
     private String pendingReloadRecoveryTabId;
+    private boolean browserPaused;
+    private boolean browserStopped;
+    private long suppressBackgroundAutoResumeUntilMs;
+    private final Set<GeckoSession> backgroundResumeAttemptedSessions =
+            Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     boolean canGoBack = false;
     boolean canGoForward = false;
@@ -226,6 +303,7 @@ public class BrowserActivity extends AppCompatActivity {
         setupUrlInput();
         hadExistingTabsOnCreate = tabManager != null && tabManager.getTabCount() > 0;
         setupTabManager();
+        registerBackgroundPlayReceiver();
         attachTabToView(tabManager.getCurrentTab());
         setupBackHandling();
         // Seed lastAppliedUaPreset so the first onResume() doesn't trigger a spurious reload
@@ -245,26 +323,42 @@ public class BrowserActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        browserPaused = false;
+        browserStopped = false;
+        backgroundResumeAttemptedSessions.clear();
         lastResumedAtMs = System.currentTimeMillis();
         reattachCurrentSessionAfterResume();
         browserHandler.postDelayed(this::reattachCurrentSessionAfterResume, RESUME_REATTACH_DELAY_MS);
         if (session != null) {
+            applyMediaPlaybackPreference(session);
             session.setActive(true);
         }
         startConnectivityMonitoring();
         applyBrowserUiPreferences();
         // F9: Re-apply UA preset if it changed in settings
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        applyMediaPlaybackPreferenceToTabs();
         String currentPreset = prefs.getString(SettingsKeys.PREF_USER_AGENT_PRESET, "mobile");
         if (!currentPreset.equals(lastAppliedUaPreset) && session != null) {
             lastAppliedUaPreset = currentPreset;
             applyUaPresetToSession(session, prefs);
             reloadCurrentPage();
         }
+        if (session != null && currentUrl != null) {
+            injectPageUrlSyncIfNeeded(session, currentUrl);
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        browserPaused = true;
+        applyMediaPlaybackPreferenceToTabs();
+        super.onPause();
     }
 
     @Override
     protected void onStop() {
+        browserStopped = true;
         lastStoppedAtMs = System.currentTimeMillis();
         browserHandler.removeCallbacksAndMessages(null);
         stopConnectivityMonitoring();
@@ -275,7 +369,7 @@ public class BrowserActivity extends AppCompatActivity {
             swipeRefresh.setRefreshing(false);
         }
         if (session != null) {
-            session.setActive(false);
+            applyMediaPlaybackPreferenceToTabs();
         }
         super.onStop();
     }
@@ -293,7 +387,9 @@ public class BrowserActivity extends AppCompatActivity {
         }
         attachTabToView(current);
         if (session != null) {
+            applyMediaPlaybackPreference(session);
             session.setActive(true);
+            applyMediaPlaybackPreferenceToTabs();
         }
         try {
             geckoView.requestNewSurface();
@@ -492,6 +588,49 @@ public class BrowserActivity extends AppCompatActivity {
             } else {
                 registerReceiver(connectivityReceiver, filter);
             }
+        }
+    }
+
+    private void registerBackgroundPlayReceiver() {
+        if (backgroundPlayReceiver != null) {
+            return;
+        }
+        backgroundPlayReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (intent == null) {
+                    return;
+                }
+                String action = intent.getAction();
+                if (SettingsKeys.ACTION_BACKGROUND_PLAY_CHANGED.equals(action)) {
+                    applyMediaPlaybackPreferenceToTabs();
+                    if (isBackgroundPlayEnabled() && notificationMediaSession != null) {
+                        updateBackgroundMediaNotification(notificationMediaSession,
+                                playingMediaSessions.contains(notificationMediaSession));
+                    } else {
+                        stopBackgroundMediaService();
+                    }
+                } else if (BackgroundMediaService.ACTION_MEDIA_CONTROL.equals(action)) {
+                    handleBackgroundMediaControl(intent.getStringExtra(
+                            BackgroundMediaService.EXTRA_COMMAND));
+                }
+            }
+        };
+        IntentFilter filter = new IntentFilter(SettingsKeys.ACTION_BACKGROUND_PLAY_CHANGED);
+        filter.addAction(BackgroundMediaService.ACTION_MEDIA_CONTROL);
+        ContextCompat.registerReceiver(this, backgroundPlayReceiver, filter,
+                ContextCompat.RECEIVER_NOT_EXPORTED);
+    }
+
+    private void unregisterBackgroundPlayReceiver() {
+        if (backgroundPlayReceiver == null) {
+            return;
+        }
+        try {
+            unregisterReceiver(backgroundPlayReceiver);
+        } catch (Exception ignored) {
+        } finally {
+            backgroundPlayReceiver = null;
         }
     }
 
@@ -879,6 +1018,8 @@ public class BrowserActivity extends AppCompatActivity {
         suggestionsRecycler.setLayoutManager(new LinearLayoutManager(this));
         suggestionsRecycler.setAdapter(suggestionsAdapter);
 
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        final int[] suggestionRequest = {0};
         searchInput.setText("");
         searchInput.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
@@ -886,18 +1027,55 @@ public class BrowserActivity extends AppCompatActivity {
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
                 String query = s.toString().trim();
+                int requestId = ++suggestionRequest[0];
                 if (query.isEmpty()) {
                     suggestionsRecycler.setVisibility(View.GONE);
                     return;
                 }
-                suggestionProvider.fetchSuggestions(query, suggestions -> runOnUiThread(() -> {
-                    if (suggestions.isEmpty()) {
-                        suggestionsRecycler.setVisibility(View.GONE);
-                    } else {
-                        suggestionsAdapter.setSuggestions(suggestions);
-                        suggestionsRecycler.setVisibility(View.VISIBLE);
+                boolean privateMode = isCurrentTabPrivate();
+                boolean browserSuggestions = prefs.getBoolean(
+                        SettingsKeys.PREF_BROWSER_SUGGESTIONS_ENABLED, true);
+                boolean searchSuggestions = !privateMode && prefs.getBoolean(
+                        SettingsKeys.PREF_SEARCH_SUGGESTIONS_ENABLED, false);
+                if (!browserSuggestions && !searchSuggestions) {
+                    suggestionsRecycler.setVisibility(View.GONE);
+                    return;
+                }
+
+                class SuggestionRequest {
+                    void show(List<String> suggestions) {
+                        if (requestId != suggestionRequest[0]) {
+                            return;
+                        }
+                        if (suggestions == null || suggestions.isEmpty()) {
+                            suggestionsRecycler.setVisibility(View.GONE);
+                        } else {
+                            suggestionsAdapter.setSuggestions(suggestions);
+                            suggestionsRecycler.setVisibility(View.VISIBLE);
+                        }
                     }
-                }));
+
+                    void fetchSearch(List<String> browserResults) {
+                        String searchEngine = UrlUtils.getSearchEngineUrl(
+                                BrowserActivity.this, privateMode);
+                        suggestionProvider.fetchSuggestions(query, searchEngine,
+                                searchResults -> runOnUiThread(() -> show(
+                                        mergeSuggestions(browserResults, searchResults))));
+                    }
+                }
+
+                SuggestionRequest request = new SuggestionRequest();
+                if (browserSuggestions) {
+                    BrowserSuggestionProvider.fetchSuggestions(BrowserActivity.this, query,
+                            browserResults -> runOnUiThread(() -> {
+                                request.show(browserResults);
+                                if (searchSuggestions) {
+                                    request.fetchSearch(browserResults);
+                                }
+                            }));
+                } else if (searchSuggestions) {
+                    request.fetchSearch(Collections.emptyList());
+                }
             }
         });
 
@@ -988,6 +1166,25 @@ public class BrowserActivity extends AppCompatActivity {
             card.setVisibility(View.GONE);
         });
         card.setVisibility(View.VISIBLE);
+    }
+
+    private List<String> mergeSuggestions(List<String> primary, List<String> secondary) {
+        List<String> merged = new ArrayList<>();
+        addUniqueSuggestions(merged, primary);
+        addUniqueSuggestions(merged, secondary);
+        return merged.size() > 8 ? new ArrayList<>(merged.subList(0, 8)) : merged;
+    }
+
+    private void addUniqueSuggestions(List<String> target, List<String> source) {
+        if (source == null) {
+            return;
+        }
+        for (String suggestion : source) {
+            if (suggestion != null && !suggestion.trim().isEmpty()
+                    && !target.contains(suggestion)) {
+                target.add(suggestion);
+            }
+        }
     }
 
     private boolean hasCurrentWebPage() {
@@ -1118,8 +1315,10 @@ public class BrowserActivity extends AppCompatActivity {
         session.getSettings().setAllowJavascript(PreferenceManager
                 .getDefaultSharedPreferences(this)
                 .getBoolean("javascript_enabled", true));
+        applyMediaPlaybackPreference(session);
         configureSession(session);
         geckoView.setSession(session);
+        applyMediaPlaybackPreferenceToTabs();
         updateUIForTab(tab);
         updateQuickTabStrip();
         if (tab.isInitialLoadPending()) {
@@ -1156,6 +1355,7 @@ public class BrowserActivity extends AppCompatActivity {
         });
         targetSession.setPromptDelegate(new BrowserPromptDelegate(this));
         targetSession.setPermissionDelegate(new BrowserPermissionDelegate(this));
+        targetSession.setMediaSessionDelegate(mediaSessionDelegate);
         historyDelegate = new BrowserHistoryDelegate(this);
         targetSession.setHistoryDelegate(historyDelegate);
     }
@@ -1272,7 +1472,7 @@ public class BrowserActivity extends AppCompatActivity {
 
         Tab tab = tabManager.getCurrentTab();
         AnalyticsManager.logNavigationSubmitted(this, input, tab != null && tab.isPrivate());
-        loadUrl(UrlUtils.getUrlOrSearchUrl(this, input));
+        loadUrl(UrlUtils.getUrlOrSearchUrl(this, input, tab != null && tab.isPrivate()));
     }
 
     void loadUrl(String url) {
@@ -1314,8 +1514,283 @@ public class BrowserActivity extends AppCompatActivity {
 
     void updateUrlInputForUrl(String url) {
         if (urlInput != null) {
-            urlInput.setText(getToolbarDisplayUrl(url));
+            urlInput.setText(getStyledToolbarDisplayUrl(url));
         }
+    }
+
+    void syncUrlFromPageScript(GeckoSession sourceSession, String url) {
+        if (sourceSession == null || TextUtils.isEmpty(url) || !isYouTubeUrl(url)) {
+            return;
+        }
+        String sanitizedUrl = UrlUtils.sanitizeUrl(url);
+        runOnUiThread(() -> {
+            if (tabManager == null) {
+                return;
+            }
+            Tab tab = tabManager.findTabBySession(sourceSession);
+            if (tab == null) {
+                return;
+            }
+            tabManager.updateTabUrl(tab, sanitizedUrl);
+            if (tab == tabManager.getCurrentTab()) {
+                currentUrl = sanitizedUrl;
+                updateUrlInputForUrl(sanitizedUrl);
+                updateSmartShieldIndicator();
+                updateBookmarkStatus();
+            }
+        });
+    }
+
+    private boolean isBackgroundPlayEnabled() {
+        return PreferenceManager.getDefaultSharedPreferences(this)
+                .getBoolean(SettingsKeys.PREF_BACKGROUND_PLAY_ENABLED, false);
+    }
+
+    private void applyMediaPlaybackPreference(GeckoSession targetSession) {
+        applyMediaPlaybackPreference(targetSession, isBackgroundPlayEnabled());
+    }
+
+    private void applyMediaPlaybackPreference(GeckoSession targetSession,
+                                              boolean backgroundPlayEnabled) {
+        if (targetSession == null) {
+            return;
+        }
+        try {
+            targetSession.getSettings().setSuspendMediaWhenInactive(!backgroundPlayEnabled);
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    private void applyMediaPlaybackPreferenceToTabs() {
+        if (tabManager == null) {
+            return;
+        }
+        boolean backgroundPlayEnabled = isBackgroundPlayEnabled();
+        List<GeckoSession> openSessions = new ArrayList<>();
+        for (Tab tab : tabManager.getTabs()) {
+            if (tab != null && tab.getSession() != null) {
+                GeckoSession tabSession = tab.getSession();
+                openSessions.add(tabSession);
+                applyMediaPlaybackPreference(tabSession, backgroundPlayEnabled);
+                try {
+                    tabSession.setActive(shouldKeepSessionActive(tabSession,
+                            backgroundPlayEnabled));
+                } catch (RuntimeException ignored) {
+                }
+            }
+        }
+        playingMediaSessions.retainAll(openSessions);
+        geckoMediaSessions.keySet().retainAll(openSessions);
+        geckoMediaMetadata.keySet().retainAll(openSessions);
+        if (notificationMediaSession != null && !openSessions.contains(notificationMediaSession)) {
+            notificationMediaSession = null;
+        }
+        if (!backgroundPlayEnabled) {
+            stopBackgroundMediaService();
+        }
+    }
+
+    private boolean shouldKeepSessionActive(GeckoSession targetSession,
+                                            boolean backgroundPlayEnabled) {
+        if (targetSession == null) {
+            return false;
+        }
+        if (!backgroundPlayEnabled) {
+            return !browserStopped && targetSession == session;
+        }
+        return targetSession == session || playingMediaSessions.contains(targetSession);
+    }
+
+    private void handleMediaSessionPaused(@NonNull GeckoSession mediaSession,
+                                          @NonNull MediaSession geckoMediaSession) {
+        boolean shouldAutoResume = shouldAutoResumeBackgroundPause(mediaSession);
+        updateMediaSessionPlaybackState(mediaSession, geckoMediaSession, false);
+        if (shouldAutoResume) {
+            scheduleBackgroundMediaResume(mediaSession, geckoMediaSession);
+        }
+    }
+
+    private boolean shouldAutoResumeBackgroundPause(@NonNull GeckoSession mediaSession) {
+        return isBackgroundPlayEnabled()
+                && (browserPaused || browserStopped)
+                && !isFinishing()
+                && !isDestroyed()
+                && System.currentTimeMillis() > suppressBackgroundAutoResumeUntilMs
+                && playingMediaSessions.contains(mediaSession)
+                && backgroundResumeAttemptedSessions.add(mediaSession);
+    }
+
+    private void scheduleBackgroundMediaResume(@NonNull GeckoSession mediaSession,
+                                               @NonNull MediaSession geckoMediaSession) {
+        runOnUiThread(() -> mediaHandler.postDelayed(() ->
+                        resumeBackgroundMediaIfNeeded(mediaSession, geckoMediaSession),
+                BACKGROUND_MEDIA_RESUME_DELAY_MS));
+    }
+
+    private void resumeBackgroundMediaIfNeeded(@NonNull GeckoSession mediaSession,
+                                               @NonNull MediaSession geckoMediaSession) {
+        if (!isBackgroundPlayEnabled()
+                || !(browserPaused || browserStopped)
+                || isFinishing()
+                || isDestroyed()
+                || !geckoMediaSessions.containsKey(mediaSession)) {
+            return;
+        }
+        try {
+            applyMediaPlaybackPreference(mediaSession, true);
+            mediaSession.setActive(true);
+            geckoMediaSession.play();
+        } catch (RuntimeException e) {
+            Log.w("BrowserActivity", "Failed to resume background media", e);
+        }
+    }
+
+    private void updateMediaSessionPlaybackState(@NonNull GeckoSession mediaSession,
+                                                 @NonNull MediaSession geckoMediaSession,
+                                                 boolean playing) {
+        geckoMediaSessions.put(mediaSession, geckoMediaSession);
+        if (playing) {
+            playingMediaSessions.add(mediaSession);
+            notificationMediaSession = mediaSession;
+        } else {
+            playingMediaSessions.remove(mediaSession);
+            if (notificationMediaSession == null) {
+                notificationMediaSession = mediaSession;
+            }
+        }
+        runOnUiThread(() -> {
+            applyMediaPlaybackPreferenceToTabs();
+            if (notificationMediaSession == mediaSession) {
+                updateBackgroundMediaNotification(mediaSession, playing);
+            }
+        });
+    }
+
+    private void handleMediaSessionEnded(@NonNull GeckoSession mediaSession) {
+        playingMediaSessions.remove(mediaSession);
+        geckoMediaSessions.remove(mediaSession);
+        geckoMediaMetadata.remove(mediaSession);
+        runOnUiThread(() -> {
+            applyMediaPlaybackPreferenceToTabs();
+            if (mediaSession != notificationMediaSession) {
+                return;
+            }
+            notificationMediaSession = findPlayingMediaSession();
+            if (notificationMediaSession != null) {
+                updateBackgroundMediaNotification(notificationMediaSession, true);
+            } else {
+                stopBackgroundMediaService();
+            }
+        });
+    }
+
+    private GeckoSession findPlayingMediaSession() {
+        for (GeckoSession playingSession : playingMediaSessions) {
+            if (geckoMediaSessions.containsKey(playingSession)) {
+                return playingSession;
+            }
+        }
+        return null;
+    }
+
+    private void updateBackgroundMediaNotification(GeckoSession mediaSession,
+                                                   boolean playing) {
+        if (!isBackgroundPlayEnabled() || mediaSession == null) {
+            stopBackgroundMediaService();
+            return;
+        }
+        notificationMediaSession = mediaSession;
+        Intent intent = BackgroundMediaService.createUpdateIntent(
+                this,
+                resolveBackgroundMediaTitle(mediaSession),
+                resolveBackgroundMediaArtist(mediaSession),
+                playing);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ContextCompat.startForegroundService(this, intent);
+            } else {
+                startService(intent);
+            }
+        } catch (RuntimeException e) {
+            Log.w("BrowserActivity", "Failed to start background media service", e);
+        }
+    }
+
+    private void stopBackgroundMediaService() {
+        try {
+            stopService(new Intent(this, BackgroundMediaService.class));
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    private String resolveBackgroundMediaTitle(GeckoSession mediaSession) {
+        MediaSession.Metadata metadata = geckoMediaMetadata.get(mediaSession);
+        if (metadata != null && !TextUtils.isEmpty(metadata.title)) {
+            return metadata.title;
+        }
+        Tab tab = tabManager != null ? tabManager.findTabBySession(mediaSession) : null;
+        if (tab != null && !TextUtils.isEmpty(tab.getTitle())) {
+            return tab.getTitle();
+        }
+        if (!TextUtils.isEmpty(currentTitle)) {
+            return currentTitle;
+        }
+        return getString(R.string.app_name);
+    }
+
+    private String resolveBackgroundMediaArtist(GeckoSession mediaSession) {
+        MediaSession.Metadata metadata = geckoMediaMetadata.get(mediaSession);
+        if (metadata != null) {
+            if (!TextUtils.isEmpty(metadata.artist)) {
+                return metadata.artist;
+            }
+            if (!TextUtils.isEmpty(metadata.album)) {
+                return metadata.album;
+            }
+        }
+        Tab tab = tabManager != null ? tabManager.findTabBySession(mediaSession) : null;
+        String host = tab != null ? UrlUtils.getDisplayHost(tab.getUrl()) : null;
+        return !TextUtils.isEmpty(host) ? host : getString(R.string.app_name);
+    }
+
+    private void handleBackgroundMediaControl(String command) {
+        MediaSession mediaController = getBackgroundMediaController();
+        if (mediaController == null || TextUtils.isEmpty(command)) {
+            return;
+        }
+        if (BackgroundMediaService.COMMAND_PLAY.equals(command)) {
+            suppressBackgroundAutoResumeUntilMs = 0L;
+            backgroundResumeAttemptedSessions.clear();
+            mediaController.play();
+        } else if (BackgroundMediaService.COMMAND_PAUSE.equals(command)) {
+            suppressBackgroundAutoResumeUntilMs =
+                    System.currentTimeMillis() + USER_MEDIA_PAUSE_SUPPRESSION_MS;
+            mediaController.pause();
+        } else if (BackgroundMediaService.COMMAND_STOP.equals(command)) {
+            suppressBackgroundAutoResumeUntilMs =
+                    System.currentTimeMillis() + USER_MEDIA_PAUSE_SUPPRESSION_MS;
+            mediaController.stop();
+            stopBackgroundMediaService();
+        }
+    }
+
+    private MediaSession getBackgroundMediaController() {
+        if (notificationMediaSession != null) {
+            MediaSession mediaController = geckoMediaSessions.get(notificationMediaSession);
+            if (mediaController != null) {
+                return mediaController;
+            }
+        }
+        if (session != null) {
+            MediaSession mediaController = geckoMediaSessions.get(session);
+            if (mediaController != null) {
+                return mediaController;
+            }
+        }
+        for (MediaSession mediaController : geckoMediaSessions.values()) {
+            return mediaController;
+        }
+        return null;
     }
 
     void onPageSecurityChanged(GeckoSession.ProgressDelegate.SecurityInformation securityInfo) {
@@ -1426,8 +1901,115 @@ public class BrowserActivity extends AppCompatActivity {
                 || UrlUtils.isInternalPageUrl(url)) {
             return "";
         }
+        if (shouldShowDetailedToolbarUrl(url)) {
+            return stripSchemeForToolbar(url);
+        }
         String host = UrlUtils.getDisplayHost(url);
         return host != null ? host : url;
+    }
+
+    private CharSequence getStyledToolbarDisplayUrl(String url) {
+        String displayUrl = getToolbarDisplayUrl(url);
+        if (TextUtils.isEmpty(displayUrl) || !shouldShowDetailedToolbarUrl(url)) {
+            return displayUrl;
+        }
+        int fadeStart = getToolbarUrlDetailStart(displayUrl);
+        if (fadeStart <= 0 || fadeStart >= displayUrl.length()) {
+            return displayUrl;
+        }
+        SpannableString styledUrl = new SpannableString(displayUrl);
+        int fadedColor = fadedToolbarUrlColor();
+        styledUrl.setSpan(new ForegroundColorSpan(fadedColor),
+                fadeStart, displayUrl.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        return styledUrl;
+    }
+
+    private int getToolbarUrlDetailStart(String displayUrl) {
+        if (TextUtils.isEmpty(displayUrl)) {
+            return -1;
+        }
+        int slash = displayUrl.indexOf('/');
+        int query = displayUrl.indexOf('?');
+        int fragment = displayUrl.indexOf('#');
+        int start = -1;
+        if (slash >= 0) {
+            start = slash;
+        }
+        if (query >= 0 && (start < 0 || query < start)) {
+            start = query;
+        }
+        if (fragment >= 0 && (start < 0 || fragment < start)) {
+            start = fragment;
+        }
+        return start;
+    }
+
+    private int fadedToolbarUrlColor() {
+        int foreground = ContextCompat.getColor(this, R.color.browser_url_foreground);
+        return Color.argb(Math.round(Color.alpha(foreground) * 0.54f),
+                Color.red(foreground),
+                Color.green(foreground),
+                Color.blue(foreground));
+    }
+
+    private boolean shouldShowDetailedToolbarUrl(String url) {
+        if (!isYouTubeUrl(url)) {
+            return false;
+        }
+        try {
+            Uri uri = Uri.parse(url);
+            String path = uri.getPath();
+            String query = uri.getQuery();
+            return (path != null && !path.isEmpty() && !"/".equals(path))
+                    || (query != null && query.contains("v="));
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    private String stripSchemeForToolbar(String url) {
+        try {
+            Uri uri = Uri.parse(url);
+            String host = uri.getHost();
+            if (TextUtils.isEmpty(host)) {
+                return url;
+            }
+            StringBuilder builder = new StringBuilder(host);
+            String path = uri.getEncodedPath();
+            if (path != null) {
+                builder.append(path);
+            }
+            String query = uri.getEncodedQuery();
+            if (!TextUtils.isEmpty(query)) {
+                builder.append('?').append(query);
+            }
+            String fragment = uri.getEncodedFragment();
+            if (!TextUtils.isEmpty(fragment)) {
+                builder.append('#').append(fragment);
+            }
+            return builder.toString();
+        } catch (RuntimeException ignored) {
+            return url;
+        }
+    }
+
+    private boolean isYouTubeUrl(String url) {
+        if (url == null) {
+            return false;
+        }
+        try {
+            String host = Uri.parse(url).getHost();
+            if (host == null) {
+                return false;
+            }
+            host = host.toLowerCase(Locale.US);
+            return "youtube.com".equals(host)
+                    || host.endsWith(".youtube.com")
+                    || "youtu.be".equals(host)
+                    || host.endsWith(".youtu.be");
+        } catch (RuntimeException ignored) {
+            return false;
+        }
     }
 
     private String getEditableUrlText() {
@@ -3004,8 +3586,7 @@ public class BrowserActivity extends AppCompatActivity {
         // Refuse to copy from a private tab — the clipboard is readable by every
         // foreground app on API < 31 and the URL would defeat the user's reason
         // for using private mode in the first place.
-        Tab current = tabManager != null ? tabManager.getCurrentTab() : null;
-        if (current != null && current.isPrivate()) {
+        if (isCurrentTabPrivate()) {
             Toast.makeText(this, R.string.private_copy_blocked, Toast.LENGTH_SHORT).show();
             return;
         }
@@ -3025,10 +3606,26 @@ public class BrowserActivity extends AppCompatActivity {
     }
 
     private void shareText(String value) {
+        if (value == null || value.trim().isEmpty() || shouldBlockPrivateShare()) {
+            return;
+        }
         Intent intent = new Intent(Intent.ACTION_SEND);
         intent.setType("text/plain");
         intent.putExtra(Intent.EXTRA_TEXT, value);
         startActivity(Intent.createChooser(intent, getString(R.string.share_via)));
+    }
+
+    private boolean shouldBlockPrivateShare() {
+        if (!isCurrentTabPrivate()) {
+            return false;
+        }
+        Toast.makeText(this, R.string.private_share_blocked, Toast.LENGTH_SHORT).show();
+        return true;
+    }
+
+    private boolean isCurrentTabPrivate() {
+        Tab current = tabManager != null ? tabManager.getCurrentTab() : null;
+        return current != null && current.isPrivate();
     }
 
     void startDownload(String url, String filename, String mimeType) {
@@ -3087,6 +3684,7 @@ public class BrowserActivity extends AppCompatActivity {
 
     private Uri[] copyPickedUrisToCache(Uri[] pickedUris) {
         List<Uri> fileUris = new ArrayList<>();
+        boolean skippedTooLarge = false;
         File uploadDir = new File(getCacheDir(), "uploads");
         if (!uploadDir.exists() && !uploadDir.mkdirs()) {
             return new Uri[0];
@@ -3108,16 +3706,31 @@ public class BrowserActivity extends AppCompatActivity {
                 }
                 String name = "upload_" + System.currentTimeMillis();
                 File outFile = new File(uploadDir, name);
+                boolean tooLarge = false;
                 try (FileOutputStream output = new FileOutputStream(outFile)) {
                     byte[] buffer = new byte[8192];
                     int read;
+                    long copied = 0;
                     while ((read = input.read(buffer)) != -1) {
+                        if (copied + read > MAX_UPLOAD_CACHE_BYTES) {
+                            tooLarge = true;
+                            break;
+                        }
                         output.write(buffer, 0, read);
+                        copied += read;
                     }
                 }
-                fileUris.add(Uri.fromFile(outFile));
+                if (tooLarge) {
+                    skippedTooLarge = true;
+                    outFile.delete();
+                } else {
+                    fileUris.add(Uri.fromFile(outFile));
+                }
             } catch (Exception ignored) {
             }
+        }
+        if (skippedTooLarge) {
+            Toast.makeText(this, R.string.upload_file_too_large, Toast.LENGTH_SHORT).show();
         }
         return fileUris.toArray(new Uri[0]);
     }
@@ -3131,7 +3744,14 @@ public class BrowserActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        unregisterBackgroundPlayReceiver();
+        playingMediaSessions.clear();
+        geckoMediaSessions.clear();
+        geckoMediaMetadata.clear();
+        notificationMediaSession = null;
+        stopBackgroundMediaService();
         browserHandler.removeCallbacksAndMessages(null);
+        mediaHandler.removeCallbacksAndMessages(null);
         super.onDestroy();
     }
 
@@ -3146,13 +3766,7 @@ public class BrowserActivity extends AppCompatActivity {
         pendingPermissionCallback = null;
         // Empty grantResults indicates the request was cancelled (e.g. activity recreated
         // or user dismissed the system dialog). Treat as denial — never grant by default.
-        boolean granted = grantResults.length > 0;
-        for (int result : grantResults) {
-            if (result != PackageManager.PERMISSION_GRANTED) {
-                granted = false;
-                break;
-            }
-        }
+        boolean granted = isGeckoPermissionRequestGranted(permissions, grantResults);
         if (granted) {
             callback.grant();
         } else {
@@ -3160,8 +3774,41 @@ public class BrowserActivity extends AppCompatActivity {
         }
     }
 
+    private boolean isGeckoPermissionRequestGranted(@NonNull String[] permissions,
+                                                    @NonNull int[] grantResults) {
+        if (grantResults.length == 0) {
+            return false;
+        }
+        boolean requestedLocation = false;
+        boolean grantedLocation = false;
+        boolean grantedAllNonLocation = true;
+        for (int i = 0; i < permissions.length; i++) {
+            String permission = permissions[i];
+            int result = i < grantResults.length
+                    ? grantResults[i]
+                    : PackageManager.PERMISSION_DENIED;
+            if (isLocationPermission(permission)) {
+                requestedLocation = true;
+                if (result == PackageManager.PERMISSION_GRANTED) {
+                    grantedLocation = true;
+                }
+            } else if (result != PackageManager.PERMISSION_GRANTED) {
+                grantedAllNonLocation = false;
+            }
+        }
+        return grantedAllNonLocation && (!requestedLocation || grantedLocation);
+    }
+
+    private boolean isLocationPermission(String permission) {
+        return Manifest.permission.ACCESS_FINE_LOCATION.equals(permission)
+                || Manifest.permission.ACCESS_COARSE_LOCATION.equals(permission);
+    }
+
     private void shareCurrentPage() {
         if (currentUrl == null || currentUrl.trim().isEmpty()) {
+            return;
+        }
+        if (shouldBlockPrivateShare()) {
             return;
         }
         Intent intent = new Intent(Intent.ACTION_SEND);
@@ -3628,12 +4275,64 @@ public class BrowserActivity extends AppCompatActivity {
                     + "(document.head||document.documentElement).appendChild(s);}catch(e){}})();";
             runOnUiThread(() -> {
                 try {
-                    targetSession.loadUri("javascript:" + js);
+                    loadTrustedJavascript(targetSession, js);
                 } catch (Exception e) {
                     Log.e("BrowserActivity", "Failed to inject user style for " + host, e);
                 }
             });
         } catch (Exception ignored) {}
+    }
+
+    void injectPageUrlSyncIfNeeded(GeckoSession targetSession, String url) {
+        if (targetSession == null || !isYouTubeUrl(url)) {
+            return;
+        }
+        String js = "(function(){try{"
+                + "var PREFIX='__EASY_BROWSER_PAGE_URL__';"
+                + "if(window.__easyBrowserPageUrlSyncInstalled){"
+                + "if(window.__easyBrowserReportPageUrl)window.__easyBrowserReportPageUrl();return;}"
+                + "window.__easyBrowserPageUrlSyncInstalled=true;"
+                + "var last='';"
+                + "function report(){var h=location.href;if(!h||h===last)return;last=h;"
+                + "var old=document.title;document.title=PREFIX+h;"
+                + "setTimeout(function(){if(document.title===PREFIX+h)document.title=old;},80);}"
+                + "window.__easyBrowserReportPageUrl=report;"
+                + "['pushState','replaceState'].forEach(function(k){var o=history[k];"
+                + "if(!o)return;history[k]=function(){var r=o.apply(this,arguments);"
+                + "setTimeout(report,0);setTimeout(report,250);return r;};});"
+                + "window.addEventListener('popstate',function(){setTimeout(report,0);});"
+                + "document.addEventListener('yt-navigate-finish',report,true);"
+                + "document.addEventListener('yt-page-data-updated',report,true);"
+                + "setTimeout(report,0);setTimeout(report,500);setTimeout(report,1500);"
+                + "}catch(e){}})();";
+        runOnUiThread(() -> {
+            try {
+                loadTrustedJavascript(targetSession, js);
+            } catch (Exception e) {
+                Log.e("BrowserActivity", "Failed to inject page URL sync", e);
+            }
+        });
+    }
+
+    boolean isTrustedJavascriptUri(String uri) {
+        return uri != null && trustedJavascriptUris.contains(uri);
+    }
+
+    private void loadTrustedJavascript(GeckoSession targetSession, String js) {
+        if (targetSession == null || js == null || js.trim().isEmpty()) {
+            return;
+        }
+        String scriptUri = "javascript:" + js;
+        trustedJavascriptUris.add(scriptUri);
+        try {
+            targetSession.loadUri(scriptUri);
+        } catch (RuntimeException e) {
+            trustedJavascriptUris.remove(scriptUri);
+            throw e;
+        }
+        new Handler(Looper.getMainLooper()).postDelayed(
+                () -> trustedJavascriptUris.remove(scriptUri),
+                TRUSTED_JAVASCRIPT_URI_TTL_MS);
     }
 
 }

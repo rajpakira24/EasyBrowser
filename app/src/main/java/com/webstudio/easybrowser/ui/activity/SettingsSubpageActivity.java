@@ -2,6 +2,8 @@ package com.webstudio.easybrowser.ui.activity;
 
 import android.Manifest;
 import android.app.ActivityManager;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -52,6 +54,7 @@ import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.webstudio.easybrowser.BuildConfig;
 import com.webstudio.easybrowser.EasyBrowserApplication;
 import com.webstudio.easybrowser.R;
+import com.webstudio.easybrowser.managers.AppDownloadManager;
 import com.webstudio.easybrowser.managers.BuiltInAdBlockerManager;
 import com.webstudio.easybrowser.managers.PrivacyStatsManager;
 import com.webstudio.easybrowser.utils.ScreenshotProtection;
@@ -62,7 +65,11 @@ import com.webstudio.easybrowser.utils.AppSettings;
 import com.webstudio.easybrowser.utils.HomeBackgroundProvider;
 import com.webstudio.easybrowser.utils.SettingsKeys;
 import com.webstudio.easybrowser.utils.ThemeEngine;
+import com.webstudio.easybrowser.utils.UrlUtils;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 import org.mozilla.geckoview.GeckoRuntime;
 import org.mozilla.geckoview.GeckoRuntimeSettings;
 import org.mozilla.geckoview.ContentBlocking;
@@ -83,6 +90,7 @@ public class SettingsSubpageActivity extends AppCompatActivity {
 
     public static final String EXTRA_PAGE = "page";
     public static final String PAGE_SITE_SETTINGS = "site_settings";
+    public static final String PAGE_SEARCH_ENGINES = "search_engines";
     public static final String PAGE_TABS = "tabs";
     public static final String PAGE_MEDIA = "media";
     public static final String PAGE_APPEARANCE = "appearance";
@@ -102,6 +110,8 @@ public class SettingsSubpageActivity extends AppCompatActivity {
     public static final String PAGE_IP_INFRINGEMENT = "ip_infringement";
     public static final String PAGE_DATA_COMPLIANCE = "data_compliance";
     public static final String PAGE_PERFORMANCE = "performance";
+    public static final String PAGE_HELP_FEEDBACK = "help_feedback";
+    public static final String PAGE_ABOUT = "about";
 
     private SharedPreferences prefs;
     private LinearLayout content;
@@ -144,11 +154,15 @@ public class SettingsSubpageActivity extends AppCompatActivity {
         if (requestCode == REQUEST_PICK_WALLPAPER && resultCode == RESULT_OK
                 && data != null && data.getData() != null) {
             Uri uri = data.getData();
-            int flags = data.getFlags()
-                    & (Intent.FLAG_GRANT_READ_URI_PERMISSION
-                    | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
             try {
-                getContentResolver().takePersistableUriPermission(uri, flags);
+                if ((data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION) != 0) {
+                    getContentResolver().takePersistableUriPermission(
+                            uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                }
+                if ((data.getFlags() & Intent.FLAG_GRANT_WRITE_URI_PERMISSION) != 0) {
+                    getContentResolver().takePersistableUriPermission(
+                            uri, Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                }
             } catch (SecurityException ignored) {
             }
             openWallpaperCrop(uri);
@@ -228,6 +242,9 @@ public class SettingsSubpageActivity extends AppCompatActivity {
         toolbar.setTitle(getPageTitle(page));
         applySettingsThemeChrome();
         switch (page) {
+            case PAGE_SEARCH_ENGINES:
+                buildSearchEnginesPage();
+                break;
             case PAGE_TABS:
                 buildTabsPage();
                 break;
@@ -273,6 +290,12 @@ public class SettingsSubpageActivity extends AppCompatActivity {
             case PAGE_PERFORMANCE:
                 buildPerformancePage();
                 break;
+            case PAGE_HELP_FEEDBACK:
+                buildHelpFeedbackPage();
+                break;
+            case PAGE_ABOUT:
+                buildAboutPage();
+                break;
             case PAGE_TERMS_OF_USE:
                 buildTermsOfUsePage();
                 break;
@@ -294,6 +317,8 @@ public class SettingsSubpageActivity extends AppCompatActivity {
 
     private int getPageTitle(String pageId) {
         switch (pageId) {
+            case PAGE_SEARCH_ENGINES:
+                return R.string.search_engine_settings;
             case PAGE_TABS:
                 return R.string.tabs_and_groups;
             case PAGE_MEDIA:
@@ -324,6 +349,10 @@ public class SettingsSubpageActivity extends AppCompatActivity {
                 return R.string.shields;
             case PAGE_PERFORMANCE:
                 return R.string.performance_benchmark;
+            case PAGE_HELP_FEEDBACK:
+                return R.string.help_feedback;
+            case PAGE_ABOUT:
+                return R.string.about_easy_browser;
             case PAGE_TERMS_OF_USE:
                 return R.string.terms_of_use;
             case PAGE_PRIVACY_POLICY:
@@ -941,7 +970,168 @@ public class SettingsSubpageActivity extends AppCompatActivity {
         addSwitchRow(general, R.string.widevine_drm, R.string.widevine_drm_summary,
                 SettingsKeys.PREF_PROTECTED_MEDIA_ENABLED, true, null);
         addSwitchRow(general, R.string.background_play, R.string.background_play_summary,
-                SettingsKeys.PREF_BACKGROUND_PLAY_ENABLED, false, null);
+                SettingsKeys.PREF_BACKGROUND_PLAY_ENABLED, false,
+                this::broadcastBackgroundPlayChanged);
+    }
+
+    private void broadcastBackgroundPlayChanged() {
+        sendBroadcast(new Intent(SettingsKeys.ACTION_BACKGROUND_PLAY_CHANGED)
+                .setPackage(getPackageName()));
+    }
+
+    private void buildSearchEnginesPage() {
+        addSection(R.string.currently_used_search_engines);
+        LinearLayout engines = addCard();
+        addStaticRow(engines, getString(R.string.standard_tab_search_engine),
+                getSearchEngineName(UrlUtils.getSearchEngineUrl(this, false)),
+                () -> showSearchEngineDialog(false));
+        addStaticRow(engines, getString(R.string.private_tab_search_engine),
+                getSearchEngineName(UrlUtils.getSearchEngineUrl(this, true)),
+                () -> showSearchEngineDialog(true));
+
+        addSection(R.string.suggestions);
+        LinearLayout suggestions = addCard();
+        addSwitchRow(suggestions, R.string.browser_suggestions_enabled,
+                R.string.browser_suggestions_enabled_summary,
+                SettingsKeys.PREF_BROWSER_SUGGESTIONS_ENABLED, true, null);
+        addSwitchRow(suggestions, R.string.search_suggestions_enabled,
+                R.string.search_suggestions_enabled_summary,
+                SettingsKeys.PREF_SEARCH_SUGGESTIONS_ENABLED, false, null);
+    }
+
+    private void showSearchEngineDialog(boolean privateMode) {
+        String[] builtinNames = getResources().getStringArray(R.array.search_engine_names);
+        String[] builtinUrls = getResources().getStringArray(R.array.search_engine_values);
+        List<String> customNames = new ArrayList<>();
+        List<String> customUrls = new ArrayList<>();
+        loadCustomSearchEngines(customNames, customUrls);
+
+        int total = builtinNames.length + customNames.size();
+        String[] allNames = new String[total];
+        String[] allUrls = new String[total];
+        System.arraycopy(builtinNames, 0, allNames, 0, builtinNames.length);
+        System.arraycopy(builtinUrls, 0, allUrls, 0, builtinUrls.length);
+        for (int i = 0; i < customNames.size(); i++) {
+            allNames[builtinNames.length + i] = customNames.get(i);
+            allUrls[builtinNames.length + i] = customUrls.get(i);
+        }
+
+        String prefKey = privateMode
+                ? SettingsKeys.PREF_PRIVATE_SEARCH_ENGINE_URL
+                : SettingsKeys.PREF_SEARCH_ENGINE_URL;
+        String fallbackEngine = UrlUtils.getSearchEngineUrl(this, false);
+        String currentEngine = prefs.getString(prefKey, fallbackEngine);
+        int checkedItem = 0;
+        for (int i = 0; i < allUrls.length; i++) {
+            if (allUrls[i].equals(currentEngine)) {
+                checkedItem = i;
+                break;
+            }
+        }
+
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(privateMode
+                        ? R.string.private_tab_search_engine
+                        : R.string.standard_tab_search_engine)
+                .setSingleChoiceItems(allNames, checkedItem, (dialog, which) -> {
+                    prefs.edit().putString(prefKey, allUrls[which]).apply();
+                    buildPage();
+                    dialog.dismiss();
+                })
+                .setNeutralButton(R.string.add_custom_engine,
+                        (dialog, which) -> showAddCustomSearchEngineDialog())
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    private void showAddCustomSearchEngineDialog() {
+        EditText nameInput = new EditText(this);
+        nameInput.setHint(getString(R.string.custom_engine_name_hint));
+        EditText urlInput = new EditText(this);
+        urlInput.setHint("https://example.com/search?q=%s");
+
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        int pad = dp(16);
+        layout.setPadding(pad, pad, pad, 0);
+        layout.addView(nameInput);
+        layout.addView(urlInput);
+
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.add_custom_engine)
+                .setView(layout)
+                .setPositiveButton(R.string.save, (dialog, which) -> {
+                    String name = nameInput.getText().toString().trim();
+                    String url = urlInput.getText().toString().trim();
+                    if (name.isEmpty()) {
+                        Toast.makeText(this, R.string.custom_engine_name_required,
+                                Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    if (!url.contains("%s")
+                            || (!url.startsWith("http://") && !url.startsWith("https://"))) {
+                        Toast.makeText(this, R.string.custom_engine_url_invalid,
+                                Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    try {
+                        JSONArray engines = new JSONArray(prefs.getString(
+                                SettingsKeys.PREF_CUSTOM_SEARCH_ENGINES, "[]"));
+                        JSONObject engine = new JSONObject();
+                        engine.put("name", name);
+                        engine.put("url", url);
+                        engines.put(engine);
+                        prefs.edit().putString(SettingsKeys.PREF_CUSTOM_SEARCH_ENGINES,
+                                engines.toString()).apply();
+                        Toast.makeText(this, R.string.custom_engine_saved,
+                                Toast.LENGTH_SHORT).show();
+                        buildPage();
+                    } catch (JSONException ignored) {
+                    }
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    private void loadCustomSearchEngines(List<String> names, List<String> urls) {
+        try {
+            JSONArray engines = new JSONArray(prefs.getString(
+                    SettingsKeys.PREF_CUSTOM_SEARCH_ENGINES, "[]"));
+            for (int i = 0; i < engines.length(); i++) {
+                JSONObject engine = engines.getJSONObject(i);
+                String url = engine.optString("url", "");
+                if (!url.trim().isEmpty()) {
+                    names.add(engine.optString("name", "Custom"));
+                    urls.add(url);
+                }
+            }
+        } catch (JSONException ignored) {
+        }
+    }
+
+    private String getSearchEngineName(String url) {
+        if (url == null || url.trim().isEmpty()) {
+            return "DuckDuckGo";
+        }
+        String[] builtinNames = getResources().getStringArray(R.array.search_engine_names);
+        String[] builtinUrls = getResources().getStringArray(R.array.search_engine_values);
+        for (int i = 0; i < builtinUrls.length && i < builtinNames.length; i++) {
+            if (url.equals(builtinUrls[i])) {
+                return builtinNames[i];
+            }
+        }
+        try {
+            JSONArray engines = new JSONArray(prefs.getString(
+                    SettingsKeys.PREF_CUSTOM_SEARCH_ENGINES, "[]"));
+            for (int i = 0; i < engines.length(); i++) {
+                JSONObject engine = engines.getJSONObject(i);
+                if (url.equals(engine.optString("url"))) {
+                    return engine.optString("name", "Custom");
+                }
+            }
+        } catch (JSONException ignored) {
+        }
+        return "Custom";
     }
 
     private void buildAppearancePage() {
@@ -1658,6 +1848,139 @@ public class SettingsSubpageActivity extends AppCompatActivity {
                 getString(R.string.performance_compare_summary), null);
     }
 
+    private void buildHelpFeedbackPage() {
+        addParagraph(R.string.help_feedback_page_summary);
+
+        LinearLayout feedback = addCard();
+        addActionRow(feedback, getString(R.string.send_feedback),
+                getString(R.string.send_feedback_summary), this::sendFeedback);
+        addActionRow(feedback, getString(R.string.copy_support_details),
+                getString(R.string.copy_support_details_summary), this::copySupportDetails);
+
+        addSection(R.string.support);
+        LinearLayout support = addCard();
+        addActionRow(support, getString(R.string.app_permissions_request),
+                getAppPermissionsSummary(), this::requestMissingAppPermissions);
+        addActionRow(support, getString(R.string.android_notification_settings),
+                getString(R.string.android_notification_settings_summary),
+                this::openAppNotificationSettings);
+        addNavigationRow(support, R.string.site_settings, R.string.site_permissions_summary,
+                () -> openSubpage(PAGE_SITE_SETTINGS));
+
+        addSection(R.string.about_settings);
+        LinearLayout about = addCard();
+        addNavigationRow(about, R.string.about_easy_browser,
+                R.string.about_easy_browser_summary, () -> openSubpage(PAGE_ABOUT));
+    }
+
+    private void buildAboutPage() {
+        addParagraph(R.string.about_page_summary);
+
+        LinearLayout app = addCard();
+        addStaticRow(app, getString(R.string.app_name),
+                getString(R.string.about_browser_summary), null);
+        addStaticRow(app, getString(R.string.about_version),
+                getString(R.string.about_version_summary_format,
+                        BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE), null);
+        addStaticRow(app, getString(R.string.about_codename),
+                getString(R.string.release_codename), null);
+        addStaticRow(app, getString(R.string.about_build_type),
+                BuildConfig.DEBUG ? getString(R.string.about_build_debug)
+                        : getString(R.string.about_build_release), null);
+        addStaticRow(app, getString(R.string.about_package_name),
+                BuildConfig.APPLICATION_ID, null);
+
+        addSection(R.string.browser);
+        LinearLayout runtime = addCard();
+        addStaticRow(runtime, getString(R.string.about_browser_engine),
+                getString(R.string.about_browser_engine_summary), null);
+        addStaticRow(runtime, getString(R.string.about_android_version),
+                getAndroidVersionSummary(), null);
+        addStaticRow(runtime, getString(R.string.about_device),
+                getDeviceSummary(), null);
+
+        addSection(R.string.support);
+        LinearLayout support = addCard();
+        addNavigationRow(support, R.string.help_feedback,
+                R.string.help_feedback_summary, () -> openSubpage(PAGE_HELP_FEEDBACK));
+        addActionRow(support, getString(R.string.copy_support_details),
+                getString(R.string.copy_support_details_summary), this::copySupportDetails);
+
+        addSection(R.string.legal_settings);
+        LinearLayout legal = addCard();
+        addNavigationRow(legal, R.string.terms_of_use,
+                R.string.terms_of_use_summary, () -> openSubpage(PAGE_TERMS_OF_USE));
+        addNavigationRow(legal, R.string.privacy_policy,
+                R.string.privacy_policy_summary, () -> openSubpage(PAGE_PRIVACY_POLICY));
+        addNavigationRow(legal, R.string.ip_infringement,
+                R.string.ip_infringement_summary, () -> openSubpage(PAGE_IP_INFRINGEMENT));
+        addNavigationRow(legal, R.string.data_compliance,
+                R.string.data_compliance_summary, () -> openSubpage(PAGE_DATA_COMPLIANCE));
+    }
+
+    private void sendFeedback() {
+        Intent intent = new Intent(Intent.ACTION_SEND);
+        intent.setType("text/plain");
+        intent.putExtra(Intent.EXTRA_SUBJECT, getString(R.string.feedback_subject));
+        intent.putExtra(Intent.EXTRA_TEXT, getSupportDetails());
+        try {
+            startActivity(Intent.createChooser(intent, getString(R.string.help_feedback)));
+        } catch (RuntimeException e) {
+            copySupportDetails();
+            Toast.makeText(this, R.string.feedback_no_app, Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void copySupportDetails() {
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        if (clipboard == null) {
+            Toast.makeText(this, R.string.error_generic, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        clipboard.setPrimaryClip(ClipData.newPlainText(
+                getString(R.string.copy_support_details), getSupportDetails()));
+        Toast.makeText(this, R.string.support_details_copied, Toast.LENGTH_SHORT).show();
+    }
+
+    private String getSupportDetails() {
+        return getString(R.string.feedback_body)
+                + "\n\n"
+                + getString(R.string.about_version) + ": "
+                + getString(R.string.about_version_summary_format,
+                        BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE) + "\n"
+                + getString(R.string.about_codename) + ": "
+                + getString(R.string.release_codename) + "\n"
+                + getString(R.string.about_build_type) + ": "
+                + (BuildConfig.DEBUG ? getString(R.string.about_build_debug)
+                : getString(R.string.about_build_release)) + "\n"
+                + getString(R.string.about_package_name) + ": "
+                + BuildConfig.APPLICATION_ID + "\n"
+                + getString(R.string.about_android_version) + ": "
+                + getAndroidVersionSummary() + "\n"
+                + getString(R.string.about_device) + ": "
+                + getDeviceSummary();
+    }
+
+    private String getAndroidVersionSummary() {
+        return "Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")";
+    }
+
+    private String getDeviceSummary() {
+        String manufacturer = cleanDeviceLabel(Build.MANUFACTURER);
+        String model = cleanDeviceLabel(Build.MODEL);
+        if (model.toLowerCase(Locale.ROOT).startsWith(manufacturer.toLowerCase(Locale.ROOT))) {
+            return model;
+        }
+        return manufacturer + " " + model;
+    }
+
+    private String cleanDeviceLabel(String value) {
+        if (TextUtils.isEmpty(value)) {
+            return getString(R.string.performance_unavailable);
+        }
+        return value.trim();
+    }
+
     private String getProcessMemorySummary() {
         ActivityManager activityManager = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
         if (activityManager == null) {
@@ -1819,6 +2142,23 @@ public class SettingsSubpageActivity extends AppCompatActivity {
         addStaticRow(card, getString(titleRes), summary, null);
     }
 
+    private void addActionRow(LinearLayout card, String title, String summary, Runnable action) {
+        LinearLayout row = createHorizontalRow();
+        LinearLayout texts = createTextColumn();
+        texts.addView(createTitle(title));
+        if (summary != null && !summary.trim().isEmpty()) {
+            TextView summaryView = createSummary(summary);
+            addTopMargin(summaryView, dp(4));
+            texts.addView(summaryView);
+        }
+        row.addView(texts);
+        if (action != null) {
+            row.setOnClickListener(v -> action.run());
+            attachPressMicroInteraction(row);
+        }
+        addRow(card, row);
+    }
+
     private void addStaticRow(LinearLayout card, String title, String summary, Runnable action) {
         LinearLayout row = createHorizontalRow();
         LinearLayout texts = createTextColumn();
@@ -1966,7 +2306,8 @@ public class SettingsSubpageActivity extends AppCompatActivity {
                 .setTitle(R.string.downloads_folder)
                 .setView(editText)
                 .setPositiveButton(R.string.save, (dialog, which) -> {
-                    String folder = editText.getText().toString().trim();
+                    String folder = AppDownloadManager.sanitizeCustomDownloadsFolder(
+                            editText.getText().toString());
                     prefs.edit()
                             .putString(SettingsKeys.PREF_DOWNLOADS_FOLDER_CUSTOM, folder)
                             .apply();

@@ -58,6 +58,8 @@ public class WeatherRepository {
     private static final String KEY_CACHE_JSON = "weather_cache_json_met_no_v1";
     private static final String MET_LOCATIONFORECAST_URL =
             "https://api.met.no/weatherapi/locationforecast/2.0/complete";
+    private static final String OPEN_METEO_FORECAST_URL =
+            "https://api.open-meteo.com/v1/forecast";
     private static final String OPEN_METEO_AIR_QUALITY_URL =
             "https://air-quality-api.open-meteo.com/v1/air-quality";
     private static final String KEY_LAST_DEVICE_LOCATION_NAME =
@@ -115,7 +117,7 @@ public class WeatherRepository {
                         }
                         String body = closeable.body().string();
                         WeatherSnapshot snapshot = parseForecast(body, location);
-                        loadAirQuality(location, snapshot, callback);
+                        loadCurrentForecast(location, snapshot, callback);
                     } catch (Exception e) {
                         callback.onWeatherError(e, cached);
                     }
@@ -162,7 +164,7 @@ public class WeatherRepository {
     }
 
     public boolean isUsingCurrentLocation() {
-        return prefs.getBoolean(SettingsKeys.PREF_WEATHER_USE_CURRENT_LOCATION, true);
+        return prefs.getBoolean(SettingsKeys.PREF_WEATHER_USE_CURRENT_LOCATION, false);
     }
 
     public boolean shouldRequestCurrentLocationPermission() {
@@ -321,6 +323,26 @@ public class WeatherRepository {
                 .toString();
     }
 
+    private String buildCurrentForecastUrl(WeatherLocation location) {
+        return Uri.parse(OPEN_METEO_FORECAST_URL).buildUpon()
+                .appendQueryParameter("latitude", location.latitudeString)
+                .appendQueryParameter("longitude", location.longitudeString)
+                .appendQueryParameter("current", "temperature_2m,relative_humidity_2m,"
+                        + "apparent_temperature,precipitation,rain,showers,snowfall,"
+                        + "weather_code,cloud_cover,wind_speed_10m")
+                .appendQueryParameter("hourly", "temperature_2m,weather_code,"
+                        + "precipitation_probability,precipitation,rain,showers,snowfall,"
+                        + "cloud_cover")
+                .appendQueryParameter("daily", "weather_code,temperature_2m_max,"
+                        + "temperature_2m_min,precipitation_probability_max")
+                .appendQueryParameter("timezone", "auto")
+                .appendQueryParameter("forecast_days", "7")
+                .appendQueryParameter("forecast_hours", "12")
+                .appendQueryParameter("wind_speed_unit", "kmh")
+                .build()
+                .toString();
+    }
+
     private String weatherUserAgent() {
         return "EasyBrowser/" + BuildConfig.VERSION_NAME + " ("
                 + BuildConfig.APPLICATION_ID + "; Android weather client)";
@@ -334,6 +356,33 @@ public class WeatherRepository {
                 .appendQueryParameter("timezone", "auto")
                 .build()
                 .toString();
+    }
+
+    private void loadCurrentForecast(WeatherLocation location, WeatherSnapshot snapshot,
+                                     WeatherCallback callback) {
+        Request request = new Request.Builder()
+                .url(buildCurrentForecastUrl(location))
+                .header("Accept", "application/json")
+                .get()
+                .build();
+        CLIENT.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                loadAirQuality(location, snapshot, callback);
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) {
+                WeatherSnapshot result = snapshot;
+                try (Response closeable = response) {
+                    if (closeable.isSuccessful() && closeable.body() != null) {
+                        result = applyCurrentForecast(snapshot, closeable.body().string());
+                    }
+                } catch (Exception ignored) {
+                }
+                loadAirQuality(location, result, callback);
+            }
+        });
     }
 
     private void loadAirQuality(WeatherLocation location, WeatherSnapshot snapshot,
@@ -485,6 +534,198 @@ public class WeatherRepository {
         return hours;
     }
 
+    private WeatherSnapshot applyCurrentForecast(WeatherSnapshot snapshot, String raw)
+            throws Exception {
+        JSONObject root = new JSONObject(raw);
+        String units = getUnits();
+        List<WeatherSnapshot.ForecastDay> days =
+                parseOpenMeteoDaily(root, snapshot.getForecastDays(), units);
+        List<WeatherSnapshot.HourlyCondition> hours =
+                parseOpenMeteoHourly(root, snapshot.getHourlyConditions(), units);
+
+        JSONObject current = root.optJSONObject("current");
+        if (current == null) {
+            return new WeatherSnapshot(
+                    snapshot.getLocationName(),
+                    snapshot.getLatitude(),
+                    snapshot.getLongitude(),
+                    snapshot.getTemperature(),
+                    snapshot.getFeelsLike(),
+                    snapshot.getHumidity(),
+                    snapshot.getWindSpeed(),
+                    snapshot.getWeatherCode(),
+                    snapshot.getCondition(),
+                    snapshot.getSunrise(),
+                    snapshot.getSunset(),
+                    System.currentTimeMillis(),
+                    days,
+                    hours,
+                    snapshot.getAirQualityIndex(),
+                    snapshot.getAirQualityDescription());
+        }
+
+        int providerCode = current.has("weather_code")
+                ? current.optInt("weather_code", snapshot.getWeatherCode())
+                : snapshot.getWeatherCode();
+        int currentCode = currentSkyCode(current, providerCode, days);
+        double temperature = hasNumber(current, "temperature_2m")
+                ? displayTemperature(current.optDouble("temperature_2m"), units)
+                : snapshot.getTemperature();
+        double feelsLike = hasNumber(current, "apparent_temperature")
+                ? displayTemperature(current.optDouble("apparent_temperature"), units)
+                : snapshot.getFeelsLike();
+        int humidity = hasNumber(current, "relative_humidity_2m")
+                ? clampPercent(current.optDouble("relative_humidity_2m"))
+                : snapshot.getHumidity();
+        double windSpeed = hasNumber(current, "wind_speed_10m")
+                ? displayOpenMeteoWindSpeed(current.optDouble("wind_speed_10m"), units)
+                : snapshot.getWindSpeed();
+
+        days = withCurrentConditionForToday(days, currentCode, measuredPrecipitation(current));
+        hours = withCurrentHour(hours, currentCode, conditionForCode(currentCode), temperature);
+
+        return new WeatherSnapshot(
+                snapshot.getLocationName(),
+                snapshot.getLatitude(),
+                snapshot.getLongitude(),
+                temperature,
+                feelsLike,
+                humidity,
+                windSpeed,
+                currentCode,
+                conditionForCode(currentCode),
+                snapshot.getSunrise(),
+                snapshot.getSunset(),
+                System.currentTimeMillis(),
+                days,
+                hours,
+                snapshot.getAirQualityIndex(),
+                snapshot.getAirQualityDescription());
+    }
+
+    private List<WeatherSnapshot.ForecastDay> parseOpenMeteoDaily(
+            JSONObject root, List<WeatherSnapshot.ForecastDay> fallback, String units) {
+        JSONObject daily = root.optJSONObject("daily");
+        JSONArray dates = daily == null ? null : daily.optJSONArray("time");
+        if (dates == null || dates.length() == 0) {
+            return fallback;
+        }
+        JSONArray codes = daily.optJSONArray("weather_code");
+        JSONArray maxTemps = daily.optJSONArray("temperature_2m_max");
+        JSONArray minTemps = daily.optJSONArray("temperature_2m_min");
+        JSONArray probabilities = daily.optJSONArray("precipitation_probability_max");
+        List<WeatherSnapshot.ForecastDay> days = new ArrayList<>();
+        for (int i = 0; i < dates.length() && days.size() < 7; i++) {
+            WeatherSnapshot.ForecastDay fallbackDay =
+                    fallback != null && i < fallback.size() ? fallback.get(i) : null;
+            String date = dates.optString(i, fallbackDay == null ? "" : fallbackDay.getDate());
+            int code = optInt(codes, i, fallbackDay == null ? 0 : fallbackDay.getWeatherCode());
+            double maxTemp = fallbackDay == null ? 0 : fallbackDay.getMaxTemperature();
+            if (hasArrayNumber(maxTemps, i)) {
+                maxTemp = displayTemperature(maxTemps.optDouble(i), units);
+            }
+            double minTemp = fallbackDay == null ? maxTemp : fallbackDay.getMinTemperature();
+            if (hasArrayNumber(minTemps, i)) {
+                minTemp = displayTemperature(minTemps.optDouble(i), units);
+            }
+            int probability = clampPercent(optDouble(probabilities, i,
+                    fallbackDay == null ? 0 : fallbackDay.getPrecipitationProbability()));
+            days.add(new WeatherSnapshot.ForecastDay(
+                    date,
+                    code,
+                    conditionForCode(code),
+                    minTemp,
+                    maxTemp,
+                    probability));
+        }
+        return days.isEmpty() ? fallback : days;
+    }
+
+    private List<WeatherSnapshot.HourlyCondition> parseOpenMeteoHourly(
+            JSONObject root, List<WeatherSnapshot.HourlyCondition> fallback, String units) {
+        JSONObject hourly = root.optJSONObject("hourly");
+        JSONArray times = hourly == null ? null : hourly.optJSONArray("time");
+        if (times == null || times.length() == 0) {
+            return fallback;
+        }
+        JSONArray codes = hourly.optJSONArray("weather_code");
+        JSONArray temperatures = hourly.optJSONArray("temperature_2m");
+        JSONArray precipitation = hourly.optJSONArray("precipitation");
+        JSONArray rain = hourly.optJSONArray("rain");
+        JSONArray showers = hourly.optJSONArray("showers");
+        JSONArray snowfall = hourly.optJSONArray("snowfall");
+
+        List<WeatherSnapshot.HourlyCondition> hours = new ArrayList<>();
+        for (int i = 0; i < times.length() && hours.size() < 12; i++) {
+            WeatherSnapshot.HourlyCondition fallbackHour =
+                    fallback != null && i < fallback.size() ? fallback.get(i) : null;
+            int providerCode = optInt(codes, i,
+                    fallbackHour == null ? 0 : fallbackHour.getWeatherCode());
+            int code = weatherCodeForMeasuredPrecipitation(
+                    optDouble(precipitation, i, Double.NaN),
+                    optDouble(rain, i, Double.NaN),
+                    optDouble(showers, i, Double.NaN),
+                    optDouble(snowfall, i, Double.NaN),
+                    providerCode);
+            double temperature = fallbackHour == null ? 0 : fallbackHour.getTemperature();
+            if (hasArrayNumber(temperatures, i)) {
+                temperature = displayTemperature(temperatures.optDouble(i), units);
+            }
+            String label = hours.isEmpty()
+                    ? "Now"
+                    : localHourLabel(parseOpenMeteoTime(times.optString(i, "")));
+            hours.add(new WeatherSnapshot.HourlyCondition(
+                    label,
+                    code,
+                    conditionForCode(code),
+                    temperature));
+        }
+        return hours.isEmpty() ? fallback : hours;
+    }
+
+    private List<WeatherSnapshot.ForecastDay> withCurrentConditionForToday(
+            List<WeatherSnapshot.ForecastDay> days, int currentCode,
+            double currentPrecipitation) {
+        if (days == null || days.isEmpty()) {
+            return days;
+        }
+        List<WeatherSnapshot.ForecastDay> updated = new ArrayList<>(days);
+        WeatherSnapshot.ForecastDay today = updated.get(0);
+        int code = today.getWeatherCode();
+        if (isWetCode(currentCode) && !isWetCode(code)) {
+            code = currentCode;
+        } else if (severityForCode(currentCode) > severityForCode(code)) {
+            code = currentCode;
+        }
+        int probability = today.getPrecipitationProbability();
+        if (currentPrecipitation > 0.01d || isWetCode(currentCode)) {
+            probability = Math.max(probability, 70);
+        }
+        updated.set(0, new WeatherSnapshot.ForecastDay(
+                today.getDate(),
+                code,
+                conditionForCode(code),
+                today.getMinTemperature(),
+                today.getMaxTemperature(),
+                probability));
+        return updated;
+    }
+
+    private List<WeatherSnapshot.HourlyCondition> withCurrentHour(
+            List<WeatherSnapshot.HourlyCondition> hours, int code, String condition,
+            double temperature) {
+        List<WeatherSnapshot.HourlyCondition> updated =
+                hours == null ? new ArrayList<>() : new ArrayList<>(hours);
+        WeatherSnapshot.HourlyCondition current =
+                new WeatherSnapshot.HourlyCondition("Now", code, condition, temperature);
+        if (updated.isEmpty()) {
+            updated.add(current);
+        } else {
+            updated.set(0, current);
+        }
+        return updated;
+    }
+
     private WeatherSnapshot applyAirQuality(WeatherSnapshot snapshot, String raw)
             throws Exception {
         JSONObject root = new JSONObject(raw);
@@ -624,6 +865,13 @@ public class WeatherRepository {
         return metersPerSecond * 3.6d;
     }
 
+    private static double displayOpenMeteoWindSpeed(double kilometersPerHour, String units) {
+        if (UNITS_FAHRENHEIT.equals(units)) {
+            return kilometersPerHour * 0.6213711922d;
+        }
+        return kilometersPerHour;
+    }
+
     private static int weatherCodeForSymbol(String symbol) {
         String value = symbol == null ? "" : symbol.toLowerCase(Locale.US);
         if (value.contains("thunder")) {
@@ -696,6 +944,28 @@ public class WeatherRepository {
             return 1;
         }
         return 0;
+    }
+
+    private static Date parseOpenMeteoTime(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return new Date();
+        }
+        String[] patterns = {
+                "yyyy-MM-dd'T'HH:mm",
+                "yyyy-MM-dd'T'HH:mm:ss"
+        };
+        for (String pattern : patterns) {
+            try {
+                SimpleDateFormat formatter = new SimpleDateFormat(pattern, Locale.US);
+                formatter.setTimeZone(TimeZone.getDefault());
+                Date parsed = formatter.parse(value);
+                if (parsed != null) {
+                    return parsed;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return new Date();
     }
 
     private static String airQualityDescription(int aqi) {
@@ -1070,6 +1340,21 @@ public class WeatherRepository {
         return array != null && array.length() > 0 ? array.optString(0, "") : "";
     }
 
+    private static boolean hasNumber(JSONObject object, String key) {
+        return object != null
+                && object.has(key)
+                && !object.isNull(key)
+                && !Double.isNaN(object.optDouble(key, Double.NaN));
+    }
+
+    private static boolean hasArrayNumber(JSONArray array, int index) {
+        return array != null
+                && index >= 0
+                && index < array.length()
+                && !array.isNull(index)
+                && !Double.isNaN(array.optDouble(index, Double.NaN));
+    }
+
     private static int optInt(JSONArray array, int index, int fallback) {
         return array != null && index < array.length() ? array.optInt(index, fallback) : fallback;
     }
@@ -1094,12 +1379,18 @@ public class WeatherRepository {
         if (current == null) {
             return providerCode;
         }
-        double measuredPrecipitation = positiveOrZero(current.optDouble("precipitation",
-                Double.NaN))
-                + positiveOrZero(current.optDouble("rain", Double.NaN))
-                + positiveOrZero(current.optDouble("showers", Double.NaN))
-                + positiveOrZero(current.optDouble("snowfall", Double.NaN));
-        if (measuredPrecipitation > 0.01d || isFogCode(providerCode)) {
+        if (measuredPrecipitation(current) > 0.01d) {
+            return weatherCodeForMeasuredPrecipitation(
+                    current.optDouble("precipitation", Double.NaN),
+                    current.optDouble("rain", Double.NaN),
+                    current.optDouble("showers", Double.NaN),
+                    current.optDouble("snowfall", Double.NaN),
+                    providerCode);
+        }
+        if (isFogCode(providerCode)) {
+            return providerCode;
+        }
+        if (isWetCode(providerCode)) {
             return providerCode;
         }
         if (providerCode == 0) {
@@ -1109,14 +1400,35 @@ public class WeatherRepository {
             }
             return hasCloudyRainContext(current, days) ? 2 : providerCode;
         }
-        if (isWetCode(providerCode)) {
-            int cloudCode = cloudCoverCode(current.optDouble("cloud_cover", Double.NaN));
-            if (cloudCode > 0) {
-                return cloudCode;
-            }
-            return hasCloudyRainContext(current, days) ? 2 : providerCode;
+        return providerCode;
+    }
+
+    private static int weatherCodeForMeasuredPrecipitation(double precipitation, double rain,
+                                                           double showers, double snowfall,
+                                                           int providerCode) {
+        double snowAmount = positiveOrZero(snowfall);
+        double rainAmount = Math.max(positiveOrZero(precipitation),
+                positiveOrZero(rain) + positiveOrZero(showers));
+        if (snowAmount > 0.01d) {
+            return isWetCode(providerCode) ? providerCode : 71;
+        }
+        if (rainAmount > 0.01d) {
+            return isWetCode(providerCode) ? providerCode : rainCodeForAmount(rainAmount);
         }
         return providerCode;
+    }
+
+    private static int rainCodeForAmount(double millimetersPerHour) {
+        if (millimetersPerHour >= 7.6d) {
+            return 65;
+        }
+        if (millimetersPerHour >= 2.5d) {
+            return 63;
+        }
+        if (millimetersPerHour >= 0.5d) {
+            return 61;
+        }
+        return 51;
     }
 
     private static int cloudCoverCode(double cloudCover) {
@@ -1149,6 +1461,17 @@ public class WeatherRepository {
         return value;
     }
 
+    private static double measuredPrecipitation(JSONObject current) {
+        if (current == null) {
+            return 0d;
+        }
+        double combined = positiveOrZero(current.optDouble("rain", Double.NaN))
+                + positiveOrZero(current.optDouble("showers", Double.NaN))
+                + positiveOrZero(current.optDouble("snowfall", Double.NaN));
+        return Math.max(positiveOrZero(current.optDouble("precipitation", Double.NaN)),
+                combined);
+    }
+
     private static boolean isFogCode(int code) {
         return code == 45 || code == 48;
     }
@@ -1173,7 +1496,13 @@ public class WeatherRepository {
         if (code == 45 || code == 48) {
             return "Fog";
         }
-        if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) {
+        if (code == 65 || code == 82) {
+            return "Heavy rain";
+        }
+        if (code == 51 || code == 53 || code == 80) {
+            return "Light rain";
+        }
+        if ((code >= 55 && code <= 67) || code == 61 || code == 63 || code == 81) {
             return "Rain";
         }
         if ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) {

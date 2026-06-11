@@ -5,7 +5,6 @@ import android.content.SharedPreferences;
 import android.util.Log;
 import androidx.preference.PreferenceManager;
 
-import com.webstudio.easybrowser.BuildConfig;
 import com.webstudio.easybrowser.utils.SettingsKeys;
 import com.webstudio.easybrowser.utils.UrlUtils;
 
@@ -16,6 +15,7 @@ import org.mozilla.geckoview.ContentBlocking;
 import java.util.Locale;
 
 public class RuntimeManager {
+    private static final String PREF_GECKO_DEBUG_LOGGING = "gecko_debug_logging_enabled";
     private static volatile GeckoRuntime runtime;
 
     public static GeckoRuntime getExistingRuntime() {
@@ -43,7 +43,7 @@ public class RuntimeManager {
                             .preferredColorScheme(getPreferredColorScheme(prefs))
                             .trustedRecursiveResolverMode(getDohMode(prefs))
                             .trustedRecursiveResolverUri(getDohUri(prefs))
-                            .debugLogging(BuildConfig.DEBUG);
+                            .debugLogging(prefs.getBoolean(PREF_GECKO_DEBUG_LOGGING, false));
                     applyLocalNetworkBlocking(runtimeSettings, shouldBlockLocalNetwork(prefs));
 
                     try {

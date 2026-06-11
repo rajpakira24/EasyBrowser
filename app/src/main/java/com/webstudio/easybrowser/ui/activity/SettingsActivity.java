@@ -1,6 +1,7 @@
 package com.webstudio.easybrowser.ui.activity;
 
 import android.app.Dialog;
+import android.app.role.RoleManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
@@ -12,16 +13,25 @@ import android.os.Build;
 import android.os.Bundle;
 import androidx.preference.PreferenceManager;
 import android.provider.Settings;
+import android.text.Editable;
+import android.text.InputType;
+import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.EditorInfo;
+import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
@@ -32,13 +42,13 @@ import androidx.core.widget.NestedScrollView;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.switchmaterial.SwitchMaterial;
-import com.google.android.material.textfield.TextInputEditText;
-import com.google.android.material.textfield.TextInputLayout;
 import com.webstudio.easybrowser.BuildConfig;
 import com.webstudio.easybrowser.R;
+import com.webstudio.easybrowser.database.AppDatabase;
 import com.webstudio.easybrowser.managers.AnalyticsManager;
 import com.webstudio.easybrowser.managers.BuiltInAdBlockerManager;
 import com.webstudio.easybrowser.managers.RuntimeManager;
+import com.webstudio.easybrowser.managers.TabThumbnailCache;
 import com.webstudio.easybrowser.repository.BookmarkRepository;
 import com.webstudio.easybrowser.repository.HistoryRepository;
 import com.webstudio.easybrowser.utils.ScreenshotProtection;
@@ -56,9 +66,16 @@ import org.mozilla.geckoview.StorageController;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class SettingsActivity extends AppCompatActivity {
     public static final String EXTRA_OPEN_CLEAR_DATA = "open_clear_data";
+
+    private static final String TAG_SETTINGS_SEARCH_BAR = "settings_search_bar";
+    private static final String TAG_SETTINGS_NO_RESULTS = "settings_no_results";
+    private static final String TAG_DEFAULT_BROWSER_CARD = "default_browser_card";
+    private static final String TAG_ADVANCED_SETTINGS_ROW = "advanced_settings_row";
+    private static final String TAG_PERFORMANCE_BENCHMARK_ROW = "performance_benchmark_row";
 
     private static final int[] ADVANCED_ROW_IDS = new int[]{
             R.id.setting_auto_clear_on_exit,
@@ -69,9 +86,29 @@ public class SettingsActivity extends AppCompatActivity {
             R.id.setting_remote_debugging
     };
 
+    private static final int[] DUPLICATE_ROW_IDS = new int[]{
+            R.id.setting_cookie_banners,
+            R.id.setting_strip_tracking_params,
+            R.id.setting_https_only,
+            R.id.setting_do_not_track,
+            R.id.setting_cookie_manager,
+            R.id.setting_site_permissions,
+            R.id.setting_prevent_screenshots,
+            R.id.setting_home_privacy_stats,
+            R.id.setting_home_quick_access,
+            R.id.setting_private_search_engine,
+            R.id.setting_browser_suggestions,
+            R.id.setting_search_suggestions,
+            R.id.setting_text_size,
+            R.id.setting_download_wifi_only,
+            R.id.setting_download_bandwidth_limit,
+            R.id.setting_javascript,
+            R.id.setting_block_popups
+    };
+
     private SharedPreferences prefs;
     private TextView searchEngineValue;
-    private TextView homepageValue;
+    private TextView privateSearchEngineValue;
     private TextView textSizeValue;
     private TextView adBlockingValue;
     private TextView downloadBandwidthLimitValue;
@@ -87,11 +124,17 @@ public class SettingsActivity extends AppCompatActivity {
     private SwitchMaterial switchPreventScreenshots;
     private SwitchMaterial switchHomePrivacyStats;
     private SwitchMaterial switchHomeQuickAccess;
+    private SwitchMaterial switchBrowserSuggestions;
+    private SwitchMaterial switchSearchSuggestions;
     private SwitchMaterial switchDownloadWifiOnly;
     private Toolbar toolbar;
+    private EditText settingsSearchInput;
+    private TextView settingsNoResultsView;
+    private View defaultBrowserCard;
+    private ActivityResultLauncher<Intent> defaultBrowserLauncher;
 
     private LinearLayout settingSearchEngine;
-    private LinearLayout settingHomepage;
+    private LinearLayout settingPrivateSearchEngine;
     private LinearLayout settingTextSize;
     private LinearLayout settingAdBlocking;
     private LinearLayout settingClearData;
@@ -123,6 +166,7 @@ public class SettingsActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        setupDefaultBrowserLauncher();
         setContentView(R.layout.activity_settings);
 
         setupToolbar();
@@ -145,7 +189,15 @@ public class SettingsActivity extends AppCompatActivity {
         if (prefs != null) {
             loadSettings();
             applyAdvancedVisibility();
+            updateDefaultBrowserCardVisibility();
+            applySettingsSearchFilter();
         }
+    }
+
+    private void setupDefaultBrowserLauncher() {
+        defaultBrowserLauncher = registerForActivityResult(
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> updateDefaultBrowserCardVisibility());
     }
 
     private void setupToolbar() {
@@ -220,6 +272,8 @@ public class SettingsActivity extends AppCompatActivity {
                 switchPreventScreenshots,
                 switchHomePrivacyStats,
                 switchHomeQuickAccess,
+                switchBrowserSuggestions,
+                switchSearchSuggestions,
                 switchDownloadWifiOnly,
                 switchAutoClearOnExit,
                 switchAutoClearCookies,
@@ -235,34 +289,187 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     private void setupVisualHierarchy() {
-        insertSettingsModeCard();
+        insertSettingsSearchBar();
+        insertDefaultBrowserCard();
         insertPerformanceBenchmarkRow();
+        insertAdvancedSettingsRow();
         styleSettingsCards(findViewById(android.R.id.content));
         applySectionHeadingIcons();
         applyTopLevelRowIcons();
         applyRowMicroInteractions(findViewById(android.R.id.content));
+        updateDefaultBrowserCardVisibility();
         applyAdvancedVisibility();
+        applySettingsSearchFilter();
     }
 
-    private void insertSettingsModeCard() {
+    private void insertSettingsSearchBar() {
         NestedScrollView scrollView = findNestedScrollView(findViewById(android.R.id.content));
         if (scrollView == null || scrollView.getChildCount() == 0
                 || !(scrollView.getChildAt(0) instanceof LinearLayout)) {
             return;
         }
         LinearLayout container = (LinearLayout) scrollView.getChildAt(0);
-        if (container.findViewWithTag("settings_mode_card") != null) {
+        if (container.findViewWithTag(TAG_SETTINGS_SEARCH_BAR) != null) {
+            return;
+        }
+
+        LinearLayout searchRow = new LinearLayout(this);
+        searchRow.setTag(TAG_SETTINGS_SEARCH_BAR);
+        searchRow.setOrientation(LinearLayout.HORIZONTAL);
+        searchRow.setGravity(Gravity.CENTER_VERTICAL);
+        searchRow.setMinimumHeight(dp(56));
+        searchRow.setPadding(dp(16), 0, dp(6), 0);
+        searchRow.setBackground(createRoundedSurface(
+                ContextCompat.getColor(this, R.color.settings_card_background),
+                ThemeEngine.homePalette(this).accentSoft));
+
+        ImageView searchIcon = new ImageView(this);
+        searchIcon.setImageResource(R.drawable.ic_search);
+        searchIcon.setImageTintList(ColorStateList.valueOf(
+                ContextCompat.getColor(this, R.color.colorOnSurface)));
+        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(24), dp(24));
+        iconParams.setMarginEnd(dp(12));
+        searchRow.addView(searchIcon, iconParams);
+
+        settingsSearchInput = new EditText(this);
+        settingsSearchInput.setSingleLine(true);
+        settingsSearchInput.setHint(R.string.settings_search_hint);
+        settingsSearchInput.setTextSize(16);
+        settingsSearchInput.setTextColor(ContextCompat.getColor(this, R.color.colorOnSurface));
+        settingsSearchInput.setHintTextColor(ContextCompat.getColor(this, R.color.text_secondary));
+        settingsSearchInput.setInputType(InputType.TYPE_CLASS_TEXT);
+        settingsSearchInput.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
+        settingsSearchInput.setBackground(null);
+        settingsSearchInput.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                applySettingsSearchFilter();
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+            }
+        });
+        searchRow.addView(settingsSearchInput, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        ImageButton clearButton = createIconButton(R.drawable.ic_close,
+                getString(R.string.clear));
+        clearButton.setVisibility(View.GONE);
+        clearButton.setOnClickListener(v -> settingsSearchInput.setText(""));
+        settingsSearchInput.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                clearButton.setVisibility(TextUtils.isEmpty(s) ? View.GONE : View.VISIBLE);
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+            }
+        });
+        searchRow.addView(clearButton);
+
+        LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        searchParams.setMargins(dp(16), dp(12), dp(16), dp(8));
+        container.addView(searchRow, 0, searchParams);
+
+        settingsNoResultsView = new TextView(this);
+        settingsNoResultsView.setTag(TAG_SETTINGS_NO_RESULTS);
+        settingsNoResultsView.setText(R.string.settings_search_no_results);
+        settingsNoResultsView.setTextColor(ContextCompat.getColor(this, R.color.text_secondary));
+        settingsNoResultsView.setTextSize(15);
+        settingsNoResultsView.setGravity(Gravity.CENTER);
+        settingsNoResultsView.setVisibility(View.GONE);
+        LinearLayout.LayoutParams emptyParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        emptyParams.setMargins(dp(16), dp(20), dp(16), dp(20));
+        container.addView(settingsNoResultsView, 1, emptyParams);
+    }
+
+    private void insertDefaultBrowserCard() {
+        NestedScrollView scrollView = findNestedScrollView(findViewById(android.R.id.content));
+        if (scrollView == null || scrollView.getChildCount() == 0
+                || !(scrollView.getChildAt(0) instanceof LinearLayout)) {
+            return;
+        }
+        LinearLayout container = (LinearLayout) scrollView.getChildAt(0);
+        if (container.findViewWithTag(TAG_DEFAULT_BROWSER_CARD) != null) {
             return;
         }
 
         MaterialCardView card = createPolishedCard();
-        card.setTag("settings_mode_card");
+        card.setTag(TAG_DEFAULT_BROWSER_CARD);
+        defaultBrowserCard = card;
 
         LinearLayout row = createTopLevelActionRow(
-                getString(R.string.settings_mode),
+                getString(R.string.set_default_browser),
+                getString(R.string.set_default_browser_summary),
+                R.drawable.ic_external_link,
+                this::requestDefaultBrowserChange);
+        ImageButton closeButton = createIconButton(R.drawable.ic_close,
+                getString(R.string.dismiss_default_browser_card));
+        closeButton.setOnClickListener(v -> {
+            prefs.edit()
+                    .putBoolean(SettingsKeys.PREF_DEFAULT_BROWSER_CARD_DISMISSED, true)
+                    .apply();
+            updateDefaultBrowserCardVisibility();
+        });
+        row.addView(closeButton);
+        card.addView(row);
+
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.setMargins(dp(16), dp(0), dp(16), dp(10));
+        container.addView(card, Math.min(container.getChildCount(), 2), params);
+    }
+
+    private void updateDefaultBrowserCardVisibility() {
+        if (defaultBrowserCard == null) {
+            return;
+        }
+        boolean dismissed = prefs != null && prefs.getBoolean(
+                SettingsKeys.PREF_DEFAULT_BROWSER_CARD_DISMISSED, false);
+        defaultBrowserCard.setVisibility(!dismissed && !isDefaultBrowser()
+                && !hasSettingsSearchQuery() ? View.VISIBLE : View.GONE);
+    }
+
+    private boolean isDefaultBrowser() {
+        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.example.com"));
+        intent.addCategory(Intent.CATEGORY_BROWSABLE);
+        android.content.pm.ResolveInfo info = getPackageManager().resolveActivity(
+                intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY);
+        return info != null
+                && info.activityInfo != null
+                && getPackageName().equals(info.activityInfo.packageName);
+    }
+
+    private void insertAdvancedSettingsRow() {
+        View aboutRow = findViewById(R.id.setting_about);
+        if (aboutRow == null || !(aboutRow.getParent() instanceof LinearLayout)) {
+            return;
+        }
+        LinearLayout parent = (LinearLayout) aboutRow.getParent();
+        if (parent.findViewWithTag(TAG_ADVANCED_SETTINGS_ROW) != null) {
+            return;
+        }
+
+        View divider = new View(this);
+        divider.setBackgroundResource(resolveAttr(android.R.attr.listDivider));
+        LinearLayout row = createTopLevelActionRow(
+                getString(R.string.advanced_settings),
                 getString(R.string.settings_mode_summary),
                 R.drawable.ic_settings,
                 null);
+        row.setTag(TAG_ADVANCED_SETTINGS_ROW);
         SwitchMaterial advancedSwitch = new SwitchMaterial(this);
         advancedSwitch.setChecked(areAdvancedSettingsVisible());
         advancedSwitch.setThumbTintList(ThemeEngine.switchThumbTint(this));
@@ -272,16 +479,16 @@ public class SettingsActivity extends AppCompatActivity {
                     .putBoolean(SettingsKeys.PREF_SETTINGS_ADVANCED_VISIBLE, isChecked)
                     .apply();
             applyAdvancedVisibility();
+            applySettingsSearchFilter();
         });
         row.addView(advancedSwitch);
         row.setOnClickListener(v -> advancedSwitch.toggle());
         attachPressMicroInteraction(row);
-        card.addView(row);
 
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        params.setMargins(dp(16), dp(12), dp(16), dp(10));
-        container.addView(card, 0, params);
+        parent.addView(divider, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 1));
+        parent.addView(row, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
     }
 
     private void insertPerformanceBenchmarkRow() {
@@ -290,7 +497,7 @@ public class SettingsActivity extends AppCompatActivity {
             return;
         }
         LinearLayout parent = (LinearLayout) aboutRow.getParent();
-        if (parent.findViewWithTag("performance_benchmark_row") != null) {
+        if (parent.findViewWithTag(TAG_PERFORMANCE_BENCHMARK_ROW) != null) {
             return;
         }
         View divider = new View(this);
@@ -300,7 +507,7 @@ public class SettingsActivity extends AppCompatActivity {
                 getString(R.string.performance_benchmark_short_summary),
                 R.drawable.ic_speed,
                 () -> openSubpage(SettingsSubpageActivity.PAGE_PERFORMANCE));
-        row.setTag("performance_benchmark_row");
+        row.setTag(TAG_PERFORMANCE_BENCHMARK_ROW);
 
         int index = parent.indexOfChild(aboutRow);
         parent.addView(divider, index + 1, new LinearLayout.LayoutParams(
@@ -368,12 +575,34 @@ public class SettingsActivity extends AppCompatActivity {
     private MaterialCardView createPolishedCard() {
         MaterialCardView card = new MaterialCardView(this);
         card.setRadius(dp(8));
-        card.setCardElevation(dp(1));
+        card.setCardElevation(0);
         card.setUseCompatPadding(false);
         card.setCardBackgroundColor(ContextCompat.getColor(this, R.color.settings_card_background));
         card.setStrokeWidth(dp(1));
         card.setStrokeColor(ThemeEngine.homePalette(this).accentSoft);
         return card;
+    }
+
+    private GradientDrawable createRoundedSurface(int color, int strokeColor) {
+        GradientDrawable background = new GradientDrawable();
+        background.setShape(GradientDrawable.RECTANGLE);
+        background.setCornerRadius(dp(8));
+        background.setColor(color);
+        background.setStroke(dp(1), strokeColor);
+        return background;
+    }
+
+    private ImageButton createIconButton(int iconRes, String contentDescription) {
+        ImageButton button = new ImageButton(this);
+        button.setImageResource(iconRes);
+        button.setImageTintList(ColorStateList.valueOf(
+                ContextCompat.getColor(this, R.color.text_secondary)));
+        button.setBackgroundResource(resolveAttr(android.R.attr.selectableItemBackgroundBorderless));
+        button.setContentDescription(contentDescription);
+        button.setPadding(dp(12), dp(12), dp(12), dp(12));
+        button.setScaleType(ImageView.ScaleType.CENTER);
+        button.setLayoutParams(new LinearLayout.LayoutParams(dp(48), dp(48)));
+        return button;
     }
 
     private void styleSettingsCards(View view) {
@@ -383,7 +612,7 @@ public class SettingsActivity extends AppCompatActivity {
         if (view instanceof MaterialCardView) {
             MaterialCardView card = (MaterialCardView) view;
             card.setRadius(dp(8));
-            card.setCardElevation(dp(1));
+            card.setCardElevation(0);
             card.setStrokeWidth(dp(1));
             card.setStrokeColor(ThemeEngine.homePalette(this).accentSoft);
         }
@@ -397,7 +626,9 @@ public class SettingsActivity extends AppCompatActivity {
 
     private void applyTopLevelRowIcons() {
         setRowIcon(R.id.setting_search_engine, R.drawable.ic_search);
-        setRowIcon(R.id.setting_homepage, R.drawable.ic_home);
+        setRowIcon(R.id.setting_private_search_engine, R.drawable.ic_incognito);
+        setRowIcon(R.id.setting_browser_suggestions, R.drawable.ic_search);
+        setRowIcon(R.id.setting_search_suggestions, R.drawable.ic_search);
         setRowIcon(R.id.setting_notifications, R.drawable.ic_notifications);
         setRowIcon(R.id.setting_external_links, R.drawable.ic_external_link);
         setRowIcon(R.id.setting_ad_blocking, R.drawable.ic_security);
@@ -440,6 +671,7 @@ public class SettingsActivity extends AppCompatActivity {
     private void applySectionHeadingIcons() {
         setSectionHeadingIcon(R.id.settings_section_general, R.drawable.ic_settings);
         setSectionHeadingIcon(R.id.settings_section_privacy, R.drawable.ic_security);
+        setSectionHeadingIcon(R.id.settings_section_legal, R.drawable.ic_article);
         setSectionHeadingIcon(R.id.settings_section_downloads, R.drawable.ic_download);
     }
 
@@ -558,7 +790,12 @@ public class SettingsActivity extends AppCompatActivity {
         if (row == null) {
             return;
         }
-        int visibility = visible ? View.VISIBLE : View.GONE;
+        boolean rowVisible = visible;
+        if (rowId == R.id.layout_auto_clear_items) {
+            rowVisible = visible && prefs != null
+                    && prefs.getBoolean("auto_clear_on_exit", false);
+        }
+        int visibility = rowVisible ? View.VISIBLE : View.GONE;
         row.setVisibility(visibility);
         if (!(row.getParent() instanceof ViewGroup)) {
             return;
@@ -571,6 +808,225 @@ public class SettingsActivity extends AppCompatActivity {
                 previous.setVisibility(visibility);
             }
         }
+    }
+
+    private void applySettingsSearchFilter() {
+        NestedScrollView scrollView = findNestedScrollView(findViewById(android.R.id.content));
+        if (scrollView == null || scrollView.getChildCount() == 0
+                || !(scrollView.getChildAt(0) instanceof LinearLayout)) {
+            return;
+        }
+        LinearLayout container = (LinearLayout) scrollView.getChildAt(0);
+        if (!hasSettingsSearchQuery()) {
+            clearSettingsSearchFilter(container);
+            return;
+        }
+
+        String query = normalizeSearch(settingsSearchInput.getText());
+        int visibleCards = 0;
+        for (int i = 0; i < container.getChildCount(); i++) {
+            View child = container.getChildAt(i);
+            Object tag = child.getTag();
+            if (TAG_SETTINGS_SEARCH_BAR.equals(tag)) {
+                child.setVisibility(View.VISIBLE);
+            } else if (TAG_SETTINGS_NO_RESULTS.equals(tag)
+                    || TAG_DEFAULT_BROWSER_CARD.equals(tag)) {
+                child.setVisibility(View.GONE);
+            } else if (child instanceof MaterialCardView) {
+                boolean visible = filterSettingsCard((MaterialCardView) child, query);
+                child.setVisibility(visible ? View.VISIBLE : View.GONE);
+                if (visible) {
+                    visibleCards++;
+                }
+            } else if (child instanceof TextView) {
+                child.setVisibility(View.GONE);
+            }
+        }
+        cleanHiddenSettingDividers(container);
+        updateSectionHeadingVisibility(container);
+        if (settingsNoResultsView != null) {
+            settingsNoResultsView.setVisibility(visibleCards == 0 ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    private void clearSettingsSearchFilter(LinearLayout container) {
+        showSettingsTree(container);
+        if (settingsNoResultsView != null) {
+            settingsNoResultsView.setVisibility(View.GONE);
+        }
+        hideDuplicateSettingsRows();
+        applyAdvancedVisibility();
+        updateDefaultBrowserCardVisibility();
+        cleanHiddenSettingDividers(container);
+        updateSectionHeadingVisibility(container);
+    }
+
+    private void showSettingsTree(View view) {
+        if (view == null) {
+            return;
+        }
+        Object tag = view.getTag();
+        if (TAG_SETTINGS_SEARCH_BAR.equals(tag)) {
+            view.setVisibility(View.VISIBLE);
+            return;
+        }
+        if (!TAG_SETTINGS_NO_RESULTS.equals(tag)) {
+            view.setVisibility(View.VISIBLE);
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                showSettingsTree(group.getChildAt(i));
+            }
+        }
+    }
+
+    private boolean filterSettingsCard(MaterialCardView card, String query) {
+        boolean visible = filterSettingsRows(card, query);
+        cleanHiddenSettingDividers(card);
+        return visible;
+    }
+
+    private boolean filterSettingsRows(View view, String query) {
+        if (isSearchableSettingsRow(view)) {
+            boolean visible = isRowAvailableForSearch(view) && viewTextMatches(view, query);
+            view.setVisibility(visible ? View.VISIBLE : View.GONE);
+            return visible;
+        }
+        if (!(view instanceof ViewGroup)) {
+            return false;
+        }
+        ViewGroup group = (ViewGroup) view;
+        boolean anyVisible = false;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            anyVisible |= filterSettingsRows(group.getChildAt(i), query);
+        }
+        if (view.getId() == R.id.layout_auto_clear_items) {
+            view.setVisibility(anyVisible ? View.VISIBLE : View.GONE);
+        }
+        return anyVisible;
+    }
+
+    private boolean isSearchableSettingsRow(View view) {
+        Object tag = view.getTag();
+        if (TAG_ADVANCED_SETTINGS_ROW.equals(tag)
+                || TAG_PERFORMANCE_BENCHMARK_ROW.equals(tag)) {
+            return true;
+        }
+        int id = view.getId();
+        if (id == View.NO_ID) {
+            return false;
+        }
+        try {
+            String name = getResources().getResourceEntryName(id);
+            return name != null && name.startsWith("setting_");
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    private boolean isRowAvailableForSearch(View row) {
+        int id = row.getId();
+        if (isDuplicateRowId(id)) {
+            return false;
+        }
+        if (isAdvancedRowId(id) && !areAdvancedSettingsVisible()) {
+            return false;
+        }
+        if (id == R.id.setting_auto_clear_cookies
+                || id == R.id.setting_auto_clear_cache
+                || id == R.id.setting_auto_clear_history) {
+            return areAdvancedSettingsVisible()
+                    && prefs != null
+                    && prefs.getBoolean("auto_clear_on_exit", false);
+        }
+        return true;
+    }
+
+    private boolean viewTextMatches(View view, String query) {
+        return collectText(view).contains(query);
+    }
+
+    private String collectText(View view) {
+        StringBuilder builder = new StringBuilder();
+        collectText(view, builder);
+        return builder.toString().toLowerCase(Locale.ROOT);
+    }
+
+    private void collectText(View view, StringBuilder builder) {
+        if (view instanceof TextView) {
+            CharSequence text = ((TextView) view).getText();
+            CharSequence hint = view instanceof EditText ? ((EditText) view).getHint() : null;
+            if (!TextUtils.isEmpty(text)) {
+                builder.append(text).append(' ');
+            }
+            if (!TextUtils.isEmpty(hint)) {
+                builder.append(hint).append(' ');
+            }
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                collectText(group.getChildAt(i), builder);
+            }
+        }
+    }
+
+    private String normalizeSearch(CharSequence value) {
+        return value == null ? "" : value.toString().trim().toLowerCase(Locale.ROOT);
+    }
+
+    private boolean hasSettingsSearchQuery() {
+        return settingsSearchInput != null
+                && !TextUtils.isEmpty(settingsSearchInput.getText())
+                && !TextUtils.isEmpty(settingsSearchInput.getText().toString().trim());
+    }
+
+    private void updateSectionHeadingVisibility(LinearLayout container) {
+        for (int i = 0; i < container.getChildCount(); i++) {
+            View child = container.getChildAt(i);
+            if (!(child instanceof TextView) || child.getTag() != null) {
+                continue;
+            }
+            child.setVisibility(hasVisibleCardBeforeNextHeading(container, i)
+                    ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    private boolean hasVisibleCardBeforeNextHeading(LinearLayout container, int headingIndex) {
+        for (int i = headingIndex + 1; i < container.getChildCount(); i++) {
+            View sibling = container.getChildAt(i);
+            if (sibling instanceof TextView && sibling.getTag() == null) {
+                return false;
+            }
+            Object tag = sibling.getTag();
+            if (TAG_DEFAULT_BROWSER_CARD.equals(tag) || TAG_SETTINGS_SEARCH_BAR.equals(tag)
+                    || TAG_SETTINGS_NO_RESULTS.equals(tag)) {
+                continue;
+            }
+            if (sibling instanceof MaterialCardView && sibling.getVisibility() == View.VISIBLE) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isDuplicateRowId(int rowId) {
+        for (int duplicateId : DUPLICATE_ROW_IDS) {
+            if (duplicateId == rowId) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isAdvancedRowId(int rowId) {
+        for (int advancedId : ADVANCED_ROW_IDS) {
+            if (advancedId == rowId) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private NestedScrollView findNestedScrollView(View view) {
@@ -606,7 +1062,7 @@ public class SettingsActivity extends AppCompatActivity {
 
         // Find views
         searchEngineValue = findViewById(R.id.search_engine_value);
-        homepageValue = findViewById(R.id.homepage_value);
+        privateSearchEngineValue = findViewById(R.id.private_search_engine_value);
         textSizeValue = findViewById(R.id.text_size_value);
         adBlockingValue = findViewById(R.id.ad_blocking_value);
         downloadBandwidthLimitValue = findViewById(R.id.download_bandwidth_limit_value);
@@ -622,10 +1078,12 @@ public class SettingsActivity extends AppCompatActivity {
         switchPreventScreenshots = findViewById(R.id.switch_prevent_screenshots);
         switchHomePrivacyStats = findViewById(R.id.switch_home_privacy_stats);
         switchHomeQuickAccess = findViewById(R.id.switch_home_quick_access);
+        switchBrowserSuggestions = findViewById(R.id.switch_browser_suggestions);
+        switchSearchSuggestions = findViewById(R.id.switch_search_suggestions);
         switchDownloadWifiOnly = findViewById(R.id.switch_download_wifi_only);
 
         settingSearchEngine = findViewById(R.id.setting_search_engine);
-        settingHomepage = findViewById(R.id.setting_homepage);
+        settingPrivateSearchEngine = findViewById(R.id.setting_private_search_engine);
         settingTextSize = findViewById(R.id.setting_text_size);
         settingAdBlocking = findViewById(R.id.setting_ad_blocking);
         settingClearData = findViewById(R.id.setting_clear_data);
@@ -653,8 +1111,9 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     private void setupListeners() {
-        settingSearchEngine.setOnClickListener(v -> showSearchEngineDialog());
-        settingHomepage.setOnClickListener(v -> showHomepageDialog());
+        settingSearchEngine.setOnClickListener(v ->
+                openSubpage(SettingsSubpageActivity.PAGE_SEARCH_ENGINES));
+        settingPrivateSearchEngine.setOnClickListener(v -> showSearchEngineDialog(true));
         settingTextSize.setOnClickListener(v -> showTextSizeDialog());
         settingAdBlocking.setOnClickListener(v ->
                 openSubpage(SettingsSubpageActivity.PAGE_SHIELDS));
@@ -668,7 +1127,8 @@ public class SettingsActivity extends AppCompatActivity {
         settingDoh.setOnClickListener(v -> showDohDialog());
         findViewById(R.id.setting_notifications).setOnClickListener(v ->
                 openSubpage(SettingsSubpageActivity.PAGE_NOTIFICATIONS));
-        findViewById(R.id.setting_external_links).setOnClickListener(v -> showExternalLinksDialog());
+        findViewById(R.id.setting_external_links).setOnClickListener(v ->
+                requestDefaultBrowserChange());
         findViewById(R.id.setting_tabs_and_groups).setOnClickListener(v ->
                 openSubpage(SettingsSubpageActivity.PAGE_TABS));
         findViewById(R.id.setting_media).setOnClickListener(v ->
@@ -689,8 +1149,10 @@ public class SettingsActivity extends AppCompatActivity {
                 openSubpage(SettingsSubpageActivity.PAGE_IP_INFRINGEMENT));
         findViewById(R.id.setting_data_compliance).setOnClickListener(v ->
                 openSubpage(SettingsSubpageActivity.PAGE_DATA_COMPLIANCE));
-        findViewById(R.id.setting_help_feedback).setOnClickListener(v -> showHelpAndFeedback());
-        findViewById(R.id.setting_about).setOnClickListener(v -> showAboutDialog());
+        findViewById(R.id.setting_help_feedback).setOnClickListener(v ->
+                openSubpage(SettingsSubpageActivity.PAGE_HELP_FEEDBACK));
+        findViewById(R.id.setting_about).setOnClickListener(v ->
+                openSubpage(SettingsSubpageActivity.PAGE_ABOUT));
         findViewById(R.id.setting_cookie_manager).setOnClickListener(v ->
                 startActivity(new android.content.Intent(this, CookieManagerActivity.class)));
         findViewById(R.id.setting_site_permissions).setOnClickListener(v ->
@@ -708,6 +1170,8 @@ public class SettingsActivity extends AppCompatActivity {
         bindSwitchRow(R.id.setting_prevent_screenshots, switchPreventScreenshots);
         bindSwitchRow(R.id.setting_home_privacy_stats, switchHomePrivacyStats);
         bindSwitchRow(R.id.setting_home_quick_access, switchHomeQuickAccess);
+        bindSwitchRow(R.id.setting_browser_suggestions, switchBrowserSuggestions);
+        bindSwitchRow(R.id.setting_search_suggestions, switchSearchSuggestions);
         bindSwitchRow(R.id.setting_download_wifi_only, switchDownloadWifiOnly);
 
         switchDoNotTrack.setOnCheckedChangeListener((buttonView, isChecked) -> {
@@ -790,6 +1254,18 @@ public class SettingsActivity extends AppCompatActivity {
             AnalyticsManager.logSettingChanged(this, "download_wifi_only", isChecked);
         });
 
+        switchBrowserSuggestions.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            prefs.edit().putBoolean(SettingsKeys.PREF_BROWSER_SUGGESTIONS_ENABLED,
+                    isChecked).apply();
+            AnalyticsManager.logSettingChanged(this, "browser_suggestions", isChecked);
+        });
+
+        switchSearchSuggestions.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            prefs.edit().putBoolean(SettingsKeys.PREF_SEARCH_SUGGESTIONS_ENABLED,
+                    isChecked).apply();
+            AnalyticsManager.logSettingChanged(this, "search_suggestions", isChecked);
+        });
+
         bindSwitchRow(R.id.setting_auto_clear_on_exit, switchAutoClearOnExit);
         bindSwitchRow(R.id.setting_auto_clear_cookies, switchAutoClearCookies);
         bindSwitchRow(R.id.setting_auto_clear_cache, switchAutoClearCache);
@@ -797,7 +1273,9 @@ public class SettingsActivity extends AppCompatActivity {
 
         switchAutoClearOnExit.setOnCheckedChangeListener((btn, checked) -> {
             prefs.edit().putBoolean("auto_clear_on_exit", checked).apply();
-            layoutAutoClearItems.setVisibility(checked ? View.VISIBLE : View.GONE);
+            layoutAutoClearItems.setVisibility(
+                    checked && areAdvancedSettingsVisible() ? View.VISIBLE : View.GONE);
+            applySettingsSearchFilter();
         });
         switchAutoClearCookies.setOnCheckedChangeListener((btn, checked) ->
                 prefs.edit().putBoolean("auto_clear_cookies", checked).apply());
@@ -815,20 +1293,7 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     private void hideDuplicateSettingsRows() {
-        int[] duplicateRows = new int[]{
-                R.id.setting_cookie_banners,
-                R.id.setting_strip_tracking_params,
-                R.id.setting_https_only,
-                R.id.setting_do_not_track,
-                R.id.setting_home_privacy_stats,
-                R.id.setting_home_quick_access,
-                R.id.setting_text_size,
-                R.id.setting_download_wifi_only,
-                R.id.setting_download_bandwidth_limit,
-                R.id.setting_javascript,
-                R.id.setting_block_popups
-        };
-        for (int rowId : duplicateRows) {
+        for (int rowId : DUPLICATE_ROW_IDS) {
             View row = findViewById(rowId);
             if (row != null) {
                 row.setVisibility(View.GONE);
@@ -880,19 +1345,22 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     private void loadSettings() {
-        // Load search engine
+        // Load search engines
         String searchEngine = prefs.getString(SettingsKeys.PREF_SEARCH_ENGINE_URL,
                 UrlUtils.DEFAULT_SEARCH_ENGINE);
         if (searchEngine == null || searchEngine.trim().isEmpty()) {
             searchEngine = UrlUtils.DEFAULT_SEARCH_ENGINE;
             prefs.edit().putString(SettingsKeys.PREF_SEARCH_ENGINE_URL, searchEngine).apply();
         }
-        String searchEngineName = getSearchEngineName(searchEngine);
-        searchEngineValue.setText(searchEngineName);
-
-        // Load homepage
-        String homepage = prefs.getString(SettingsKeys.PREF_HOMEPAGE, UrlUtils.DEFAULT_HOMEPAGE);
-        homepageValue.setText(homepage);
+        String privateSearchEngine = prefs.getString(
+                SettingsKeys.PREF_PRIVATE_SEARCH_ENGINE_URL, searchEngine);
+        if (privateSearchEngine == null || privateSearchEngine.trim().isEmpty()) {
+            privateSearchEngine = searchEngine;
+            prefs.edit().putString(SettingsKeys.PREF_PRIVATE_SEARCH_ENGINE_URL,
+                    privateSearchEngine).apply();
+        }
+        searchEngineValue.setText(getSearchEngineName(searchEngine));
+        privateSearchEngineValue.setText(getSearchEngineName(privateSearchEngine));
 
         int textSize = prefs.getInt("text_size_percent", 100);
         textSizeValue.setText(getString(R.string.text_size_percent, textSize));
@@ -913,6 +1381,10 @@ public class SettingsActivity extends AppCompatActivity {
                 SettingsKeys.PREF_SHOW_PRIVACY_STATS, true));
         switchHomeQuickAccess.setChecked(prefs.getBoolean(
                 SettingsKeys.PREF_SHOW_QUICK_ACCESS, true));
+        switchBrowserSuggestions.setChecked(prefs.getBoolean(
+                SettingsKeys.PREF_BROWSER_SUGGESTIONS_ENABLED, true));
+        switchSearchSuggestions.setChecked(prefs.getBoolean(
+                SettingsKeys.PREF_SEARCH_SUGGESTIONS_ENABLED, false));
         switchDownloadWifiOnly.setChecked(prefs.getBoolean(
                 SettingsKeys.PREF_DOWNLOAD_WIFI_ONLY, false));
 
@@ -930,7 +1402,7 @@ public class SettingsActivity extends AppCompatActivity {
         updateDohValue();
     }
 
-    private void showSearchEngineDialog() {
+    private void showSearchEngineDialog(boolean privateMode) {
         String[] builtinNames = getResources().getStringArray(R.array.search_engine_names);
         String[] builtinUrls = getResources().getStringArray(R.array.search_engine_values);
         List<String> customNames = new ArrayList<>();
@@ -947,18 +1419,27 @@ public class SettingsActivity extends AppCompatActivity {
             allUrls[builtinNames.length + i] = customUrls.get(i);
         }
 
-        String currentEngine = prefs.getString(SettingsKeys.PREF_SEARCH_ENGINE_URL, builtinUrls[0]);
+        String prefKey = privateMode
+                ? SettingsKeys.PREF_PRIVATE_SEARCH_ENGINE_URL
+                : SettingsKeys.PREF_SEARCH_ENGINE_URL;
+        String fallbackEngine = UrlUtils.getSearchEngineUrl(this, false);
+        String currentEngine = prefs.getString(prefKey, fallbackEngine);
         int checkedItem = 0;
         for (int i = 0; i < allUrls.length; i++) {
             if (allUrls[i].equals(currentEngine)) { checkedItem = i; break; }
         }
 
         new MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.default_search_engine)
+                .setTitle(privateMode
+                        ? R.string.private_tab_search_engine
+                        : R.string.standard_tab_search_engine)
                 .setSingleChoiceItems(allNames, checkedItem, (dialog, which) -> {
-                    prefs.edit().putString(SettingsKeys.PREF_SEARCH_ENGINE_URL,
-                            allUrls[which]).apply();
-                    searchEngineValue.setText(getSearchEngineName(allUrls[which]));
+                    prefs.edit().putString(prefKey, allUrls[which]).apply();
+                    if (privateMode) {
+                        privateSearchEngineValue.setText(getSearchEngineName(allUrls[which]));
+                    } else {
+                        searchEngineValue.setText(getSearchEngineName(allUrls[which]));
+                    }
                     dialog.dismiss();
                 })
                 .setNeutralButton(R.string.add_custom_engine, (d, w) -> showAddCustomSearchEngineDialog())
@@ -1020,30 +1501,6 @@ public class SettingsActivity extends AppCompatActivity {
                 urls.add(obj.optString("url", ""));
             }
         } catch (JSONException ignored) {}
-    }
-
-    private void showHomepageDialog() {
-        View dialogView = getLayoutInflater().inflate(R.layout.dialog_homepage, null);
-        TextInputLayout inputLayout = dialogView.findViewById(R.id.homepage_input_layout);
-        TextInputEditText editText = dialogView.findViewById(R.id.homepage_input);
-
-        String currentHomepage = prefs.getString(SettingsKeys.PREF_HOMEPAGE,
-                UrlUtils.DEFAULT_HOMEPAGE);
-        editText.setText(currentHomepage);
-
-        AlertDialog dialog = new MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.homepage)
-                .setView(dialogView)
-                .setPositiveButton(R.string.save, (dialogInterface, i) -> {
-                    String homepage = editText.getText().toString().trim();
-                    if (!homepage.isEmpty()) {
-                        homepage = UrlUtils.getUrlOrSearchUrl(this, homepage);
-                        prefs.edit().putString(SettingsKeys.PREF_HOMEPAGE, homepage).apply();
-                        homepageValue.setText(homepage);
-                    }
-                })
-                .setNegativeButton(R.string.cancel, null)
-                .show();
     }
 
     private void showTextSizeDialog() {
@@ -1216,41 +1673,30 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     private void clearAllData() {
-        new Thread(() -> {
+        AppDatabase.getDatabaseExecutor().execute(() -> {
             try {
-                // Clear history
-                historyRepository.clearHistory(new HistoryRepository.HistoryCallback() {
-                    @Override
-                    public void onHistoryLoaded(java.util.List<com.webstudio.easybrowser.models.HistoryItem> historyItems) {}
+                AppDatabase database = AppDatabase.getInstance(getApplicationContext());
+                database.tabGroupDao().deleteAllTabs();
+                database.tabGroupDao().deleteAllGroups();
+                database.historyDao().deleteAll();
+                database.bookmarkDao().deleteAll();
+                database.quickAccessDao().deleteAll();
+                database.downloadDao().deleteAll();
+                database.readingListDao().deleteAll();
 
-                    @Override
-                    public void onHistoryItemAdded(com.webstudio.easybrowser.models.HistoryItem item) {}
+                prefs.edit().clear().apply();
+                TabThumbnailCache.clear();
+                deleteChildren(getFilesDir());
+                deleteChildren(getExternalFilesDir(null));
 
-                    @Override
-                    public void onHistoryCleared() {
-                        runOnUiThread(() -> {
-                            // Clear cookies and cache
-                            clearCookiesAndCache();
-
-                            // Clear preferences
-                            SharedPreferences.Editor editor = prefs.edit();
-                            editor.remove("do_not_track");
-                            editor.remove("javascript_enabled");
-                            editor.remove("save_history");
-                            editor.remove("block_popups");
-                            editor.remove("open_links_new_tab");
-                            editor.remove("text_size_percent");
-                            editor.apply();
-                        });
-                    }
-                });
+                runOnUiThread(this::clearCookiesAndCache);
             } catch (Exception e) {
                 runOnUiThread(() -> {
                     hideProgress();
                     showToast(R.string.error_generic);
                 });
             }
-        }).start();
+        });
     }
 
     private void clearHistory() {
@@ -1321,6 +1767,19 @@ public class SettingsActivity extends AppCompatActivity {
             return dir.delete();
         } else {
             return false;
+        }
+    }
+
+    private void deleteChildren(java.io.File dir) {
+        if (dir == null || !dir.isDirectory()) {
+            return;
+        }
+        java.io.File[] children = dir.listFiles();
+        if (children == null) {
+            return;
+        }
+        for (java.io.File child : children) {
+            deleteCache(child);
         }
     }
 
@@ -1543,21 +2002,46 @@ public class SettingsActivity extends AppCompatActivity {
         startActivity(intent);
     }
 
-    private void showExternalLinksDialog() {
-        new MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.open_external_links)
-                .setMessage(R.string.open_external_links_message)
-                .setPositiveButton(R.string.open_default_apps_settings,
-                        (dialog, which) -> openDefaultAppsSettings())
-                .setNegativeButton(android.R.string.ok, null)
-                .show();
+    private void requestDefaultBrowserChange() {
+        if (isDefaultBrowser()) {
+            showToast(R.string.default_browser_already_set);
+            updateDefaultBrowserCardVisibility();
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            RoleManager roleManager = getSystemService(RoleManager.class);
+            if (roleManager != null
+                    && roleManager.isRoleAvailable(RoleManager.ROLE_BROWSER)
+                    && !roleManager.isRoleHeld(RoleManager.ROLE_BROWSER)) {
+                if (launchDefaultBrowserIntent(roleManager.createRequestRoleIntent(
+                        RoleManager.ROLE_BROWSER))) {
+                    return;
+                }
+            }
+        }
+        openDefaultAppsSettings();
     }
 
     private void openDefaultAppsSettings() {
         Intent intent = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
                 ? new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
                 : getAppDetailsSettingsIntent();
-        startActivitySafely(intent);
+        if (!launchDefaultBrowserIntent(intent)) {
+            showToast(R.string.error_generic);
+        }
+    }
+
+    private boolean launchDefaultBrowserIntent(Intent intent) {
+        try {
+            if (defaultBrowserLauncher != null) {
+                defaultBrowserLauncher.launch(intent);
+            } else {
+                startActivity(intent);
+            }
+            return true;
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     private Intent getAppDetailsSettingsIntent() {

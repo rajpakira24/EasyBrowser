@@ -187,6 +187,7 @@ public final class ThemeEngine {
         }
     }
 
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.O)
     private static void addWallpaperColor(List<Integer> colors, Color color) {
         if (color != null) {
             colors.add(color.toArgb());
