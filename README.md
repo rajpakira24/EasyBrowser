@@ -4,11 +4,11 @@ Easy Browser is a privacy-focused Android browser built on Mozilla GeckoView, no
 
 ## Screenshots
 
-| Home | Search overlay |
-|:---:|:---:|
-| ![Easy Browser home screen with privacy stats and photo background](test_screens/01_main.png) | ![Search overlay with focused address field](test_screens/02_search_popup.png) |
-| **Page loaded** | **Tab manager** |
-| ![Example Domain loaded in Easy Browser](test_screens/03_page_loaded.png) | ![Tab manager showing an open tab](test_screens/04_tab_manager.png) |
+| Home | Search | Page | Tabs |
+|:---:|:---:|:---:|:---:|
+| <img src="test_screens/01_main.png" width="160" alt="Easy Browser home screen"> | <img src="test_screens/02_search_popup.png" width="160" alt="Search overlay"> | <img src="test_screens/03_page_loaded.png" width="160" alt="Loaded web page"> | <img src="test_screens/04_tab_manager.png" width="160" alt="Tab manager"> |
+| Home review | Room home | Room tabs | Video review |
+| <img src="test_screens/pixel_review/easybrowser_room_main_api34.png" width="160" alt="Main page review"> | <img src="test_screens/video_review_063456/frame_01.png" width="160" alt="Main page video frame one"> | <img src="test_screens/pixel_review/easybrowser_room_tabs_api34.png" width="160" alt="Tabs review screenshot"> | <img src="test_screens/video_review_063456/frame_02.png" width="160" alt="Main page video frame two"> |
 
 ## Why GeckoView
 
