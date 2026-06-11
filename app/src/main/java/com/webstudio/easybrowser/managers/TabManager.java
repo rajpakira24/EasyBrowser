@@ -897,6 +897,36 @@ public class TabManager {
         }
     }
 
+    public synchronized GeckoSession replaceSessionForTab(Tab tab) {
+        if (tab == null || !tabs.contains(tab)) {
+            return null;
+        }
+        GeckoSession oldSession = tab.getSession();
+        GeckoSession replacement = createSession(tab.isPrivate());
+        replacement.open(runtime);
+        tab.setSession(replacement);
+        tab.setSessionState(null);
+        tab.setInitialLoadPending(false);
+        tab.setCanGoBack(false);
+        tab.setCanGoForward(false);
+        syncMirrorFromState();
+        if (!tab.isPrivate()) {
+            persistTabs();
+        }
+        if (oldSession != null && oldSession != replacement && oldSession.isOpen()) {
+            try {
+                oldSession.close();
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to close replaced GeckoSession for tab " + tab.getId(), e);
+            }
+        }
+        if (listener != null) {
+            listener.onTabChanged(tab);
+            listener.onTabCountChanged(tabs.size());
+        }
+        return replacement;
+    }
+
     private boolean restoreTabsFromRoom() {
         tabRepository.clearPersistedPrivateStateBlocking();
         List<TabGroup> groups = tabRepository.getGroupsBlocking(false);

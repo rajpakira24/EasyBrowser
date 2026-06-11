@@ -79,6 +79,10 @@ public class Tab {
         return session;
     }
 
+    public void setSession(GeckoSession session) {
+        this.session = session;
+    }
+
     public boolean isPrivate() {
         return isPrivate;
     }

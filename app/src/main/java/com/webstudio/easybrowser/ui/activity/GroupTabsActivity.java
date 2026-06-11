@@ -8,7 +8,6 @@ import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Bundle;
-import android.transition.AutoTransition;
 import android.transition.Fade;
 import android.transition.Transition;
 import android.transition.TransitionManager;
@@ -31,7 +30,6 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.ViewCompat;
 import androidx.lifecycle.ViewModelProvider;
-import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.RecyclerView;
@@ -46,6 +44,7 @@ import com.webstudio.easybrowser.models.Tab;
 import com.webstudio.easybrowser.models.TabGroup;
 import com.webstudio.easybrowser.repository.BookmarkRepository;
 import com.webstudio.easybrowser.repository.TabRepository;
+import com.webstudio.easybrowser.utils.EasyMotion;
 import com.webstudio.easybrowser.utils.ScreenshotProtection;
 import com.webstudio.easybrowser.utils.SystemBarUtils;
 
@@ -209,12 +208,7 @@ public class GroupTabsActivity extends AppCompatActivity implements GroupTabsAda
         adapter.setGroupColor(groupColor);
         binding.tabsRecycler.setLayoutManager(new GridLayoutManager(this, 2));
         binding.tabsRecycler.setAdapter(adapter);
-        DefaultItemAnimator itemAnimator = new DefaultItemAnimator();
-        itemAnimator.setAddDuration(160);
-        itemAnimator.setRemoveDuration(160);
-        itemAnimator.setMoveDuration(180);
-        itemAnimator.setChangeDuration(120);
-        binding.tabsRecycler.setItemAnimator(itemAnimator);
+        EasyMotion.configurePremiumItemAnimator(binding.tabsRecycler);
         binding.tabsRecycler.setAlpha(0f);
         binding.tabsRecycler.setTranslationY(dp(12));
         tabsItemTouchHelper = new ItemTouchHelper(new TabItemTouchHelperCallback(adapter));
@@ -261,7 +255,8 @@ public class GroupTabsActivity extends AppCompatActivity implements GroupTabsAda
                 .alpha(1f)
                 .scaleX(1f)
                 .scaleY(1f)
-                .setDuration(140)
+                .setDuration(EasyMotion.DURATION_MEDIUM)
+                .setInterpolator(EasyMotion.EMPHASIZED)
                 .start());
     }
 
@@ -277,8 +272,7 @@ public class GroupTabsActivity extends AppCompatActivity implements GroupTabsAda
         if (binding == null || binding.tabsRecycler == null) {
             return;
         }
-        Transition transition = new AutoTransition();
-        transition.setDuration(180);
+        Transition transition = EasyMotion.premiumLayoutTransition();
         TransitionManager.beginDelayedTransition(binding.tabsRecycler, transition);
     }
 
@@ -290,7 +284,8 @@ public class GroupTabsActivity extends AppCompatActivity implements GroupTabsAda
         binding.tabsRecycler.post(() -> binding.tabsRecycler.animate()
                 .alpha(1f)
                 .translationY(0f)
-                .setDuration(180)
+                .setDuration(EasyMotion.DURATION_MEDIUM)
+                .setInterpolator(EasyMotion.EMPHASIZED)
                 .start());
     }
 
@@ -308,7 +303,7 @@ public class GroupTabsActivity extends AppCompatActivity implements GroupTabsAda
             currentTabs.clear();
             currentTabs.addAll(tabs);
             beginTabListTransitionIfNeeded();
-            adapter.submitList(tabs);
+            adapter.submitAnimatedList(tabs);
             currentTabCountText = getResources()
                     .getQuantityString(R.plurals.tab_count, tabs.size(), tabs.size());
             binding.groupTabCount.setText(currentTabCountText);
@@ -327,7 +322,7 @@ public class GroupTabsActivity extends AppCompatActivity implements GroupTabsAda
             currentTabs.clear();
             currentTabs.addAll(tabs);
             beginTabListTransitionIfNeeded();
-            adapter.submitList(tabs);
+            adapter.submitAnimatedList(tabs);
             currentTabCountText = getResources()
                     .getQuantityString(R.plurals.tab_count, tabs.size(), tabs.size());
             binding.groupTabCount.setText(currentTabCountText);

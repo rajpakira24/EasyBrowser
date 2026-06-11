@@ -18,10 +18,13 @@ import com.bumptech.glide.Glide;
 import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.databinding.ItemQuickTabChipBinding;
 import com.webstudio.easybrowser.models.Tab;
+import com.webstudio.easybrowser.utils.EasyMotion;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class QuickTabStripAdapter extends ListAdapter<Tab, QuickTabStripAdapter.ViewHolder>
         implements TabItemTouchHelperCallback.ReorderAdapter {
@@ -33,6 +36,7 @@ public class QuickTabStripAdapter extends ListAdapter<Tab, QuickTabStripAdapter.
     }
 
     private final Listener listener;
+    private final Set<String> pendingOpenAnimations = new HashSet<>();
     private String currentTabId;
 
     public QuickTabStripAdapter(Listener listener) {
@@ -42,6 +46,17 @@ public class QuickTabStripAdapter extends ListAdapter<Tab, QuickTabStripAdapter.
     }
 
     public void submitTabs(java.util.List<Tab> tabs, String currentTabId) {
+        Set<String> existingIds = new HashSet<>();
+        for (Tab tab : getCurrentList()) {
+            existingIds.add(tab.getId());
+        }
+        if (tabs != null) {
+            for (Tab tab : tabs) {
+                if (tab != null && !existingIds.contains(tab.getId())) {
+                    pendingOpenAnimations.add(tab.getId());
+                }
+            }
+        }
         this.currentTabId = currentTabId;
         submitList(tabs != null ? new ArrayList<>(tabs) : new ArrayList<>(),
                 this::notifyDataSetChanged);
@@ -90,6 +105,7 @@ public class QuickTabStripAdapter extends ListAdapter<Tab, QuickTabStripAdapter.
         }
 
         void bind(Tab tab) {
+            resetChipTransform();
             boolean active = tab.getId().equals(currentTabId);
             String label = tab.getTitle() != null && !tab.getTitle().trim().isEmpty()
                     ? tab.getTitle()
@@ -112,13 +128,27 @@ public class QuickTabStripAdapter extends ListAdapter<Tab, QuickTabStripAdapter.
                     ? itemView.getContext().getString(R.string.active_tab)
                     : label);
             binding.chipClose.setVisibility(active ? View.VISIBLE : View.GONE);
-            binding.chipClose.setOnClickListener(active ? v -> listener.onTabClose(tab) : null);
+            binding.chipClose.setOnClickListener(active
+                    ? v -> EasyMotion.animateDismiss(binding.chipCard,
+                    () -> listener.onTabClose(tab))
+                    : null);
             binding.chipClose.bringToFront();
             binding.chipCard.setOnClickListener(v -> listener.onTabClick(tab));
             binding.chipCard.setOnLongClickListener(v -> {
                 listener.onTabLongClick(tab, v);
                 return true;
             });
+            if (pendingOpenAnimations.remove(tab.getId())) {
+                EasyMotion.animateTabChipOpen(binding.chipCard);
+            }
+        }
+
+        private void resetChipTransform() {
+            binding.chipCard.animate().cancel();
+            binding.chipCard.setAlpha(1f);
+            binding.chipCard.setScaleX(1f);
+            binding.chipCard.setScaleY(1f);
+            binding.chipCard.setTranslationY(0f);
         }
 
         private int dp(int value) {

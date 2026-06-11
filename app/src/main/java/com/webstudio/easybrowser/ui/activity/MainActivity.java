@@ -70,6 +70,7 @@ import com.webstudio.easybrowser.repository.QuickAccessRepository;
 import com.webstudio.easybrowser.repository.TabRepository;
 import com.webstudio.easybrowser.repository.WeatherRepository;
 import com.webstudio.easybrowser.utils.AppSettings;
+import com.webstudio.easybrowser.utils.EasyMotion;
 import com.webstudio.easybrowser.utils.HomeBackgroundProvider;
 import com.webstudio.easybrowser.utils.SearchSuggestionProvider;
 import com.webstudio.easybrowser.utils.SettingsKeys;
@@ -536,10 +537,11 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
                 quickAccessTitle,
                 quickAccessRecycler,
                 weatherWidget,
-                photoCredit
+                photoCredit,
+                bottomNav
         };
         for (View view : stagedViews) {
-            prepareHomeEntranceView(view);
+            EasyMotion.prepareFadeSlide(view, dp(12));
         }
         if (homeSearchBar != null) {
             homeSearchBar.setAlpha(0f);
@@ -549,39 +551,22 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         if (homeContentContainer != null) {
             homeContentContainer.post(() -> {
                 for (int i = 0; i < stagedViews.length; i++) {
-                    animateHomeEntranceView(stagedViews[i], i * HOME_ENTRANCE_STAGGER_MS);
+                    EasyMotion.fadeSlideIn(stagedViews[i],
+                            i * EasyMotion.STAGGER_SHORT,
+                            EasyMotion.DURATION_LONG);
                 }
                 if (homeSearchBar != null) {
                     homeSearchBar.animate()
                             .alpha(1f)
                             .scaleX(1f)
                             .translationY(0f)
-                            .setStartDelay(HOME_ENTRANCE_STAGGER_MS)
-                            .setDuration(HOME_ENTRANCE_DURATION_MS)
+                            .setStartDelay(EasyMotion.STAGGER_SHORT)
+                            .setDuration(EasyMotion.DURATION_LONG)
+                            .setInterpolator(EasyMotion.EMPHASIZED)
                             .start();
                 }
             });
         }
-    }
-
-    private void prepareHomeEntranceView(View view) {
-        if (view == null || view.getVisibility() != View.VISIBLE) {
-            return;
-        }
-        view.setAlpha(0f);
-        view.setTranslationY(dp(12));
-    }
-
-    private void animateHomeEntranceView(View view, long delayMs) {
-        if (view == null || view.getVisibility() != View.VISIBLE) {
-            return;
-        }
-        view.animate()
-                .alpha(1f)
-                .translationY(0f)
-                .setStartDelay(delayMs)
-                .setDuration(HOME_ENTRANCE_DURATION_MS)
-                .start();
     }
 
     private void applyHomeWallpaperEffects(int blur, int overlay) {
@@ -792,7 +777,8 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
     private void setupBottomNavigation() {
         bottomNav.setOnItemSelectedListener(item -> {
             int itemId = item.getItemId();
-        if (itemId == R.id.nav_home) {
+            EasyMotion.animateBottomBarSelection(bottomNav, itemId);
+            if (itemId == R.id.nav_home) {
                 return true;
             } else if (itemId == R.id.nav_search) {
                 showSearchPopup();

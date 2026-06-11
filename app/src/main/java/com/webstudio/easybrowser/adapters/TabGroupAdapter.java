@@ -29,6 +29,7 @@ import com.webstudio.easybrowser.databinding.ItemTabGroupCardBinding;
 import com.webstudio.easybrowser.managers.TabThumbnailManager;
 import com.webstudio.easybrowser.models.Tab;
 import com.webstudio.easybrowser.models.TabGroup;
+import com.webstudio.easybrowser.utils.EasyMotion;
 import com.webstudio.easybrowser.utils.UrlUtils;
 
 import java.util.ArrayList;
@@ -90,6 +91,7 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
     private final Set<String> selectedGroupIds = new HashSet<>();
     private final Set<String> selectedTabIds = new HashSet<>();
     private final Set<String> collapsedGroupIds = new HashSet<>();
+    private final Set<String> pendingEntryAnimations = new HashSet<>();
     private boolean gridMode = true;
     private boolean showGroupCloseButton;
     private ThemeColors themeColors = ThemeColors.light();
@@ -113,6 +115,10 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
                 }
             }
         }
+        Set<String> existingIds = new HashSet<>();
+        for (DisplayItem item : items) {
+            existingIds.add(item.stableId());
+        }
         Collections.sort(newItems, (first, second) -> {
             if (itemPinned(first) != itemPinned(second)) {
                 return itemPinned(first) ? -1 : 1;
@@ -123,6 +129,12 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
             }
             return first.stableId().compareTo(second.stableId());
         });
+        for (DisplayItem item : newItems) {
+            String stableId = item.stableId();
+            if (!existingIds.contains(stableId)) {
+                pendingEntryAnimations.add(stableId);
+            }
+        }
         DiffUtil.DiffResult diff = DiffUtil.calculateDiff(new DiffCallback(items, newItems));
         items.clear();
         items.addAll(newItems);
@@ -300,6 +312,9 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
             } else {
                 bindTab(item.tab);
             }
+            if (pendingEntryAnimations.remove(item.stableId())) {
+                EasyMotion.animateGroupCreation(binding.groupCard);
+            }
         }
 
         private void bindGroup(TabGroup group) {
@@ -355,7 +370,8 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
             binding.cardClose.setColorFilter(themeColors.textSecondary);
             binding.cardClose.setContentDescription(itemView.getContext().getString(R.string.close_group));
             binding.cardClose.setOnClickListener(showGroupCloseButton
-                    ? v -> listener.onCloseGroup(group)
+                    ? v -> EasyMotion.animateDismiss(binding.groupCard,
+                    () -> listener.onCloseGroup(group))
                     : null);
             binding.previewGrid.setOnLongClickListener(null);
             binding.groupCard.setOnDragListener((v, event) -> handleDragEvent(event, group));
@@ -390,7 +406,8 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
             binding.cardClose.setVisibility(View.VISIBLE);
             binding.cardClose.setColorFilter(themeColors.textSecondary);
             binding.cardClose.setContentDescription(itemView.getContext().getString(R.string.close_tab));
-            binding.cardClose.setOnClickListener(v -> listener.onCloseTab(tab));
+            binding.cardClose.setOnClickListener(v -> EasyMotion.animateDismiss(binding.groupCard,
+                    () -> listener.onCloseTab(tab)));
             binding.groupCard.setOnDragListener((v, event) -> handleTabDropEvent(event, tab));
         }
 
@@ -702,8 +719,10 @@ public class TabGroupAdapter extends RecyclerView.Adapter<TabGroupAdapter.ViewHo
 
         private void resetCardTransform() {
             binding.groupCard.animate().cancel();
+            binding.groupCard.setAlpha(1f);
             binding.groupCard.setScaleX(1f);
             binding.groupCard.setScaleY(1f);
+            binding.groupCard.setTranslationY(0f);
         }
 
         private boolean startTabDrag(View view, Tab tab) {

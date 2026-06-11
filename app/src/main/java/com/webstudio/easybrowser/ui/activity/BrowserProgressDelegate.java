@@ -1,6 +1,5 @@
 package com.webstudio.easybrowser.ui.activity;
 
-import android.view.View;
 import androidx.annotation.NonNull;
 
 import org.mozilla.geckoview.GeckoSession;
@@ -15,17 +14,7 @@ class BrowserProgressDelegate implements GeckoSession.ProgressDelegate {
 
     @Override
     public void onProgressChange(@NonNull GeckoSession session, int progress) {
-        activity.runOnUiThread(() -> {
-            if (progress == 100) {
-                activity.progressBar.setVisibility(View.GONE);
-                if (activity.swipeRefresh != null) {
-                    activity.swipeRefresh.setRefreshing(false);
-                }
-            } else {
-                activity.progressBar.setVisibility(View.VISIBLE);
-                activity.progressBar.setProgress(progress);
-            }
-        });
+        activity.runOnUiThread(() -> activity.onPageProgressChanged(session, progress));
     }
 
     @Override

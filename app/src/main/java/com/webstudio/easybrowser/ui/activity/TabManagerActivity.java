@@ -24,7 +24,6 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.preference.PreferenceManager;
-import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -41,6 +40,7 @@ import com.webstudio.easybrowser.models.TabGroup;
 import com.webstudio.easybrowser.repository.BookmarkRepository;
 import com.webstudio.easybrowser.repository.TabRepository;
 import com.webstudio.easybrowser.utils.AppSettings;
+import com.webstudio.easybrowser.utils.EasyMotion;
 import com.webstudio.easybrowser.utils.SystemBarUtils;
 import com.webstudio.easybrowser.utils.ScreenshotProtection;
 import com.webstudio.easybrowser.utils.SettingsKeys;
@@ -475,13 +475,7 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
     private void setupRecycler() {
         adapter = new TabGroupAdapter(this);
         binding.groupsRecycler.setAdapter(adapter);
-        DefaultItemAnimator itemAnimator = new DefaultItemAnimator();
-        itemAnimator.setAddDuration(220);
-        itemAnimator.setRemoveDuration(180);
-        itemAnimator.setMoveDuration(220);
-        itemAnimator.setChangeDuration(180);
-        itemAnimator.setSupportsChangeAnimations(true);
-        binding.groupsRecycler.setItemAnimator(itemAnimator);
+        EasyMotion.configurePremiumItemAnimator(binding.groupsRecycler);
         overviewItemTouchHelper = new ItemTouchHelper(new ItemTouchHelper.SimpleCallback(
                 ItemTouchHelper.UP | ItemTouchHelper.DOWN | ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT,
                 ItemTouchHelper.START | ItemTouchHelper.END) {
@@ -555,7 +549,8 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
         updateViewToggleIcon();
         binding.viewToggle.setOnClickListener(v -> {
             gridMode = !gridMode;
-            TransitionManager.beginDelayedTransition(binding.groupsRecycler);
+            TransitionManager.beginDelayedTransition(binding.groupsRecycler,
+                    EasyMotion.premiumLayoutTransition());
             updateLayoutManager();
             adapter.setGridMode(gridMode);
             PreferenceManager.getDefaultSharedPreferences(this)
@@ -997,8 +992,7 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
         if (binding == null || binding.groupsRecycler == null) {
             return;
         }
-        Transition transition = new AutoTransition();
-        transition.setDuration(180);
+        Transition transition = EasyMotion.premiumLayoutTransition();
         TransitionManager.beginDelayedTransition(binding.groupsRecycler, transition);
     }
 
@@ -1011,7 +1005,14 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
                 .scaleY(lifted ? 1.03f : 1f)
                 .alpha(lifted ? 0.96f : 1f)
                 .setDuration(lifted ? 120 : 160)
+                .setInterpolator(lifted ? EasyMotion.EMPHASIZED : EasyMotion.STANDARD)
                 .start();
+    }
+
+    private void animateGroupCreationFeedback() {
+        if (binding != null) {
+            EasyMotion.pulse(binding.fabNewTab);
+        }
     }
 
     private static final class RuntimeOverview {
@@ -1251,6 +1252,7 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
                 false,
                 () -> {
                     groupsChanged = true;
+                    animateGroupCreationFeedback();
                     Toast.makeText(this, R.string.group_created, Toast.LENGTH_SHORT).show();
                     refreshCounts();
                     loadGroups();
@@ -1270,7 +1272,8 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
         boolean collapsed = !appSettings.isGroupCollapsed(group.getGroupId());
         appSettings.setGroupCollapsed(group.getGroupId(), collapsed);
         Transition transition = new AutoTransition();
-        transition.setDuration(collapsed ? 180 : 220);
+        transition.setDuration(collapsed ? 190 : EasyMotion.DURATION_MEDIUM);
+        transition.setInterpolator(EasyMotion.STANDARD);
         TransitionManager.beginDelayedTransition(binding.groupsRecycler, transition);
         adapter.setCollapsedGroupIds(appSettings.getCollapsedGroupIds());
         Toast.makeText(this,
@@ -1742,6 +1745,7 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
         applyRuntimeTabGroup(secondRuntimeTab, groupId, groupName, groupColor);
         recordCreatedPrivateGroup(groupId, groupName, groupColor, firstRuntimeTab, secondRuntimeTab);
         groupsChanged = true;
+        animateGroupCreationFeedback();
         Toast.makeText(this, R.string.group_created, Toast.LENGTH_SHORT).show();
         refreshCounts();
         loadGroups();
@@ -2380,6 +2384,7 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
                     () -> {
                         groupsChanged = true;
                         clearSelection();
+                        animateGroupCreationFeedback();
                         Toast.makeText(this, R.string.group_created, Toast.LENGTH_SHORT).show();
                         loadGroups();
                     });

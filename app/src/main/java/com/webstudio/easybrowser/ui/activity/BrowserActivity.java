@@ -94,6 +94,7 @@ import com.webstudio.easybrowser.repository.QuickAccessRepository;
 import com.webstudio.easybrowser.repository.ReadingListRepository;
 import com.webstudio.easybrowser.repository.TabRepository;
 import com.webstudio.easybrowser.models.ReadingListItem;
+import com.webstudio.easybrowser.utils.EasyMotion;
 import com.webstudio.easybrowser.utils.ScreenshotProtection;
 import com.webstudio.easybrowser.utils.SearchSuggestionProvider;
 import com.webstudio.easybrowser.utils.SettingsKeys;
@@ -157,15 +158,29 @@ public class BrowserActivity extends AppCompatActivity {
     private boolean browserChromeVisible = true;
     private boolean addressBarAtBottom = false;
     private boolean bottomNavigationEnabled = true;
+    private boolean animateNextTabAttach;
     private int lastChromeScrollY = 0;
     private int accumulatedChromeScrollDelta = 0;
     private static final int CHROME_SCROLL_THRESHOLD_PX = 48;
+    private static final int BOTTOM_NAV_FALLBACK_HEIGHT_DP = 58;
+    private static final int BOTTOM_ADDRESS_BAR_FALLBACK_HEIGHT_DP = 60;
+    private static final int QUICK_TAB_STRIP_FALLBACK_HEIGHT_DP = 56;
+    private static final int QUICK_TAB_SHADOW_FALLBACK_HEIGHT_DP = 8;
+    private static final long RESUME_REATTACH_DELAY_MS = 220L;
+    private static final long RECENT_RESUME_WINDOW_MS = 120_000L;
+    private static final long RELOAD_STUCK_TIMEOUT_MS = 8_000L;
     private View browserRoot;
     private ConnectivityManager connectivityManager;
     private ConnectivityManager.NetworkCallback connectivityCallback;
     private BroadcastReceiver connectivityReceiver;
     private final Handler connectivityHandler = new Handler(Looper.getMainLooper());
+    private final Handler browserHandler = new Handler(Looper.getMainLooper());
     private Boolean lastOnlineState;
+    private long lastStoppedAtMs;
+    private long lastResumedAtMs;
+    private long lastProgressChangedAtMs;
+    private int lastPageProgress = 100;
+    private String pendingReloadRecoveryTabId;
 
     boolean canGoBack = false;
     boolean canGoForward = false;
@@ -230,6 +245,9 @@ public class BrowserActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        lastResumedAtMs = System.currentTimeMillis();
+        reattachCurrentSessionAfterResume();
+        browserHandler.postDelayed(this::reattachCurrentSessionAfterResume, RESUME_REATTACH_DELAY_MS);
         if (session != null) {
             session.setActive(true);
         }
@@ -241,20 +259,154 @@ public class BrowserActivity extends AppCompatActivity {
         if (!currentPreset.equals(lastAppliedUaPreset) && session != null) {
             lastAppliedUaPreset = currentPreset;
             applyUaPresetToSession(session, prefs);
-            session.reload();
+            reloadCurrentPage();
         }
     }
 
     @Override
     protected void onStop() {
+        lastStoppedAtMs = System.currentTimeMillis();
+        browserHandler.removeCallbacksAndMessages(null);
         stopConnectivityMonitoring();
         if (tabManager != null && session != null) {
             tabManager.updateTabScrollPosition(session, contentScrollY, true);
+        }
+        if (swipeRefresh != null) {
+            swipeRefresh.setRefreshing(false);
         }
         if (session != null) {
             session.setActive(false);
         }
         super.onStop();
+    }
+
+    private void reattachCurrentSessionAfterResume() {
+        if (isFinishing() || tabManager == null || geckoView == null) {
+            return;
+        }
+        Tab current = tabManager.getCurrentTab();
+        if (current == null) {
+            current = tabManager.createNewTab(false);
+        }
+        if (current.getSession() == null || !current.getSession().isOpen()) {
+            tabManager.replaceSessionForTab(current);
+        }
+        attachTabToView(current);
+        if (session != null) {
+            session.setActive(true);
+        }
+        try {
+            geckoView.requestNewSurface();
+        } catch (Exception e) {
+            Log.w("BrowserActivity", "Failed to request GeckoView surface after resume", e);
+        }
+        if (lastPageProgress >= 100 && swipeRefresh != null) {
+            swipeRefresh.setRefreshing(false);
+        }
+    }
+
+    private void reloadCurrentPage() {
+        if (tabManager == null) {
+            return;
+        }
+        Tab current = tabManager.getCurrentTab();
+        if (current == null) {
+            current = tabManager.createNewTab(false);
+            attachTabToView(current);
+        }
+        if (session == null || current.getSession() != session) {
+            attachTabToView(current);
+        }
+        if (session == null) {
+            return;
+        }
+        lastPageProgress = 0;
+        lastProgressChangedAtMs = System.currentTimeMillis();
+        pendingReloadRecoveryTabId = current.getId();
+        session.reload();
+        scheduleReloadRecovery(current.getId());
+    }
+
+    private void scheduleReloadRecovery(String tabId) {
+        browserHandler.removeCallbacksAndMessages(null);
+        browserHandler.postDelayed(() -> recoverStuckReloadIfNeeded(tabId), RELOAD_STUCK_TIMEOUT_MS);
+    }
+
+    private void recoverStuckReloadIfNeeded(String tabId) {
+        if (isFinishing() || tabManager == null || tabId == null
+                || !tabId.equals(pendingReloadRecoveryTabId)) {
+            return;
+        }
+        boolean recentlyResumed = lastStoppedAtMs > 0
+                && lastResumedAtMs > lastStoppedAtMs
+                && System.currentTimeMillis() - lastResumedAtMs <= RECENT_RESUME_WINDOW_MS;
+        if (!recentlyResumed || lastPageProgress >= 100) {
+            return;
+        }
+        long idleMs = System.currentTimeMillis() - lastProgressChangedAtMs;
+        if (idleMs < RELOAD_STUCK_TIMEOUT_MS - 500L) {
+            return;
+        }
+        recoverCurrentTabSession("reload stuck after resume");
+    }
+
+    private void recoverCurrentTabSession(String reason) {
+        Tab current = tabManager != null ? tabManager.getCurrentTab() : null;
+        if (current == null || geckoView == null) {
+            return;
+        }
+        String url = current.getUrl();
+        if (url == null || url.trim().isEmpty() || "about:blank".equals(url)) {
+            url = UrlUtils.getNewTabPageUrl(this);
+        }
+        GeckoSession oldSession = current.getSession();
+        try {
+            if (geckoView.getSession() == oldSession) {
+                geckoView.releaseSession();
+            }
+        } catch (Exception e) {
+            Log.w("BrowserActivity", "Failed to release stale GeckoSession before recovery", e);
+        }
+        GeckoSession replacement = tabManager.replaceSessionForTab(current);
+        if (replacement == null) {
+            return;
+        }
+        Log.w("BrowserActivity", "Recovered GeckoSession for current tab: " + reason);
+        session = replacement;
+        configureSession(session);
+        geckoView.setSession(session);
+        session.setActive(true);
+        updateUIForTab(current);
+        lastPageProgress = 0;
+        lastProgressChangedAtMs = System.currentTimeMillis();
+        pendingReloadRecoveryTabId = current.getId();
+        if (progressBar != null) {
+            progressBar.setVisibility(View.VISIBLE);
+            progressBar.setProgress(0);
+        }
+        session.loadUri(url);
+    }
+
+    void onPageProgressChanged(@NonNull GeckoSession progressSession, int progress) {
+        if (progressSession != session) {
+            return;
+        }
+        lastPageProgress = progress;
+        lastProgressChangedAtMs = System.currentTimeMillis();
+        if (progress >= 100) {
+            pendingReloadRecoveryTabId = null;
+            if (progressBar != null) {
+                progressBar.setVisibility(View.GONE);
+            }
+            if (swipeRefresh != null) {
+                swipeRefresh.setRefreshing(false);
+            }
+            return;
+        }
+        if (progressBar != null) {
+            progressBar.setVisibility(View.VISIBLE);
+            progressBar.setProgress(progress);
+        }
     }
 
     private void showCrashRecoveryMessageIfNeeded() {
@@ -521,7 +673,7 @@ public class BrowserActivity extends AppCompatActivity {
                 contentScrollY > 0 || (geckoView != null && geckoView.canScrollVertically(-1)));
         swipeRefresh.setOnRefreshListener(() -> {
             if (session != null && contentScrollY <= 0) {
-                session.reload();
+                reloadCurrentPage();
             } else {
                 swipeRefresh.setRefreshing(false);
             }
@@ -539,6 +691,7 @@ public class BrowserActivity extends AppCompatActivity {
         quickTabAdd = findViewById(R.id.quick_tab_add);
         setupBottomNavigation();
         setupQuickTabStrip();
+        setupWebContentInsetUpdates();
         applyBrowserUiPreferences();
     }
 
@@ -620,6 +773,7 @@ public class BrowserActivity extends AppCompatActivity {
                 if (url != null && !url.isEmpty()) {
                     openUrlInNewTab(url, true);
                 } else {
+                    animateNextTabAttach = true;
                     attachTabToView(tabManager.createNewTab(true));
                 }
                 return;
@@ -639,6 +793,7 @@ public class BrowserActivity extends AppCompatActivity {
                 return;
             }
             if (intent.getBooleanExtra(EXTRA_NEW_TAB, false) && tabManager != null) {
+                animateNextTabAttach = true;
                 attachTabToView(tabManager.createNewTab(false, url == null || url.isEmpty()));
                 if (url == null || url.isEmpty()) {
                     return;
@@ -663,6 +818,7 @@ public class BrowserActivity extends AppCompatActivity {
         if (tabManager == null) {
             return;
         }
+        animateNextTabAttach = true;
         attachTabToView(tabManager.createNewTab(false, false));
         loadUrl(UrlUtils.getHomepageUrl(this));
     }
@@ -972,6 +1128,11 @@ public class BrowserActivity extends AppCompatActivity {
             if (tabUrl != null && !tabUrl.trim().isEmpty() && !"about:blank".equals(tabUrl)) {
                 session.loadUri(tabUrl);
             }
+        }
+        if (animateNextTabAttach) {
+            animateNextTabAttach = false;
+            EasyMotion.animateTabOpen(swipeRefresh);
+            EasyMotion.pulse(quickTabAdd);
         }
     }
 
@@ -1758,15 +1919,21 @@ public class BrowserActivity extends AppCompatActivity {
         if (tab == null || tabManager == null) {
             return;
         }
-        TabManager.ClosedTab closedTab = tabManager.closeTab(tab);
-        if (closedTab == null) {
+        if (tab.isLocked()) {
             Toast.makeText(this, R.string.locked_tab_close_blocked, Toast.LENGTH_SHORT).show();
             return;
         }
-        attachTabToView(tabManager.getCurrentTab());
-        updateTabCount();
-        updateQuickTabStrip();
-        showClosedTabUndoSnackbar(closedTab);
+        EasyMotion.animateTabCloseThenOpen(swipeRefresh, () -> {
+            TabManager.ClosedTab closedTab = tabManager.closeTab(tab);
+            if (closedTab == null) {
+                Toast.makeText(this, R.string.locked_tab_close_blocked, Toast.LENGTH_SHORT).show();
+                return;
+            }
+            attachTabToView(tabManager.getCurrentTab());
+            updateTabCount();
+            updateQuickTabStrip();
+            showClosedTabUndoSnackbar(closedTab);
+        });
     }
 
     private void switchToTabById(String tabId) {
@@ -1839,6 +2006,7 @@ public class BrowserActivity extends AppCompatActivity {
     private void setupBottomNavigation() {
         bottomNav.setOnItemSelectedListener(item -> {
             int itemId = item.getItemId();
+            EasyMotion.animateBottomBarSelection(bottomNav, itemId);
             if (itemId == R.id.nav_home) {
                 loadUrl(UrlUtils.getNewTabPageUrl(this));
                 return true;
@@ -1883,7 +2051,7 @@ public class BrowserActivity extends AppCompatActivity {
             CoordinatorLayout.LayoutParams appBarParams =
                     (CoordinatorLayout.LayoutParams) appBar.getLayoutParams();
             appBarParams.gravity = bottom ? Gravity.BOTTOM : Gravity.TOP;
-            appBarParams.bottomMargin = bottom && bottomNavEnabled ? dp(58) : 0;
+            appBarParams.bottomMargin = bottom && bottomNavEnabled ? getVisibleBottomNavHeight() : 0;
             appBar.setLayoutParams(appBarParams);
             appBar.setElevation(dp(6));
             appBar.bringToFront();
@@ -1901,25 +2069,128 @@ public class BrowserActivity extends AppCompatActivity {
             } else {
                 contentParams.setBehavior(new AppBarLayout.ScrollingViewBehavior());
                 contentParams.topMargin = 0;
-                contentParams.bottomMargin = 0;
             }
             swipeRefresh.setLayoutParams(contentParams);
         }
+        requestWebContentBottomInsetUpdate();
     }
 
     private void applyQuickTabStripMargins(boolean addressBarBottom, boolean bottomNavEnabled) {
-        int bottomBase = bottomNavEnabled ? dp(58) : 0;
-        int addressBarSpace = addressBarBottom ? dp(60) : 0;
+        int bottomBase = bottomNavEnabled ? getVisibleBottomNavHeight() : 0;
+        int addressBarSpace = addressBarBottom ? getBottomAddressBarHeight() : 0;
         int stripHeight = getQuickTabStripHeight();
         setBottomMargin(quickTabStripContainer, bottomBase + addressBarSpace);
         setBottomMargin(quickTabStripShadow, bottomBase + addressBarSpace + stripHeight);
+        requestWebContentBottomInsetUpdate();
     }
 
     private int getQuickTabStripHeight() {
         if (quickTabStripContainer != null && quickTabStripContainer.getHeight() > 0) {
             return quickTabStripContainer.getHeight();
         }
-        return dp(56);
+        return dp(QUICK_TAB_STRIP_FALLBACK_HEIGHT_DP);
+    }
+
+    private void setupWebContentInsetUpdates() {
+        View.OnLayoutChangeListener insetListener = (v, left, top, right, bottom,
+                                                     oldLeft, oldTop, oldRight, oldBottom) ->
+                requestWebContentBottomInsetUpdate();
+        if (bottomNav != null) {
+            bottomNav.addOnLayoutChangeListener(insetListener);
+        }
+        if (appBar != null) {
+            appBar.addOnLayoutChangeListener(insetListener);
+        }
+        if (quickTabStripContainer != null) {
+            quickTabStripContainer.addOnLayoutChangeListener(insetListener);
+        }
+        if (quickTabStripShadow != null) {
+            quickTabStripShadow.addOnLayoutChangeListener(insetListener);
+        }
+        requestWebContentBottomInsetUpdate();
+    }
+
+    private void requestWebContentBottomInsetUpdate() {
+        if (swipeRefresh == null) {
+            return;
+        }
+        swipeRefresh.post(this::updateWebContentBottomInset);
+    }
+
+    private void requestWebContentBottomInsetUpdateAfter(long delayMs) {
+        if (swipeRefresh == null) {
+            return;
+        }
+        swipeRefresh.postDelayed(this::updateWebContentBottomInset, delayMs);
+    }
+
+    private void updateWebContentBottomInset() {
+        if (swipeRefresh == null
+                || !(swipeRefresh.getLayoutParams() instanceof CoordinatorLayout.LayoutParams)) {
+            return;
+        }
+
+        int bottomInset = getVisibleBottomChromeHeight();
+        if (geckoView != null) {
+            geckoView.setVerticalClipping(bottomInset);
+        }
+
+        CoordinatorLayout.LayoutParams params =
+                (CoordinatorLayout.LayoutParams) swipeRefresh.getLayoutParams();
+        if (params.bottomMargin != bottomInset) {
+            params.bottomMargin = bottomInset;
+            swipeRefresh.setLayoutParams(params);
+        }
+    }
+
+    private int getVisibleBottomChromeHeight() {
+        int bottomInset = getBottomOverlapHeight(bottomNav, BOTTOM_NAV_FALLBACK_HEIGHT_DP);
+        if (addressBarAtBottom) {
+            bottomInset = Math.max(bottomInset,
+                    getBottomOverlapHeight(appBar, BOTTOM_ADDRESS_BAR_FALLBACK_HEIGHT_DP));
+        }
+        bottomInset = Math.max(bottomInset,
+                getBottomOverlapHeight(quickTabStripContainer, QUICK_TAB_STRIP_FALLBACK_HEIGHT_DP));
+        bottomInset = Math.max(bottomInset,
+                getBottomOverlapHeight(quickTabStripShadow, QUICK_TAB_SHADOW_FALLBACK_HEIGHT_DP));
+        return Math.max(0, bottomInset);
+    }
+
+    private int getVisibleBottomNavHeight() {
+        if (bottomNav == null || bottomNav.getVisibility() != View.VISIBLE) {
+            return 0;
+        }
+        return getViewHeightOrDefault(bottomNav, BOTTOM_NAV_FALLBACK_HEIGHT_DP);
+    }
+
+    private int getBottomAddressBarHeight() {
+        if (appBar == null || appBar.getVisibility() != View.VISIBLE) {
+            return 0;
+        }
+        return getViewHeightOrDefault(appBar, BOTTOM_ADDRESS_BAR_FALLBACK_HEIGHT_DP);
+    }
+
+    private int getViewHeightOrDefault(View view, int fallbackDp) {
+        int height = view != null ? view.getHeight() : 0;
+        return height > 0 ? height : dp(fallbackDp);
+    }
+
+    private int getBottomOverlapHeight(View view, int fallbackDp) {
+        if (view == null || view.getVisibility() != View.VISIBLE) {
+            return 0;
+        }
+        int rootHeight = browserRoot != null ? browserRoot.getHeight() : 0;
+        int top = view.getTop();
+        int height = view.getHeight();
+        if (rootHeight <= 0 || top <= 0 || height <= 0) {
+            return getViewHeightOrDefault(view, fallbackDp);
+        }
+        float translatedTop = top + view.getTranslationY();
+        float overlap = rootHeight - translatedTop;
+        if (overlap <= 0f) {
+            return 0;
+        }
+        return Math.min(rootHeight, Math.round(overlap));
     }
 
     private void setBottomMargin(View view, int margin) {
@@ -2077,6 +2348,7 @@ public class BrowserActivity extends AppCompatActivity {
         });
         quickTabStrip.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false));
         quickTabStrip.setAdapter(quickTabStripAdapter);
+        EasyMotion.configurePremiumItemAnimator(quickTabStrip);
         new ItemTouchHelper(new TabItemTouchHelperCallback(quickTabStripAdapter))
                 .attachToRecyclerView(quickTabStrip);
         quickTabStrip.setContentDescription(getString(R.string.quick_tab_strip));
@@ -2211,6 +2483,7 @@ public class BrowserActivity extends AppCompatActivity {
             }
         }
         quickTabStripAdapter.submitTabs(showStrip ? tabs : new ArrayList<>(), currentId);
+        requestWebContentBottomInsetUpdate();
         if (!showStrip) {
             return;
         }
@@ -2262,19 +2535,19 @@ public class BrowserActivity extends AppCompatActivity {
             return;
         }
         browserChromeVisible = false;
+        requestWebContentBottomInsetUpdate();
+        requestWebContentBottomInsetUpdateAfter(230L);
         int bottomNavOffset = getBottomNavHideOffset();
         if (addressBarAtBottom) {
             appBar.animate()
                     .translationY(bottomNavOffset + appBar.getHeight())
                     .setDuration(180)
+                    .setInterpolator(EasyMotion.STANDARD_ACCELERATE)
                     .start();
         } else {
             appBar.setExpanded(false, true);
         }
-        bottomNav.animate()
-                .translationY(bottomNavOffset)
-                .setDuration(180)
-                .start();
+        EasyMotion.animateBottomBarVisibility(bottomNav, bottomNavOffset, false, true);
         int stripOffset = bottomNavOffset + dp(12);
         if (addressBarAtBottom) {
             stripOffset += appBar.getHeight();
@@ -2283,12 +2556,14 @@ public class BrowserActivity extends AppCompatActivity {
             quickTabStripContainer.animate()
                     .translationY(stripOffset + quickTabStripContainer.getHeight())
                     .setDuration(180)
+                    .setInterpolator(EasyMotion.STANDARD_ACCELERATE)
                     .start();
         }
         if (quickTabStripShadow != null && quickTabStripContainer != null) {
             quickTabStripShadow.animate()
                     .translationY(stripOffset + quickTabStripContainer.getHeight())
                     .setDuration(180)
+                    .setInterpolator(EasyMotion.STANDARD_ACCELERATE)
                     .start();
         }
     }
@@ -2298,29 +2573,29 @@ public class BrowserActivity extends AppCompatActivity {
             return;
         }
         browserChromeVisible = true;
+        requestWebContentBottomInsetUpdate();
+        requestWebContentBottomInsetUpdateAfter(animated ? EasyMotion.DURATION_MEDIUM + 40L : 40L);
         if (appBar != null) {
             appBar.setExpanded(true, animated);
             appBar.animate()
                     .translationY(0f)
-                    .setDuration(animated ? 180 : 0)
+                    .setDuration(animated ? EasyMotion.DURATION_MEDIUM : 0)
+                    .setInterpolator(EasyMotion.EMPHASIZED)
                     .start();
         }
-        if (bottomNav != null) {
-            bottomNav.animate()
-                    .translationY(0f)
-                    .setDuration(animated ? 180 : 0)
-                    .start();
-        }
+        EasyMotion.animateBottomBarVisibility(bottomNav, 0f, true, animated);
         if (quickTabStripContainer != null) {
             quickTabStripContainer.animate()
                     .translationY(0f)
-                    .setDuration(animated ? 180 : 0)
+                    .setDuration(animated ? EasyMotion.DURATION_MEDIUM : 0)
+                    .setInterpolator(EasyMotion.EMPHASIZED)
                     .start();
         }
         if (quickTabStripShadow != null) {
             quickTabStripShadow.animate()
                     .translationY(0f)
-                    .setDuration(animated ? 180 : 0)
+                    .setDuration(animated ? EasyMotion.DURATION_MEDIUM : 0)
+                    .setInterpolator(EasyMotion.EMPHASIZED)
                     .start();
         }
     }
@@ -2361,7 +2636,7 @@ public class BrowserActivity extends AppCompatActivity {
         navigationActions.add(new MoreMenuPopup.Action(R.drawable.ic_reload, R.string.reload,
                 session != null, () -> {
             if (session != null) {
-                session.reload();
+                reloadCurrentPage();
             }
         }));
         navigationActions.add(new MoreMenuPopup.Action(R.drawable.ic_share, R.string.share,
@@ -2448,6 +2723,7 @@ public class BrowserActivity extends AppCompatActivity {
         if (tabManager != null) {
             captureCurrentTabThumbnail();
             Tab newTab = tabManager.createNewTab(isPrivate);
+            animateNextTabAttach = true;
             attachTabToView(newTab);
             if (!isPrivate) {
                 updateUrlInputForUrl(newTab.getUrl());
@@ -2469,6 +2745,7 @@ public class BrowserActivity extends AppCompatActivity {
         Tab newTab = tabManager.createNewTab(isPrivate);
         tabManager.addTabToGroup(newTab, groupId, groupName,
                 groupColor != 0 ? groupColor : TabRepository.getDefaultGroupColor(this));
+        animateNextTabAttach = true;
         attachTabToView(newTab);
         if (!isPrivate) {
             updateUrlInputForUrl(newTab.getUrl());
@@ -2539,7 +2816,7 @@ public class BrowserActivity extends AppCompatActivity {
         session.getSettings().setViewportMode(isDesktopMode
                 ? GeckoSessionSettings.VIEWPORT_MODE_DESKTOP
                 : GeckoSessionSettings.VIEWPORT_MODE_MOBILE);
-        session.reload();
+        reloadCurrentPage();
     }
 
     private void showFindInPageDialog() {
@@ -2675,6 +2952,7 @@ public class BrowserActivity extends AppCompatActivity {
                     current.getGroupName(), current.getGroupColor());
         }
         tab.setCloseOnBackToPreviousTab(closeOnBackToPreviousTab);
+        animateNextTabAttach = true;
         attachTabToView(tab);
         loadUrl(url);
         updateTabCount();
@@ -2712,6 +2990,7 @@ public class BrowserActivity extends AppCompatActivity {
                     TabRepository.getDefaultGroupColor(this),
                     isPrivate);
         }
+        animateNextTabAttach = true;
         attachTabToView(tab);
         loadUrl(url);
         updateTabCount();
@@ -2852,6 +3131,7 @@ public class BrowserActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        browserHandler.removeCallbacksAndMessages(null);
         super.onDestroy();
     }
 

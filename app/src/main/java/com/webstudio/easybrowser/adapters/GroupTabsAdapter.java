@@ -22,6 +22,7 @@ import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.databinding.ItemGroupTabCardBinding;
 import com.webstudio.easybrowser.managers.TabThumbnailManager;
 import com.webstudio.easybrowser.models.Tab;
+import com.webstudio.easybrowser.utils.EasyMotion;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -55,6 +56,7 @@ public class GroupTabsAdapter extends ListAdapter<Tab, GroupTabsAdapter.ViewHold
 
     private final Listener listener;
     private final Set<String> selectedIds = new HashSet<>();
+    private final Set<String> pendingEntryAnimations = new HashSet<>();
     private String currentTabId;
     private int groupColor;
     private boolean selectionMode;
@@ -87,6 +89,21 @@ public class GroupTabsAdapter extends ListAdapter<Tab, GroupTabsAdapter.ViewHold
             selectedIds.addAll(ids);
         }
         notifyDataSetChanged();
+    }
+
+    public void submitAnimatedList(List<Tab> tabs) {
+        Set<String> existingIds = new HashSet<>();
+        for (Tab tab : getCurrentList()) {
+            existingIds.add(tab.getId());
+        }
+        if (tabs != null) {
+            for (Tab tab : tabs) {
+                if (tab != null && !existingIds.contains(tab.getId())) {
+                    pendingEntryAnimations.add(tab.getId());
+                }
+            }
+        }
+        submitList(tabs != null ? new ArrayList<>(tabs) : new ArrayList<>());
     }
 
     @Override
@@ -187,6 +204,7 @@ public class GroupTabsAdapter extends ListAdapter<Tab, GroupTabsAdapter.ViewHold
         }
 
         void bind(Tab tab) {
+            resetCardTransform();
             String title = tab.getTitle() != null && !tab.getTitle().trim().isEmpty()
                     ? tab.getTitle()
                     : itemView.getContext().getString(R.string.new_tab);
@@ -206,14 +224,33 @@ public class GroupTabsAdapter extends ListAdapter<Tab, GroupTabsAdapter.ViewHold
             int closeDescription = tab.isLocked() ? R.string.lock_tab : R.string.close_tab;
             binding.closeButton.setImageResource(closeIcon);
             binding.closeButton.setContentDescription(itemView.getContext().getString(closeDescription));
-            binding.closeButton.setOnClickListener(v -> listener.onCloseTab(tab));
+            binding.closeButton.setOnClickListener(v -> {
+                if (tab.isLocked()) {
+                    listener.onCloseTab(tab);
+                } else {
+                    EasyMotion.animateDismiss(binding.tabCard, () -> listener.onCloseTab(tab));
+                }
+            });
             binding.overflowButton.setOnClickListener(v -> {
                 if (selectionMode) {
                     listener.onTabClick(tab);
-                } else {
+                } else if (tab.isLocked()) {
                     listener.onCloseTab(tab);
+                } else {
+                    EasyMotion.animateDismiss(binding.tabCard, () -> listener.onCloseTab(tab));
                 }
             });
+            if (pendingEntryAnimations.remove(tab.getId())) {
+                EasyMotion.animateGroupCreation(binding.tabCard);
+            }
+        }
+
+        private void resetCardTransform() {
+            binding.tabCard.animate().cancel();
+            binding.tabCard.setAlpha(1f);
+            binding.tabCard.setScaleX(1f);
+            binding.tabCard.setScaleY(1f);
+            binding.tabCard.setTranslationY(0f);
         }
 
         private void bindSelectionState(Tab tab, boolean selected, int activeColor) {
