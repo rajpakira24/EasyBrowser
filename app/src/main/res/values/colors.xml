@@ -1,23 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Primary Colors -->
-    <color name="palette_frosted_white">#FAFAFA</color>
-    <color name="palette_warm_white">#F6F3ED</color>
-    <color name="palette_soft_snow">#FFFBFF</color>
     <color name="palette_cloud_blue">#EAEFFE</color>
     <color name="palette_soft_cloud">#BBE1FA</color>
     <color name="palette_glacier_gray">#D1D1D1</color>
     <color name="palette_mist_gray">#C2CBD3</color>
-    <color name="palette_steel_gray">#929292</color>
     <color name="palette_sky_focus">#3282B8</color>
     <color name="palette_royal_blue">#0F4C75</color>
     <color name="palette_lavender">#9787F3</color>
     <color name="palette_deep_navy">#313851</color>
-    <color name="palette_deep_space">#1B262C</color>
-    <color name="palette_obsidian">#222222</color>
     <color name="palette_royal_purple">#460B6A</color>
     <color name="palette_deep_purple">#2D274B</color>
-
     <color name="colorPrimary">#3282B8</color>
     <color name="colorPrimaryVariant">#0F4C75</color>
     <color name="colorOnPrimary">#FAFAFA</color>
@@ -30,67 +23,39 @@
     <color name="browser_url_foreground">#26323A</color>
     <color name="browser_url_hint">#6F7482</color>
     <color name="section_heading">#0F4C75</color>
-    <color name="brandBlue">#3282B8</color>
-    <color name="brandRed">#460B6A</color>
-    <color name="brandYellow">#9787F3</color>
-    <color name="brandGreen">#0F4C75</color>
-    <color name="shieldPurple">#9787F3</color>
-    <color name="shieldTeal">#BBE1FA</color>
-
     <!-- Secondary Colors -->
     <color name="colorSecondary">#9787F3</color>
     <color name="colorSecondaryVariant">#2D274B</color>
     <color name="colorOnSecondary">#FAFAFA</color>
-
     <!-- Background Colors -->
     <color name="backgroundColor">#F6F3ED</color>
-    <color name="colorBackground">#F6F3ED</color>
     <color name="colorOnBackground">#313851</color>
-
     <!-- Surface Colors -->
     <color name="colorSurface">#FAFAFA</color>
     <color name="colorOnSurface">#313851</color>
     <color name="surface_variant">#EAEFFE</color>
     <color name="text_secondary">#6F7482</color>
     <color name="settings_card_background">#FAFAFA</color>
-
     <!-- UI Colors -->
-    <color name="white">#FAFAFA</color>
-    <color name="black">#222222</color>
     <color name="gray">#6F7482</color>
-    <color name="light_gray">#D1D1D1</color>
-    <color name="dark_gray">#313851</color>
-
     <!-- Search Bar Colors -->
     <color name="search_bar_background">#F1F2F4</color>
-    <color name="search_bar_border">#E2E5E8</color>
-    <color name="search_bar_stroke">#E2E5E8</color>
     <color name="border_color">#C2CBD3</color>
-
     <!-- Quick Access Colors -->
-    <color name="quick_access_bg">#EAEFFE</color>
-
     <!-- Status Colors -->
     <color name="error">#460B6A</color>
     <color name="success">#0F4C75</color>
     <color name="warning">#9787F3</color>
-    <color name="info">#3282B8</color>
-
     <!-- Tab Colors -->
     <color name="tab_selected">#3282B8</color>
     <color name="tab_unselected">#929292</color>
-
     <!-- Security Colors -->
-    <color name="secure_connection">#0F4C75</color>
-    <color name="insecure_connection">#460B6A</color>
     <color name="smart_shield_safe">#1F8A5B</color>
     <color name="smart_shield_moderate">#B98900</color>
     <color name="smart_shield_warning">#B3261E</color>
-
     <!-- Transparency -->
     <color name="black_overlay">#66313851</color>
     <color name="white_overlay">#66FAFAFA</color>
-
     <!-- Tab manager dark surface -->
     <color name="tab_manager_background">#FAFAFA</color>
     <color name="tab_manager_panel">#FFFFFF</color>
@@ -98,7 +63,6 @@
     <color name="tab_manager_search">#F1F2F4</color>
     <color name="tab_manager_card">#F7F8FA</color>
     <color name="tab_manager_preview">#EEF1F5</color>
-    <color name="tab_manager_preview_alt">#F3F5F8</color>
     <color name="tab_manager_text">#313851</color>
     <color name="tab_manager_text_secondary">#929292</color>
     <color name="tab_manager_icon_chip">#EAEFFE</color>
@@ -109,10 +73,8 @@
     <color name="group_panel_text">#313851</color>
     <color name="group_tab_card_background">#F6F8FF</color>
     <color name="group_tab_card_stroke">#D1D8E8</color>
-
     <!-- Home screen -->
     <color name="home_background">#F7F8FA</color>
-    <color name="home_search_background">#FFFFFF</color>
     <color name="home_search_stroke">#DDE6ED</color>
     <color name="home_panel_background">#FFFFFF</color>
     <color name="home_panel_border">#DCE4EA</color>

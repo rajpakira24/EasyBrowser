@@ -31,6 +31,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.IntentSenderRequest;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
@@ -41,6 +42,7 @@ import androidx.core.widget.NestedScrollView;
 
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.snackbar.Snackbar;
 import com.google.android.material.switchmaterial.SwitchMaterial;
 import com.webstudio.easybrowser.BuildConfig;
 import com.webstudio.easybrowser.R;
@@ -51,6 +53,7 @@ import com.webstudio.easybrowser.managers.RuntimeManager;
 import com.webstudio.easybrowser.managers.TabThumbnailCache;
 import com.webstudio.easybrowser.repository.BookmarkRepository;
 import com.webstudio.easybrowser.repository.HistoryRepository;
+import com.webstudio.easybrowser.utils.AppUpdateUtils;
 import com.webstudio.easybrowser.utils.ScreenshotProtection;
 import com.webstudio.easybrowser.utils.SettingsKeys;
 import com.webstudio.easybrowser.utils.SystemBarUtils;
@@ -132,6 +135,8 @@ public class SettingsActivity extends AppCompatActivity {
     private TextView settingsNoResultsView;
     private View defaultBrowserCard;
     private ActivityResultLauncher<Intent> defaultBrowserLauncher;
+    private ActivityResultLauncher<IntentSenderRequest> appUpdateLauncher;
+    private AppUpdateUtils appUpdateUtils;
 
     private LinearLayout settingSearchEngine;
     private LinearLayout settingPrivateSearchEngine;
@@ -167,10 +172,12 @@ public class SettingsActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setupDefaultBrowserLauncher();
+        setupAppUpdateLauncher();
         setContentView(R.layout.activity_settings);
 
         setupToolbar();
         initializeViews();
+        appUpdateUtils = new AppUpdateUtils(this);
         applyThemedChrome();
         initializeRepositories();
         setupListeners();
@@ -192,12 +199,33 @@ public class SettingsActivity extends AppCompatActivity {
             updateDefaultBrowserCardVisibility();
             applySettingsSearchFilter();
         }
+        if (appUpdateUtils != null) {
+            appUpdateUtils.resumePendingUpdate(appUpdateLauncher, createAppUpdateCallback(false));
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (appUpdateUtils != null) {
+            appUpdateUtils.release();
+        }
+        super.onDestroy();
     }
 
     private void setupDefaultBrowserLauncher() {
         defaultBrowserLauncher = registerForActivityResult(
                 new ActivityResultContracts.StartActivityForResult(),
                 result -> updateDefaultBrowserCardVisibility());
+    }
+
+    private void setupAppUpdateLauncher() {
+        appUpdateLauncher = registerForActivityResult(
+                new ActivityResultContracts.StartIntentSenderForResult(),
+                result -> {
+                    if (result.getResultCode() != RESULT_OK) {
+                        showToast(R.string.update_flow_cancelled);
+                    }
+                });
     }
 
     private void setupToolbar() {
@@ -665,6 +693,7 @@ public class SettingsActivity extends AppCompatActivity {
         setRowIcon(R.id.setting_doh, R.drawable.ic_security);
         setRowIcon(R.id.setting_remote_debugging, R.drawable.ic_desktop);
         setRowIcon(R.id.setting_help_feedback, R.drawable.ic_help);
+        setRowIcon(R.id.setting_check_updates, R.drawable.ic_reload);
         setRowIcon(R.id.setting_about, R.drawable.ic_help);
     }
 
@@ -1151,6 +1180,7 @@ public class SettingsActivity extends AppCompatActivity {
                 openSubpage(SettingsSubpageActivity.PAGE_DATA_COMPLIANCE));
         findViewById(R.id.setting_help_feedback).setOnClickListener(v ->
                 openSubpage(SettingsSubpageActivity.PAGE_HELP_FEEDBACK));
+        findViewById(R.id.setting_check_updates).setOnClickListener(v -> checkForUpdates());
         findViewById(R.id.setting_about).setOnClickListener(v ->
                 openSubpage(SettingsSubpageActivity.PAGE_ABOUT));
         findViewById(R.id.setting_cookie_manager).setOnClickListener(v ->
@@ -2000,6 +2030,45 @@ public class SettingsActivity extends AppCompatActivity {
         Intent intent = new Intent(this, SettingsSubpageActivity.class);
         intent.putExtra(SettingsSubpageActivity.EXTRA_PAGE, page);
         startActivity(intent);
+    }
+
+    private void checkForUpdates() {
+        if (appUpdateUtils == null) {
+            showToast(R.string.check_for_updates_unavailable);
+            return;
+        }
+        showToast(R.string.checking_for_updates);
+        appUpdateUtils.checkForUpdates(appUpdateLauncher, createAppUpdateCallback(true));
+    }
+
+    private AppUpdateUtils.Callback createAppUpdateCallback(boolean userInitiated) {
+        return new AppUpdateUtils.Callback() {
+            @Override
+            public void onNoUpdateAvailable() {
+                if (userInitiated) {
+                    showToast(R.string.no_updates_available);
+                }
+            }
+
+            @Override
+            public void onUpdateCheckFailed() {
+                if (userInitiated) {
+                    showToast(R.string.check_for_updates_unavailable);
+                }
+            }
+
+            @Override
+            public void onFlexibleUpdateDownloaded(Runnable completeUpdate) {
+                showUpdateReadySnackbar(completeUpdate);
+            }
+        };
+    }
+
+    private void showUpdateReadySnackbar(Runnable completeUpdate) {
+        View anchor = findViewById(android.R.id.content);
+        Snackbar.make(anchor, R.string.update_downloaded, Snackbar.LENGTH_INDEFINITE)
+                .setAction(R.string.update_restart, v -> completeUpdate.run())
+                .show();
     }
 
     private void requestDefaultBrowserChange() {

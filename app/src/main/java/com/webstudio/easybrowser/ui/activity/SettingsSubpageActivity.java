@@ -36,6 +36,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.IntentSenderRequest;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
@@ -48,6 +49,7 @@ import androidx.preference.PreferenceManager;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.slider.Slider;
+import com.google.android.material.snackbar.Snackbar;
 import com.google.android.material.switchmaterial.SwitchMaterial;
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
@@ -62,6 +64,7 @@ import com.webstudio.easybrowser.utils.SystemBarUtils;
 import com.webstudio.easybrowser.managers.RuntimeManager;
 import com.webstudio.easybrowser.repository.WeatherRepository;
 import com.webstudio.easybrowser.utils.AppSettings;
+import com.webstudio.easybrowser.utils.AppUpdateUtils;
 import com.webstudio.easybrowser.utils.HomeBackgroundProvider;
 import com.webstudio.easybrowser.utils.SettingsKeys;
 import com.webstudio.easybrowser.utils.ThemeEngine;
@@ -118,15 +121,19 @@ public class SettingsSubpageActivity extends AppCompatActivity {
     private WebView legalWebView;
     private Toolbar toolbar;
     private AppSettings appSettings;
+    private AppUpdateUtils appUpdateUtils;
     private String page;
     private ActivityResultLauncher<String[]> appPermissionLauncher;
+    private ActivityResultLauncher<IntentSenderRequest> appUpdateLauncher;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = PreferenceManager.getDefaultSharedPreferences(this);
         appSettings = new AppSettings(this);
+        appUpdateUtils = new AppUpdateUtils(this);
         setupAppPermissionLauncher();
+        setupAppUpdateLauncher();
         int appBarColor = ThemeEngine.settingsChromeColor(this);
         SystemBarUtils.apply(this,
                 appBarColor,
@@ -146,6 +153,17 @@ public class SettingsSubpageActivity extends AppCompatActivity {
         if (toolbar != null) {
             buildPage();
         }
+        if (appUpdateUtils != null) {
+            appUpdateUtils.resumePendingUpdate(appUpdateLauncher, createAppUpdateCallback(false));
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (appUpdateUtils != null) {
+            appUpdateUtils.release();
+        }
+        super.onDestroy();
     }
 
     @Override
@@ -843,6 +861,17 @@ public class SettingsSubpageActivity extends AppCompatActivity {
                                     granted, result.size()),
                             Toast.LENGTH_SHORT).show();
                     buildPage();
+                });
+    }
+
+    private void setupAppUpdateLauncher() {
+        appUpdateLauncher = registerForActivityResult(
+                new ActivityResultContracts.StartIntentSenderForResult(),
+                result -> {
+                    if (result.getResultCode() != RESULT_OK) {
+                        Toast.makeText(this, R.string.update_flow_cancelled,
+                                Toast.LENGTH_SHORT).show();
+                    }
                 });
     }
 
@@ -1889,6 +1918,8 @@ public class SettingsSubpageActivity extends AppCompatActivity {
                         : getString(R.string.about_build_release), null);
         addStaticRow(app, getString(R.string.about_package_name),
                 BuildConfig.APPLICATION_ID, null);
+        addActionRow(app, getString(R.string.check_for_updates),
+                getString(R.string.check_for_updates_summary), this::checkForUpdates);
 
         addSection(R.string.browser);
         LinearLayout runtime = addCard();
@@ -1940,6 +1971,49 @@ public class SettingsSubpageActivity extends AppCompatActivity {
         clipboard.setPrimaryClip(ClipData.newPlainText(
                 getString(R.string.copy_support_details), getSupportDetails()));
         Toast.makeText(this, R.string.support_details_copied, Toast.LENGTH_SHORT).show();
+    }
+
+    private void checkForUpdates() {
+        if (appUpdateUtils == null) {
+            Toast.makeText(this, R.string.check_for_updates_unavailable,
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Toast.makeText(this, R.string.checking_for_updates, Toast.LENGTH_SHORT).show();
+        appUpdateUtils.checkForUpdates(appUpdateLauncher, createAppUpdateCallback(true));
+    }
+
+    private AppUpdateUtils.Callback createAppUpdateCallback(boolean userInitiated) {
+        return new AppUpdateUtils.Callback() {
+            @Override
+            public void onNoUpdateAvailable() {
+                if (userInitiated) {
+                    Toast.makeText(SettingsSubpageActivity.this, R.string.no_updates_available,
+                            Toast.LENGTH_SHORT).show();
+                }
+            }
+
+            @Override
+            public void onUpdateCheckFailed() {
+                if (userInitiated) {
+                    Toast.makeText(SettingsSubpageActivity.this,
+                            R.string.check_for_updates_unavailable,
+                            Toast.LENGTH_SHORT).show();
+                }
+            }
+
+            @Override
+            public void onFlexibleUpdateDownloaded(Runnable completeUpdate) {
+                showUpdateReadySnackbar(completeUpdate);
+            }
+        };
+    }
+
+    private void showUpdateReadySnackbar(Runnable completeUpdate) {
+        View anchor = findViewById(android.R.id.content);
+        Snackbar.make(anchor, R.string.update_downloaded, Snackbar.LENGTH_INDEFINITE)
+                .setAction(R.string.update_restart, v -> completeUpdate.run())
+                .show();
     }
 
     private String getSupportDetails() {

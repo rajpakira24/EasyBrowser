@@ -1,0 +1,6 @@
+Easy Browser 2.7.0 - Aurora Shield
+
+Cleaner home and new tab experience with privacy stats, Quick Access, widgets, and weather controls.
+Improved tab grouping, tab recovery, and browser stability.
+Stronger privacy/security settings and content blocking polish.
+Removed unused app resources for a leaner build and fixed release-test issues.

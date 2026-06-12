@@ -74,6 +74,7 @@ public class TabGroupAdapterTest {
         @Override public void onMoveTabToGroup(Tab tab, TabGroup targetGroup) {}
         @Override public void onCreateGroupFromTabs(Tab firstTab, Tab secondTab) {}
         @Override public void onCloseGroup(TabGroup group) {}
+        @Override public void onToggleGroupCollapsed(TabGroup group) {}
         @Override public void onCloseTab(Tab tab) {}
         @Override public void onGroupLongClick(TabGroup group) {}
         @Override public void onTabLongClick(Tab tab, View anchor) {}

@@ -121,13 +121,13 @@ public class QuickAccessAdapter extends RecyclerView.Adapter<QuickAccessAdapter.
                         .placeholder(R.mipmap.ic_launcher)
                         .transform(FAVICON_NORMALIZER);
                 if (!TextUtils.isEmpty(fallbackUrl)) {
-                    request.error(Glide.with(favicon)
+                    request = request.error(Glide.with(favicon)
                             .load(fallbackUrl)
                             .placeholder(R.mipmap.ic_launcher)
                             .transform(FAVICON_NORMALIZER)
                             .error(R.mipmap.ic_launcher));
                 } else {
-                    request.error(R.mipmap.ic_launcher);
+                    request = request.error(R.mipmap.ic_launcher);
                 }
                 request.into(favicon);
             } else {
