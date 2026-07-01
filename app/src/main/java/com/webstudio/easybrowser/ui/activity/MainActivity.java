@@ -46,6 +46,11 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import com.airbnb.lottie.LottieAnimationView;
@@ -111,6 +116,8 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
     private ImageButton micButton;
     private ImageButton securityButton;
     private ImageButton clearButton;
+    // One-time "This time search in:" engine override; consumed by the next search submit.
+    private String oneTimeSearchEngineUrl;
     private ImageButton searchButton;
     private RecyclerView quickAccessRecycler;
     private View weatherWidget;
@@ -119,6 +126,7 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
     private TextView weatherCondition;
     private TextView weatherTemperature;
     private View privacyStatsCard;
+    private ImageButton privacyStatsToggle;
     private TextView quickAccessTitle;
     private TextView protectedPagesStat;
     private TextView blockedItemsStat;
@@ -129,6 +137,11 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
     private View homeContentContainer;
     private View homeSearchBar;
     private BottomNavigationView bottomNav;
+    // System nav-bar inset (edge-to-edge). Owned by applyHomeInsets, read by the single
+    // bottom-chrome spacing method so search-bar/scroll padding clears the gesture bar.
+    private int systemBarsBottomInset;
+    private final java.util.concurrent.ExecutorService ioExecutor =
+            java.util.concurrent.Executors.newSingleThreadExecutor();
     private QuickAccessRepository quickAccessRepository;
     private TabRepository tabRepository;
     private WeatherRepository weatherRepository;
@@ -153,6 +166,7 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         applyHomeSystemBars();
+        applyHomeInsets();
 
         initializeRepositories();
         initializeViews();
@@ -176,8 +190,49 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
     }
 
     private void applyHomeSystemBars() {
-        int chrome = ThemeEngine.homeChromeColor(this);
-        SystemBarUtils.apply(this, chrome, chrome, ThemeEngine.useDarkSystemBarIcons(chrome));
+        // Edge-to-edge: the wallpaper fills behind transparent status + nav bars.
+        Window window = getWindow();
+        WindowCompat.setDecorFitsSystemWindows(window, false);
+        window.setStatusBarColor(Color.TRANSPARENT);
+        window.setNavigationBarColor(Color.TRANSPARENT);
+        WindowInsetsControllerCompat controller =
+                WindowCompat.getInsetsController(window, window.getDecorView());
+        // Home draws light text over a dark wallpaper → use light (white) system-bar icons.
+        controller.setAppearanceLightStatusBars(false);
+        controller.setAppearanceLightNavigationBars(false);
+    }
+
+    // Pad the foreground (content, bottom nav, search bar) by the system-bar insets so nothing
+    // hides behind the status/nav bars while the wallpaper still draws full-bleed behind them.
+    private void applyHomeInsets() {
+        View root = findViewById(R.id.home_root);
+        if (root == null) {
+            return;
+        }
+        View content = findViewById(R.id.home_content_container);
+        View weather = findViewById(R.id.weather_widget);
+        ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
+            Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            systemBarsBottomInset = bars.bottom;
+            // Own only the top + horizontal padding here. The bottom edge (search-bar margin
+            // and scroll clearance) is owned solely by updateHomeBottomChromeSpacing() so the
+            // two paths never fight over the same margins and the inset isn't clobbered.
+            if (content != null) {
+                content.setPadding(dp(16), dp(28) + bars.top, dp(16),
+                        content.getPaddingBottom());
+            }
+            // Weather widget floats at top|end — push it below the status bar.
+            if (weather != null
+                    && weather.getLayoutParams() instanceof ViewGroup.MarginLayoutParams) {
+                ViewGroup.MarginLayoutParams wlp =
+                        (ViewGroup.MarginLayoutParams) weather.getLayoutParams();
+                wlp.topMargin = dp(7) + bars.top;
+                weather.setLayoutParams(wlp);
+            }
+            updateHomeBottomChromeSpacing();
+            return insets;
+        });
+        ViewCompat.requestApplyInsets(root);
     }
 
     @Override
@@ -191,6 +246,10 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
     protected void onResume() {
         super.onResume();
         applyHomeSystemBars();
+        // Discard any unconsumed "this time search in" override when returning to home so a
+        // stale engine can't silently apply to a later search; applyHomeTheme() below repaints
+        // the search icon back to the default engine.
+        oneTimeSearchEngineUrl = null;
         PreferenceManager.getDefaultSharedPreferences(this)
                 .registerOnSharedPreferenceChangeListener(privacyStatsListener);
         setupHomeBackground();
@@ -209,6 +268,12 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         super.onPause();
     }
 
+    @Override
+    protected void onDestroy() {
+        ioExecutor.shutdownNow();
+        super.onDestroy();
+    }
+
     private void initializeViews() {
         urlInput = findViewById(R.id.url_input);
         micButton = findViewById(R.id.btn_mic);
@@ -222,6 +287,7 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         weatherCondition = findViewById(R.id.weather_condition);
         weatherTemperature = findViewById(R.id.weather_temperature);
         privacyStatsCard = findViewById(R.id.privacy_stats_card);
+        privacyStatsToggle = findViewById(R.id.btn_toggle_privacy_stats);
         quickAccessTitle = findViewById(R.id.quick_access_title);
         protectedPagesStat = findViewById(R.id.stat_protected_pages);
         blockedItemsStat = findViewById(R.id.stat_blocked_items);
@@ -257,9 +323,140 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         }
 
         AnalyticsManager.logNavigationSubmitted(this, input, false);
+        String target;
+        if (oneTimeSearchEngineUrl != null && UrlUtils.isSearchQuery(input)) {
+            target = UrlUtils.getSearchUrlForEngine(this, input, oneTimeSearchEngineUrl);
+        } else {
+            target = UrlUtils.getUrlOrSearchUrl(this, input);
+        }
+        oneTimeSearchEngineUrl = null;
         Intent intent = new Intent(this, BrowserActivity.class);
-        intent.putExtra(BrowserActivity.EXTRA_URL, UrlUtils.getUrlOrSearchUrl(this, input));
+        intent.putExtra(BrowserActivity.EXTRA_URL, target);
         startActivity(intent);
+    }
+
+    // Load the current (or one-time override) search engine's favicon onto the search button,
+    // clearing the theme tint so the colored favicon shows like Firefox's engine icon.
+    private void updateSearchEngineIcon() {
+        updateSearchEngineIcon(securityButton);
+    }
+
+    private void updateSearchEngineIcon(ImageButton target) {
+        if (target == null) {
+            return;
+        }
+        String engineUrl = oneTimeSearchEngineUrl != null
+                ? oneTimeSearchEngineUrl : UrlUtils.getSearchEngineUrl(this, false);
+        int tint = ThemeEngine.homePalette(this).onSurface;
+        Drawable fallback = ContextCompat.getDrawable(this, R.drawable.ic_search);
+        if (fallback != null) {
+            fallback = fallback.mutate();
+            fallback.setTint(tint);
+        }
+        target.setImageTintList(null);
+        target.clearColorFilter();
+        target.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        Glide.with(target)
+                .load(UrlUtils.getEngineIconUrl(engineUrl))
+                .circleCrop()
+                .placeholder(fallback)
+                .error(fallback)
+                .into(target);
+    }
+
+    private void searchWithEngine(String input, String engineUrl) {
+        Intent intent = new Intent(this, BrowserActivity.class);
+        intent.putExtra(BrowserActivity.EXTRA_URL,
+                UrlUtils.getSearchUrlForEngine(this, input, engineUrl));
+        startActivity(intent);
+    }
+
+    private void showSearchEnginePicker() {
+        SearchEnginePickerPopup.show(this, securityButton, new SearchEnginePickerPopup.Callback() {
+            @Override
+            public void onEngineSelected(String name, String engineUrl) {
+                String input = urlInput.getText() != null
+                        ? urlInput.getText().toString().trim() : "";
+                if (!input.isEmpty()) {
+                    searchWithEngine(input, engineUrl);
+                } else {
+                    // No query yet — apply the engine to the next search and focus the field.
+                    oneTimeSearchEngineUrl = engineUrl;
+                    updateSearchEngineIcon();
+                    urlInput.requestFocus();
+                    Toast.makeText(MainActivity.this,
+                            getString(R.string.search_picker_title) + " " + name,
+                            Toast.LENGTH_SHORT).show();
+                }
+            }
+
+            @Override
+            public void onBookmarks() {
+                startActivity(new Intent(MainActivity.this, BookmarksActivity.class));
+            }
+
+            @Override
+            public void onTabs() {
+                launchTabManager();
+            }
+
+            @Override
+            public void onHistory() {
+                startActivity(new Intent(MainActivity.this, HistoryActivity.class));
+            }
+
+            @Override
+            public void onSearchSettings() {
+                startActivity(new Intent(MainActivity.this, SettingsActivity.class));
+            }
+        });
+    }
+
+    private void showSearchEnginePickerForPopup(ImageButton anchor, EditText searchInput,
+                                                android.app.Dialog dialog) {
+        SearchEnginePickerPopup.show(this, anchor, new SearchEnginePickerPopup.Callback() {
+            @Override
+            public void onEngineSelected(String name, String engineUrl) {
+                oneTimeSearchEngineUrl = engineUrl;
+                String input = searchInput.getText() != null
+                        ? searchInput.getText().toString().trim() : "";
+                if (!input.isEmpty()) {
+                    dialog.dismiss();
+                    handleUrlInput(input);
+                } else {
+                    updateSearchEngineIcon();
+                    updateSearchEngineIcon(anchor);
+                    searchInput.requestFocus();
+                    Toast.makeText(MainActivity.this,
+                            getString(R.string.search_picker_title) + " " + name,
+                            Toast.LENGTH_SHORT).show();
+                }
+            }
+
+            @Override
+            public void onBookmarks() {
+                dialog.dismiss();
+                startActivity(new Intent(MainActivity.this, BookmarksActivity.class));
+            }
+
+            @Override
+            public void onTabs() {
+                dialog.dismiss();
+                launchTabManager();
+            }
+
+            @Override
+            public void onHistory() {
+                dialog.dismiss();
+                startActivity(new Intent(MainActivity.this, HistoryActivity.class));
+            }
+
+            @Override
+            public void onSearchSettings() {
+                dialog.dismiss();
+                startActivity(new Intent(MainActivity.this, SettingsActivity.class));
+            }
+        });
     }
 
     private void handleIncomingIntent(Intent intent) {
@@ -630,9 +827,12 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
                     palette.searchIconBackground, dp(20)));
             securityButton.setColorFilter(palette.onSurface);
         }
+        // Show the current search engine's favicon on the icon (overrides the tint above).
+        updateSearchEngineIcon();
         tintHomeButton(micButton, palette.onSurface);
         tintHomeButton(clearButton, palette.onSurface);
         tintHomeButton(searchButton, palette.onSurface);
+        tintHomeButton(privacyStatsToggle, palette.onSurfaceMuted);
         if (urlInput != null) {
             urlInput.setTextColor(palette.onSurface);
             urlInput.setHintTextColor(palette.onSurfaceMuted);
@@ -763,6 +963,18 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         protectedPagesStat.setText(String.valueOf(stats.pagesProtected));
         blockedItemsStat.setText(String.valueOf(stats.itemsBlocked));
         timeSavedStat.setText(formatTimeSaved(stats.timeSavedSeconds));
+    }
+
+    // One-way: hides the whole privacy-stats card via the same pref Settings > Display already
+    // exposes. There is no re-show affordance on home by design — re-enabling requires Settings,
+    // so this never needs an "eye-off" state.
+    private void hidePrivacyStatsCard() {
+        PreferenceManager.getDefaultSharedPreferences(this)
+                .edit()
+                .putBoolean(SettingsKeys.PREF_SHOW_PRIVACY_STATS, false)
+                .apply();
+        applyHomeSectionVisibility();
+        Toast.makeText(this, R.string.privacy_stats_hidden_toast, Toast.LENGTH_LONG).show();
     }
 
     private String formatTimeSaved(int seconds) {
@@ -940,7 +1152,7 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         int searchBarHeight = homeSearchBar.getHeight() > 0 ? homeSearchBar.getHeight() : dp(48);
         int searchBottomMargin = Math.max(
                 bottomNavHeight + dp(HOME_SEARCH_NAV_GAP_DP),
-                dp(HOME_SEARCH_MIN_BOTTOM_MARGIN_DP));
+                dp(HOME_SEARCH_MIN_BOTTOM_MARGIN_DP) + systemBarsBottomInset);
 
         setBottomMargin(homeSearchBar, searchBottomMargin);
         if (photoCredit != null) {
@@ -980,16 +1192,22 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
     }
 
     private void updateTabCountIcon() {
-        if (bottomNav == null) {
+        if (bottomNav == null || bottomNav.getMenu().findItem(R.id.nav_tabs) == null) {
             return;
         }
-        MenuItem tabsItem = bottomNav.getMenu().findItem(R.id.nav_tabs);
-        if (tabsItem == null) {
-            return;
-        }
-        int count = Math.max(1, getSavedPublicTabCount());
-        tabsItem.setIcon(createTabCountIcon(count));
-        bottomNav.post(() -> tabsItem.setIcon(createTabCountIcon(Math.max(1, getSavedPublicTabCount()))));
+        // Read the tab count off the UI thread (Room + prefs) to avoid main-thread DB blocking.
+        ioExecutor.execute(() -> {
+            int count = Math.max(1, getSavedPublicTabCount());
+            runOnUiThread(() -> {
+                if (bottomNav == null) {
+                    return;
+                }
+                MenuItem item = bottomNav.getMenu().findItem(R.id.nav_tabs);
+                if (item != null) {
+                    item.setIcon(createTabCountIcon(count));
+                }
+            });
+        });
     }
 
     private int getSavedPublicTabCount() {
@@ -1042,7 +1260,11 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
     private void setupClickListeners() {
         micButton.setOnClickListener(v -> startVoiceRecognition());
 
-        securityButton.setOnClickListener(v -> showSearchPopup());
+        if (privacyStatsToggle != null) {
+            privacyStatsToggle.setOnClickListener(v -> hidePrivacyStatsCard());
+        }
+
+        securityButton.setOnClickListener(v -> showSearchEnginePicker());
         urlInput.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_GO ||
                     actionId == EditorInfo.IME_ACTION_SEARCH ||
@@ -1070,17 +1292,23 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
             if (homeSearchBar != null) {
                 homeSearchBar.setVisibility(View.VISIBLE);
             }
+            // Popup may have changed the one-time engine override — resync the home icon.
+            updateSearchEngineIcon();
         });
 
         EditText searchInput = dialog.findViewById(R.id.search_popup_input);
+        ImageButton popupEngine = dialog.findViewById(R.id.btn_search_popup_engine);
         ImageButton popupMic = dialog.findViewById(R.id.btn_search_popup_mic);
         ImageButton popupGo = dialog.findViewById(R.id.btn_search_popup_go);
         RecyclerView suggestionsRecycler = dialog.findViewById(R.id.suggestions_recycler);
-        if (searchInput == null || popupMic == null || popupGo == null
+        if (searchInput == null || popupEngine == null || popupMic == null || popupGo == null
                 || suggestionsRecycler == null) {
             dialog.dismiss();
             return;
         }
+        updateSearchEngineIcon(popupEngine);
+        popupEngine.setOnClickListener(v ->
+                showSearchEnginePickerForPopup(popupEngine, searchInput, dialog));
 
         SuggestionsAdapter suggestionsAdapter = new SuggestionsAdapter(suggestion -> {
             dialog.dismiss();
@@ -1132,7 +1360,9 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
                     }
 
                     void fetchSearch(List<String> browserResults) {
-                        String searchEngine = UrlUtils.getSearchEngineUrl(MainActivity.this, false);
+                        String searchEngine = oneTimeSearchEngineUrl != null
+                                ? oneTimeSearchEngineUrl
+                                : UrlUtils.getSearchEngineUrl(MainActivity.this, false);
                         suggestionProvider.fetchSuggestions(query, searchEngine,
                                 searchResults -> runOnUiThread(() -> {
                                     if (isSearchDialogActive(dialog)) {
@@ -1395,7 +1625,7 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
         if (url == null) {
             return;
         }
-        AnalyticsManager.logDownloadStarted(this, null);
+        AnalyticsManager.logDownloadStarted(this, url, null);
         AppDownloadManager.getInstance().startDownload(this, url, null, null);
     }
 

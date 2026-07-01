@@ -41,6 +41,7 @@ import com.webstudio.easybrowser.repository.BookmarkRepository;
 import com.webstudio.easybrowser.repository.TabRepository;
 import com.webstudio.easybrowser.utils.AppSettings;
 import com.webstudio.easybrowser.utils.EasyMotion;
+import com.webstudio.easybrowser.utils.InactiveTabPolicy;
 import com.webstudio.easybrowser.utils.SystemBarUtils;
 import com.webstudio.easybrowser.utils.ScreenshotProtection;
 import com.webstudio.easybrowser.utils.SettingsKeys;
@@ -734,7 +735,7 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
     private RuntimeOverview buildRuntimeOverview(boolean isPrivate, String query) {
         long cutoff = !isPrivate ? getInactiveCutoffMillis() : -1L;
         Set<String> duplicateUrls = !isPrivate
-                ? findDuplicateUrls(false)
+                ? duplicateTabIds(false)
                 : new LinkedHashSet<>();
         Map<String, TabGroup> groupsById = new LinkedHashMap<>();
         List<Tab> standaloneTabs = new ArrayList<>();
@@ -784,7 +785,7 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
     private RuntimeOverview filterInactiveFromOverview(List<TabGroup> groups,
                                                        List<Tab> standaloneTabs) {
         long cutoff = getInactiveCutoffMillis();
-        Set<String> duplicateUrls = findDuplicateUrls(false);
+        Set<String> duplicateUrls = duplicateTabIds(false);
         List<TabGroup> activeGroups = new ArrayList<>();
         List<Tab> activeStandaloneTabs = new ArrayList<>();
 
@@ -826,7 +827,7 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
 
     private InactiveOverview buildInactiveOverview(boolean isPrivate, String query) {
         long cutoff = getInactiveCutoffMillis();
-        Set<String> duplicateUrls = findDuplicateUrls(isPrivate);
+        Set<String> duplicateUrls = duplicateTabIds(isPrivate);
         Map<String, TabGroup> groupsById = new LinkedHashMap<>();
         List<Tab> standaloneTabs = new ArrayList<>();
         for (Tab tab : runtimeTabs) {
@@ -867,40 +868,22 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
         return new InactiveOverview(groups, standaloneTabs);
     }
 
-    private boolean isInactiveTab(Tab tab, long cutoff, Set<String> duplicateUrls) {
-        if (tab == null || shouldSkipInactiveEvaluation(tab.getUrl())) {
-            return false;
-        }
-        if (cutoff > 0 && tab.getLastAccessed() > 0 && tab.getLastAccessed() <= cutoff) {
-            return true;
-        }
-        return duplicateUrls.contains(normalizeDuplicateUrl(tab.getUrl()));
+    private boolean isInactiveTab(Tab tab, long cutoff, Set<String> surplusDuplicateTabIds) {
+        return InactiveTabPolicy.isInactive(tab, cutoff, surplusDuplicateTabIds);
     }
 
-    private Set<String> findDuplicateUrls(boolean isPrivate) {
+    private Set<String> duplicateTabIds(boolean isPrivate) {
         if (!shouldArchiveDuplicateTabs()) {
             return new LinkedHashSet<>();
         }
-        Map<String, Integer> counts = new LinkedHashMap<>();
+        List<Tab> eligible = new ArrayList<>();
         for (Tab tab : runtimeTabs) {
             if (tab.isPrivate() != isPrivate || closedTabIds.contains(tab.getId())) {
                 continue;
             }
-            String normalized = normalizeDuplicateUrl(tab.getUrl());
-            if (normalized.isEmpty()) {
-                continue;
-            }
-            counts.put(normalized, counts.containsKey(normalized)
-                    ? counts.get(normalized) + 1
-                    : 1);
+            eligible.add(tab);
         }
-        Set<String> duplicates = new LinkedHashSet<>();
-        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
-            if (entry.getValue() > 1) {
-                duplicates.add(entry.getKey());
-            }
-        }
-        return duplicates;
+        return InactiveTabPolicy.surplusDuplicateTabIds(eligible);
     }
 
     private boolean shouldArchiveDuplicateTabs() {
@@ -908,43 +891,8 @@ public class TabManagerActivity extends AppCompatActivity implements TabGroupAda
                 .getBoolean(SettingsKeys.PREF_ARCHIVE_DUPLICATE_TABS, true);
     }
 
-    private String normalizeDuplicateUrl(String url) {
-        if (url == null) {
-            return "";
-        }
-        String value = url.trim().toLowerCase(Locale.US);
-        if (!value.startsWith("http://") && !value.startsWith("https://")) {
-            return "";
-        }
-        int hashIndex = value.indexOf('#');
-        if (hashIndex >= 0) {
-            value = value.substring(0, hashIndex);
-        }
-        while (value.endsWith("/") && value.length() > 1) {
-            value = value.substring(0, value.length() - 1);
-        }
-        return value;
-    }
-
-    private boolean shouldSkipInactiveEvaluation(String url) {
-        if (url == null || url.trim().isEmpty()) {
-            return true;
-        }
-        String value = url.trim();
-        String lower = value.toLowerCase(Locale.US);
-        return "about:blank".equals(lower)
-                || lower.startsWith("about:")
-                || lower.startsWith("data:")
-                || lower.startsWith("javascript:")
-                || UrlUtils.isInternalPageUrl(value);
-    }
-
     private long getInactiveCutoffMillis() {
-        int days = getInactiveThresholdDays();
-        if (days <= 0) {
-            return -1L;
-        }
-        return System.currentTimeMillis() - days * 24L * 60L * 60L * 1000L;
+        return InactiveTabPolicy.cutoffMillis(getInactiveThresholdDays());
     }
 
     private int getInactiveThresholdDays() {

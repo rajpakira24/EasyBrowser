@@ -1,11 +1,7 @@
 package com.webstudio.easybrowser.ui.activity;
 
-import android.os.Build;
-import android.widget.Toast;
-
 import androidx.annotation.NonNull;
 
-import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.models.Tab;
 
 import org.mozilla.geckoview.GeckoSession;
@@ -50,21 +46,34 @@ class BrowserContentDelegate implements GeckoSession.ContentDelegate {
     public void onExternalResponse(@NonNull GeckoSession session,
                                    @NonNull WebResponse response) {
         String contentType = response.headers.get("content-type");
+        // An .xpi / x-xpinstall response is a browser extension — install it instead of saving
+        // it as a file (handles AMO "Add to Firefox" and direct .xpi links).
+        if (isExtensionResponse(response.uri, contentType)) {
+            activity.installExtensionFromUrl(response.uri);
+            return;
+        }
         activity.startDownload(response.uri, getDownloadFileName(response), contentType);
+    }
+
+    private boolean isExtensionResponse(String uri, String contentType) {
+        if (contentType != null
+                && contentType.toLowerCase().contains("application/x-xpinstall")) {
+            return true;
+        }
+        if (uri == null) {
+            return false;
+        }
+        String path = uri;
+        int query = path.indexOf('?');
+        if (query >= 0) {
+            path = path.substring(0, query);
+        }
+        return path.toLowerCase().endsWith(".xpi");
     }
 
     @Override
     public void onFullScreen(@NonNull GeckoSession session, boolean fullScreen) {
-        if (fullScreen && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            android.app.PictureInPictureParams params =
-                    new android.app.PictureInPictureParams.Builder().build();
-            try {
-                activity.enterPictureInPictureMode(params);
-            } catch (Exception ignored) {
-                activity.runOnUiThread(() -> Toast.makeText(activity,
-                        R.string.pip_not_supported, Toast.LENGTH_SHORT).show());
-            }
-        }
+        activity.setWebFullscreen(fullScreen);
     }
 
     private String getDownloadFileName(WebResponse response) {

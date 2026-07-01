@@ -17,6 +17,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.adapters.HistoryAdapter;
+import com.webstudio.easybrowser.managers.AnalyticsManager;
 import com.webstudio.easybrowser.models.HistoryItem;
 import com.webstudio.easybrowser.repository.HistoryRepository;
 import com.webstudio.easybrowser.utils.ScreenshotProtection;
@@ -298,8 +299,11 @@ public class HistoryActivity extends AppCompatActivity implements HistoryAdapter
 
                         @Override
                         public void onHistoryCleared() {
-                            loadHistory();
-                            Toast.makeText(HistoryActivity.this, R.string.history_cleared, Toast.LENGTH_SHORT).show();
+                            runOnUiThread(() -> {
+                                AnalyticsManager.logHistoryCleared(HistoryActivity.this);
+                                loadHistory();
+                                Toast.makeText(HistoryActivity.this, R.string.history_cleared, Toast.LENGTH_SHORT).show();
+                            });
                         }
                     });
                 })

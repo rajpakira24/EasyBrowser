@@ -43,12 +43,15 @@ public class RuntimeManager {
                             .preferredColorScheme(getPreferredColorScheme(prefs))
                             .trustedRecursiveResolverMode(getDohMode(prefs))
                             .trustedRecursiveResolverUri(getDohUri(prefs))
-                            .debugLogging(prefs.getBoolean(PREF_GECKO_DEBUG_LOGGING, false));
+                            .debugLogging(prefs.getBoolean(PREF_GECKO_DEBUG_LOGGING, false))
+                            .aboutConfigEnabled(
+                                    prefs.getBoolean(SettingsKeys.PREF_ABOUT_CONFIG_ENABLED, false));
                     applyLocalNetworkBlocking(runtimeSettings, shouldBlockLocalNetwork(prefs));
 
                     try {
                         runtime = GeckoRuntime.create(context, runtimeSettings.build());
                         BuiltInAdBlockerManager.apply(runtime, prefs);
+                        DefaultExtensionInstaller.preinstallDefaults(runtime, prefs);
                     } catch (Exception e) {
                         Log.e("RuntimeManager", "GeckoRuntime.create failed", e);
                         runtime = null;
@@ -69,6 +72,8 @@ public class RuntimeManager {
                             prefs.getBoolean(SettingsKeys.PREF_TRANSLATIONS_OFFER_POPUP, true))
                     .setPreferredColorScheme(getPreferredColorScheme(prefs));
             applyLocalNetworkBlocking(settings, shouldBlockLocalNetwork(prefs));
+            applyAboutConfigEnabled(settings,
+                    prefs.getBoolean(SettingsKeys.PREF_ABOUT_CONFIG_ENABLED, false));
             settings.setLocales(getPreferredLocales(prefs));
             applyContentBlocking(runtime.getSettings().getContentBlocking(), prefs);
             BuiltInAdBlockerManager.apply(runtime, prefs);
@@ -180,6 +185,22 @@ public class RuntimeManager {
     private static boolean shouldBlockLocalNetwork(SharedPreferences prefs) {
         return SettingsKeys.VALUE_DENY.equals(
                 prefs.getString(SettingsKeys.PREF_SITE_LOCAL_NETWORK, SettingsKeys.VALUE_ASK));
+    }
+
+    // about:config is normally set at runtime-creation time. Some GeckoView versions also expose
+    // a live setter; use it reflectively so the toggle applies without a restart where supported,
+    // and falls back to "takes effect after restart" otherwise.
+    private static void applyAboutConfigEnabled(GeckoRuntimeSettings settings, boolean enabled) {
+        if (settings == null) {
+            return;
+        }
+        try {
+            settings.getClass()
+                    .getMethod("setAboutConfigEnabled", boolean.class)
+                    .invoke(settings, enabled);
+        } catch (ReflectiveOperationException ignored) {
+            // No live setter on this GeckoView version — applied on next process start.
+        }
     }
 
     private static void applyLocalNetworkBlocking(Object target, boolean enabled) {

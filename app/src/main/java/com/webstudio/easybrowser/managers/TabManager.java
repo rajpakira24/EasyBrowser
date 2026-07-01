@@ -35,6 +35,11 @@ public class TabManager {
     // within SharedPreferences limits (XML file read entirely into memory on load).
     private static final int MAX_PERSIST_BYTES = 256 * 1024;
     private static final long SCROLL_PERSIST_INTERVAL_MS = 1200L;
+    // Hard ceiling on simultaneous tabs per mode. Each open tab owns a live GeckoSession
+    // (native content process); without a bound, many tabs can exhaust memory. When the
+    // ceiling is hit, the least-recently-used closable tab is recycled so tab creation
+    // always succeeds (callers dereference the returned Tab).
+    private static final int MAX_TABS = 100;
 
     public static class ClosedTab {
         public final String id;
@@ -183,6 +188,8 @@ public class TabManager {
         syncMirrorFromState();
         persistTabs();
 
+        AnalyticsManager.logTabOpened(context, tabs.size());
+
         if (listener != null) {
             listener.onTabChanged(tab);
             listener.onTabCountChanged(tabs.size());
@@ -198,6 +205,7 @@ public class TabManager {
     }
 
     public Tab createNewTab(boolean isPrivate, boolean loadStartUrl, String parentTabId) {
+        enforceTabLimit(isPrivate);
         GeckoSession session = createSession(isPrivate);
         session.open(runtime);
 
@@ -212,6 +220,8 @@ public class TabManager {
         stateStore.addTab(tab, true);
         syncMirrorFromState();
         persistTabs();
+
+        AnalyticsManager.logTabOpened(context, tabs.size());
 
         if (listener != null) {
             listener.onTabChanged(tab);
@@ -419,22 +429,39 @@ public class TabManager {
             removeTabFromBackStack(tab.getId());
 
             if (wasCurrent) {
-                if (!tabs.isEmpty()) {
-                    Tab previousTab = popPreviousTab();
+                boolean closedPrivate = tab.isPrivate();
+                if (stateStore.getTabCount(closedPrivate) > 0) {
+                    // Stay within the same mode: prefer the back-stack, otherwise the
+                    // same-mode lastKey that BrowserStateStore.closeTab already selected.
+                    Tab previousTab = popPreviousSameModeTab(closedPrivate);
                     if (previousTab != null) {
                         stateStore.switchToTab(previousTab.getId());
-                    } else if (currentTab == null && !tabs.isEmpty()) {
-                        stateStore.switchToTab(tabs.get(tabs.size() - 1).getId());
+                    }
+                    syncMirrorFromState();
+                    if (listener != null) {
+                        listener.onTabChanged(currentTab);
+                    }
+                } else if (closedPrivate && stateStore.getTabCount(false) > 0) {
+                    // Closed the last private tab -> leave private mode and return to the
+                    // regular tabs instead of opening a fresh one.
+                    if (stateStore.getCurrentTab() == null) {
+                        List<Tab> regular = stateStore.getRegularTabs();
+                        stateStore.switchToTab(regular.get(regular.size() - 1).getId());
                     }
                     syncMirrorFromState();
                     if (listener != null) {
                         listener.onTabChanged(currentTab);
                     }
                 } else {
+                    // No tabs left in the relevant context -> open a fresh regular tab.
+                    // When closing the last regular tab while private tabs exist, this opens
+                    // a new regular tab rather than dropping the user into private mode.
                     createDefaultTab();
                 }
             }
             persistTabs();
+
+            AnalyticsManager.logTabClosed(context, tabs.size());
 
             if (listener != null) {
                 listener.onTabCountChanged(tabs.size());
@@ -542,6 +569,8 @@ public class TabManager {
         stateStore.switchToTab(previousTab.getId());
         syncMirrorFromState();
         persistTabs();
+
+        AnalyticsManager.logTabOpened(context, tabs.size());
 
         if (listener != null) {
             listener.onTabChanged(previousTab);
@@ -673,6 +702,49 @@ public class TabManager {
             }
         }
         return null;
+    }
+
+    // Pop the most recent back-stack entry that matches the given privacy mode, so closing
+    // the active tab never jumps the user across the regular/private boundary.
+    private Tab popPreviousSameModeTab(boolean privateMode) {
+        java.util.Iterator<String> it = tabBackStack.iterator();
+        while (it.hasNext()) {
+            String tabId = it.next();
+            Tab tab = findTabById(tabId);
+            if (tab != null && tab != stateStore.getCurrentTab()
+                    && tab.isPrivate() == privateMode) {
+                it.remove();
+                return tab;
+            }
+        }
+        return null;
+    }
+
+    // Keep the per-mode tab count bounded. When at the ceiling, recycle the
+    // least-recently-used tab that is neither current, pinned, nor locked.
+    private void enforceTabLimit(boolean isPrivate) {
+        while (stateStore.getTabCount(isPrivate) >= MAX_TABS) {
+            Tab victim = findLeastRecentlyUsedClosableTab(isPrivate);
+            if (victim == null) {
+                // Everything left is current/pinned/locked — stop rather than spin forever.
+                break;
+            }
+            closeTab(victim);
+        }
+    }
+
+    private Tab findLeastRecentlyUsedClosableTab(boolean isPrivate) {
+        Tab victim = null;
+        for (Tab tab : stateStore.getTabs(isPrivate)) {
+            if (tab == null || tab == stateStore.getCurrentTab()
+                    || tab.isPinned() || tab.isLocked()) {
+                continue;
+            }
+            if (victim == null || tab.getLastAccessed() < victim.getLastAccessed()) {
+                victim = tab;
+            }
+        }
+        return victim;
     }
 
     private void removeTabFromBackStack(String tabId) {
@@ -925,6 +997,72 @@ public class TabManager {
             listener.onTabCountChanged(tabs.size());
         }
         return replacement;
+    }
+
+    // Lazily (re)create a GeckoSession for a tab whose session was discarded under memory
+    // pressure. Restores persisted history when available, otherwise flags a fresh load.
+    public synchronized GeckoSession ensureSessionForTab(Tab tab) {
+        if (tab == null) {
+            return null;
+        }
+        GeckoSession existing = tab.getSession();
+        if (existing != null) {
+            return existing;
+        }
+        GeckoSession session = createSession(tab.isPrivate());
+        session.open(runtime);
+        tab.setSession(session);
+        restoreSessionState(tab, session);
+        syncMirrorFromState();
+        return session;
+    }
+
+    // Free native resources for non-current background tabs. Their history is already
+    // persisted via updateTabSessionState, so they are reloaded on next switch by
+    // ensureSessionForTab. Private tabs have no persisted state and are left untouched.
+    public synchronized void discardBackgroundTabs(GeckoSession keepSession) {
+        for (Tab tab : stateStore.getAllTabs()) {
+            GeckoSession s = tab.getSession();
+            if (s == null || s == keepSession || tab.isPrivate()) {
+                continue;
+            }
+            if (s.isOpen()) {
+                try {
+                    s.close();
+                } catch (Exception e) {
+                    Log.w(TAG, "Failed to discard background session for tab " + tab.getId(), e);
+                }
+            }
+            tab.setSession(null);
+            tab.setInitialLoadPending(true);
+        }
+    }
+
+    // Adopt a session that GeckoView is opening on our behalf for window.open()/target=_blank
+    // cases that need a real opener handle (e.g. OAuth popups). The returned session must be
+    // UNOPENED — GeckoView opens it. The tab opens in the background so it never steals focus.
+    public synchronized Tab adoptNewSession(GeckoSession opener) {
+        Tab openerTab = findTabBySession(opener);
+        boolean isPrivate = openerTab != null && openerTab.isPrivate();
+        enforceTabLimit(isPrivate);
+        GeckoSession session = createSession(isPrivate);
+        Tab tab = new Tab(null, session, isPrivate ? "Private Tab" : "New Tab",
+                "about:blank", isPrivate);
+        // GeckoView drives the initial load for an adopted session.
+        tab.setInitialLoadPending(false);
+        tab.setPosition(stateStore.getTabCount(isPrivate));
+        if (openerTab != null && !isPrivate) {
+            tab.setParentTabId(openerTab.getId());
+        }
+        stateStore.addTab(tab, false);
+        syncMirrorFromState();
+        if (!isPrivate) {
+            persistTabs();
+        }
+        if (listener != null) {
+            listener.onTabCountChanged(tabs.size());
+        }
+        return tab;
     }
 
     private boolean restoreTabsFromRoom() {

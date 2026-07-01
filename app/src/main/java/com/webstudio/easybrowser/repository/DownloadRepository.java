@@ -25,36 +25,51 @@ public class DownloadRepository {
         void onDownloadRemoved(DownloadItem download);
     }
 
+    public interface DownloadItemCallback {
+        void onDownloadItemLoaded(DownloadItem item);
+    }
+
     public void getAllDownloads(DownloadCallback callback) {
         executor.execute(() -> {
             List<DownloadEntity> entities = database.downloadDao().getAllDownloads();
             List<DownloadItem> items = new ArrayList<>();
             for (DownloadEntity entity : entities) {
-                DownloadItem item = new DownloadItem(entity.getUrl(),
-                        entity.getFileName(), entity.getMimeType());
-                item.setId(entity.getId());
-                item.setDestinationPath(entity.getDestinationPath());
-                item.setTotalBytes(entity.getTotalBytes());
-                item.setDownloadedBytes(entity.getDownloadedBytes());
-                // Defensive: a corrupted DB or future schema change can leave an
-                // unknown status string. Map anything we don't recognise to FAILED
-                // rather than crashing the downloads screen.
-                DownloadItem.Status status;
-                try {
-                    status = DownloadItem.Status.valueOf(entity.getStatus());
-                } catch (IllegalArgumentException | NullPointerException e) {
-                    status = DownloadItem.Status.FAILED;
-                }
-                item.setStatus(status);
-                item.setErrorMessage(entity.getErrorMessage());
-                item.setStartTime(entity.getStartTime());
-                item.setLastModified(entity.getLastModified());
-                item.setSpeedBytesPerSecond(entity.getSpeedBytesPerSecond());
-                item.setRemainingSeconds(entity.getRemainingSeconds());
-                items.add(item);
+                items.add(toDownloadItem(entity));
             }
             callback.onDownloadsLoaded(items);
         });
+    }
+
+    public void getDownloadById(String downloadId, DownloadItemCallback callback) {
+        executor.execute(() -> {
+            DownloadEntity entity = database.downloadDao().getDownloadById(downloadId);
+            callback.onDownloadItemLoaded(entity != null ? toDownloadItem(entity) : null);
+        });
+    }
+
+    private DownloadItem toDownloadItem(DownloadEntity entity) {
+        DownloadItem item = new DownloadItem(entity.getUrl(),
+                entity.getFileName(), entity.getMimeType());
+        item.setId(entity.getId());
+        item.setDestinationPath(entity.getDestinationPath());
+        item.setTotalBytes(entity.getTotalBytes());
+        item.setDownloadedBytes(entity.getDownloadedBytes());
+        // Defensive: a corrupted DB or future schema change can leave an
+        // unknown status string. Map anything we don't recognise to FAILED
+        // rather than crashing the downloads screen.
+        DownloadItem.Status status;
+        try {
+            status = DownloadItem.Status.valueOf(entity.getStatus());
+        } catch (IllegalArgumentException | NullPointerException e) {
+            status = DownloadItem.Status.FAILED;
+        }
+        item.setStatus(status);
+        item.setErrorMessage(entity.getErrorMessage());
+        item.setStartTime(entity.getStartTime());
+        item.setLastModified(entity.getLastModified());
+        item.setSpeedBytesPerSecond(entity.getSpeedBytesPerSecond());
+        item.setRemainingSeconds(entity.getRemainingSeconds());
+        return item;
     }
 
     public void updateDownload(DownloadItem download, DownloadCallback callback) {

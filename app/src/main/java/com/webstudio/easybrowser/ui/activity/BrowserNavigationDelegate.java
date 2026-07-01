@@ -9,6 +9,7 @@ import androidx.core.content.ContextCompat;
 import androidx.preference.PreferenceManager;
 
 import com.webstudio.easybrowser.R;
+import com.webstudio.easybrowser.managers.AnalyticsManager;
 import com.webstudio.easybrowser.managers.RuntimeManager;
 import com.webstudio.easybrowser.models.Tab;
 import com.webstudio.easybrowser.utils.UrlUtils;
@@ -149,6 +150,13 @@ class BrowserNavigationDelegate implements GeckoSession.NavigationDelegate {
         return GeckoResult.allow();
     }
 
+    @Override
+    public GeckoResult<GeckoSession> onNewSession(GeckoSession session, String uri) {
+        // Page requested a brand-new window with an opener handle (window.open(),
+        // OAuth/payment popups). Hand off to the Activity to create and host a real tab.
+        return activity.onContentNewSession(session, uri);
+    }
+
     private boolean isTopLevelNavigation(GeckoSession.NavigationDelegate.LoadRequest request) {
         return request != null
                 && (request.isDirectNavigation
@@ -169,6 +177,7 @@ class BrowserNavigationDelegate implements GeckoSession.NavigationDelegate {
 
     @Override
     public GeckoResult<String> onLoadError(GeckoSession session, String uri, WebRequestError error) {
+        AnalyticsManager.logWebPageError(activity, uri, error.code);
         ErrorPage errorPage = createErrorPage(error);
         return GeckoResult.fromValue(buildErrorPageHtml(uri, errorPage));
     }

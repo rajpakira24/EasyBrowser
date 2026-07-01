@@ -23,11 +23,12 @@
             android:paddingStart="7dp"
             android:paddingEnd="6dp">
 
-            <ImageView
+            <ImageButton
+                android:id="@+id/btn_search_popup_engine"
                 android:layout_width="42dp"
                 android:layout_height="42dp"
                 android:background="@drawable/bg_edge_home_search_icon"
-                android:contentDescription="@string/search"
+                android:contentDescription="@string/search_picker_title"
                 android:padding="10dp"
                 android:src="@drawable/ic_search"
                 app:tint="@color/edge_search_foreground" />

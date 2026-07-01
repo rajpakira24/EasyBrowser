@@ -11,6 +11,8 @@
     <string name="pages_protected">Pages protected</string>
     <string name="items_blocked">Items blocked</string>
     <string name="time_saved">Time saved</string>
+    <string name="hide_privacy_stats">Hide privacy stats</string>
+    <string name="privacy_stats_hidden_toast">Privacy stats hidden. Re-enable in Settings → Display → New Tab Page → Show Privacy Stats.</string>
     <string name="new_tab_info_title">Easy Browser New Tab</string>
     <string name="new_tab_info_message">This is a local Easy Browser page. Privacy stats and Quick Access shortcuts stay inside the browser; searches open your selected search provider.</string>
     <string name="quick_access_home_summary">Your most visited pages appear here automatically.</string>
@@ -266,6 +268,9 @@
     <string name="download_cancel">Cancel Download</string>
     <string name="download_pause">Pause Download</string>
     <string name="download_resume">Resume Download</string>
+    <string name="notification_action_pause">Pause</string>
+    <string name="notification_action_resume">Resume</string>
+    <string name="notification_action_cancel">Cancel</string>
     <!-- Share -->
     <string name="share_link">Share Link</string>
     <string name="share_via">Share via</string>
@@ -307,6 +312,8 @@
     <string name="download_complete">Download complete</string>
     <string name="download_location">Download location</string>
     <string name="no_downloads">No downloads</string>
+    <string name="no_download_search_results">No downloads match your search</string>
+    <string name="search_downloads">Search downloads</string>
     <!-- Permissions -->
     <!-- Errors -->
     <string name="network_status_offline">You are offline</string>
@@ -391,6 +398,36 @@
     <string name="remove_extension_confirm">Remove %s?</string>
     <string name="extension_removed">Extension removed</string>
     <string name="extension_remove_failed">Extension remove failed</string>
+    <string name="extension_enable">Enable</string>
+    <string name="extension_disable">Disable</string>
+    <string name="extension_open">Open</string>
+    <string name="extension_enabled">Extension enabled</string>
+    <string name="extension_disabled">Extension disabled</string>
+    <string name="extension_enable_failed">Couldn\'t enable extension</string>
+    <string name="extension_disable_failed">Couldn\'t disable extension</string>
+    <string name="extension_no_options">This extension has no settings page</string>
+    <string name="ua_custom_invalid">Enter a valid user agent string</string>
+    <string name="doh_uri_invalid">Enter a valid https:// DNS server URL</string>
+    <string name="remote_debugging_warning_title">Enable remote debugging?</string>
+    <string name="remote_debugging_warning_message">This opens a debugging connection that other apps or devices on your network can use to inspect the browser. Only enable it if you know what you\'re doing.</string>
+    <string name="search_picker_title">This time search in:</string>
+    <string name="sp_bookmarks">Bookmarks</string>
+    <string name="sp_tabs">Tabs</string>
+    <string name="sp_history">History</string>
+    <string name="sp_search_settings">Search settings</string>
+    <string name="extension_install_permissions_intro">Install %1$s? It will be able to:</string>
+    <string name="extension_browse">Browse extensions</string>
+    <string name="extension_sort_label">Sort by</string>
+    <string name="extension_sort_recommended">Recommended</string>
+    <string name="extension_sort_popular">Most popular</string>
+    <string name="extension_sort_rating">Top rated</string>
+    <string name="extension_sort_updated">Recently updated</string>
+    <string name="extension_sort_name">Name</string>
+    <string name="about_config">Enable about:config</string>
+    <string name="about_config_summary">Advanced engine preferences. For experts — wrong values can break the browser.</string>
+    <string name="about_config_warning_title">Enable about:config?</string>
+    <string name="about_config_warning_message">about:config exposes low-level engine settings. Changing them can break pages, security, or the whole browser. Only enable this if you know what you\'re doing.</string>
+    <string name="about_config_restart_note">Restart the app for about:config to take full effect.</string>
     <string name="choose_file">Choose file</string>
     <string name="upload_file_too_large">Some selected files are too large to upload.</string>
     <string name="error_no_app_for_link">No app can open this link</string>

@@ -25,6 +25,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.adapters.TabsAdapter;
+import com.webstudio.easybrowser.managers.AnalyticsManager;
 import com.webstudio.easybrowser.models.Tab;
 import com.webstudio.easybrowser.utils.ScreenshotProtection;
 import com.webstudio.easybrowser.utils.TabActionContract;
@@ -268,6 +269,7 @@ public class TabsActivity extends AppCompatActivity implements TabsAdapter.OnTab
                 return;
             }
             showingPrivateTabs = checkedId == R.id.btn_private_tabs;
+            AnalyticsManager.logIncognitoModeToggled(this, showingPrivateTabs);
             refreshTabs();
         });
     }

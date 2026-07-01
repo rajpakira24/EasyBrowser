@@ -20,7 +20,7 @@ local.properties
 keystore.properties
 *.jks
 *.keystore
-google-services.json
+app/google-services.json
 
 # Claude Code / tooling output
 .claude/

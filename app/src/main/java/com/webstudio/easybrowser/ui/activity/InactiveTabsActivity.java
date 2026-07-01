@@ -21,17 +21,16 @@ import com.webstudio.easybrowser.adapters.TabGroupAdapter;
 import com.webstudio.easybrowser.models.Tab;
 import com.webstudio.easybrowser.models.TabGroup;
 import com.webstudio.easybrowser.repository.TabRepository;
+import com.webstudio.easybrowser.utils.InactiveTabPolicy;
 import com.webstudio.easybrowser.utils.SystemBarUtils;
 import com.webstudio.easybrowser.utils.ScreenshotProtection;
 import com.webstudio.easybrowser.utils.SettingsKeys;
 import com.webstudio.easybrowser.utils.ThemeEngine;
-import com.webstudio.easybrowser.utils.UrlUtils;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -198,7 +197,7 @@ public class InactiveTabsActivity extends AppCompatActivity implements TabGroupA
 
     private InactiveOverview buildInactiveOverview() {
         long cutoff = getInactiveCutoffMillis();
-        Set<String> duplicateUrls = findDuplicateUrls();
+        Set<String> duplicateUrls = duplicateTabIds();
         Map<String, TabGroup> groupsById = new LinkedHashMap<>();
         List<Tab> standaloneTabs = new ArrayList<>();
         for (Tab tab : tabs) {
@@ -237,38 +236,22 @@ public class InactiveTabsActivity extends AppCompatActivity implements TabGroupA
         return new InactiveOverview(groups, standaloneTabs);
     }
 
-    private boolean isInactiveTab(Tab tab, long cutoff, Set<String> duplicateUrls) {
-        if (tab == null || shouldSkipInactiveEvaluation(tab.getUrl())) {
-            return false;
-        }
-        if (cutoff > 0 && tab.getLastAccessed() > 0 && tab.getLastAccessed() <= cutoff) {
-            return true;
-        }
-        return duplicateUrls.contains(normalizeDuplicateUrl(tab.getUrl()));
+    private boolean isInactiveTab(Tab tab, long cutoff, Set<String> surplusDuplicateTabIds) {
+        return InactiveTabPolicy.isInactive(tab, cutoff, surplusDuplicateTabIds);
     }
 
-    private Set<String> findDuplicateUrls() {
+    private Set<String> duplicateTabIds() {
         if (!shouldArchiveDuplicateTabs()) {
             return new LinkedHashSet<>();
         }
-        Map<String, Integer> counts = new LinkedHashMap<>();
+        List<Tab> eligible = new ArrayList<>();
         for (Tab tab : tabs) {
             if (closedTabIds.contains(tab.getId()) || restoredTabIds.contains(tab.getId())) {
                 continue;
             }
-            String normalized = normalizeDuplicateUrl(tab.getUrl());
-            if (normalized.isEmpty()) {
-                continue;
-            }
-            counts.put(normalized, counts.containsKey(normalized) ? counts.get(normalized) + 1 : 1);
+            eligible.add(tab);
         }
-        Set<String> duplicates = new LinkedHashSet<>();
-        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
-            if (entry.getValue() > 1) {
-                duplicates.add(entry.getKey());
-            }
-        }
-        return duplicates;
+        return InactiveTabPolicy.surplusDuplicateTabIds(eligible);
     }
 
     private boolean shouldArchiveDuplicateTabs() {
@@ -276,42 +259,8 @@ public class InactiveTabsActivity extends AppCompatActivity implements TabGroupA
                 .getBoolean(SettingsKeys.PREF_ARCHIVE_DUPLICATE_TABS, true);
     }
 
-    private String normalizeDuplicateUrl(String url) {
-        if (url == null) {
-            return "";
-        }
-        String value = url.trim().toLowerCase(Locale.US);
-        if (!value.startsWith("http://") && !value.startsWith("https://")) {
-            return "";
-        }
-        int hashIndex = value.indexOf('#');
-        if (hashIndex >= 0) {
-            value = value.substring(0, hashIndex);
-        }
-        while (value.endsWith("/") && value.length() > 1) {
-            value = value.substring(0, value.length() - 1);
-        }
-        return value;
-    }
-
-    private boolean shouldSkipInactiveEvaluation(String url) {
-        if (url == null || url.trim().isEmpty()) {
-            return true;
-        }
-        String value = url.trim();
-        String lower = value.toLowerCase(Locale.US);
-        return "about:blank".equals(lower)
-                || lower.startsWith("about:")
-                || lower.startsWith("data:")
-                || lower.startsWith("javascript:")
-                || UrlUtils.isInternalPageUrl(value);
-    }
-
     private long getInactiveCutoffMillis() {
-        if (inactiveDays <= 0) {
-            return -1L;
-        }
-        return System.currentTimeMillis() - inactiveDays * 24L * 60L * 60L * 1000L;
+        return InactiveTabPolicy.cutoffMillis(inactiveDays);
     }
 
     private void showOverflowMenu(View anchor) {

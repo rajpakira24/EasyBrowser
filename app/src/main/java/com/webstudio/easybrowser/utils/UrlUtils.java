@@ -142,6 +142,19 @@ public class UrlUtils {
         return searchEngineUrl + Uri.encode(query);
     }
 
+    // Build a search URL with a specific engine (for the "This time search in:" one-time
+    // override), reusing the same %s / Uri.encode logic as getSearchUrl. Falls back to the
+    // configured engine when no override is given.
+    public static String getSearchUrlForEngine(Context context, String query, String engineBaseUrl) {
+        if (engineBaseUrl == null || engineBaseUrl.trim().isEmpty()) {
+            return getSearchUrl(context, query);
+        }
+        if (engineBaseUrl.contains("%s")) {
+            return engineBaseUrl.replace("%s", Uri.encode(query));
+        }
+        return engineBaseUrl + Uri.encode(query);
+    }
+
     public static String getSearchEngineUrl(Context context, boolean privateMode) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
         String standard = prefs.getString(SettingsKeys.PREF_SEARCH_ENGINE_URL, DEFAULT_SEARCH_ENGINE);
@@ -184,6 +197,14 @@ public class UrlUtils {
         String itemsBlocked = escapeHtml(context.getString(R.string.items_blocked));
         String timeSaved = escapeHtml(context.getString(R.string.time_saved));
         String searchEngine = sanitizeSearchEngineForScript(getSearchUrl(context, ""));
+        // Decorative search-pill icon: show the configured search engine's real favicon (matching
+        // the native search bar), falling back to the original glyph if the icon fails to load.
+        String engineIconUrl = getEngineIconUrl(configuredSearchEngine);
+        String urlMarkContent = engineIconUrl != null
+                ? "<img src='" + escapeHtml(engineIconUrl) + "' alt='' loading='lazy' "
+                    + "onerror=\"this.style.display='none';this.nextElementSibling.style.display='block';\">"
+                    + "<span class='urlMarkFallback' style='display:none'>&#8981;</span>"
+                : "&#8981;";
         String suggestionEndpoint = sanitizeScriptUrl(
                 getSuggestionUrl(configuredSearchEngine),
                 "https://ac.duckduckgo.com/ac/?q=");
@@ -250,6 +271,7 @@ public class UrlUtils {
                 + "form:focus-within{background:" + edgeSearchBackground + ";outline:1px solid " + border + ";}"
                 + ".urlMark{display:flex;align-items:center;justify-content:center;width:42px;height:42px;flex:0 0 42px;"
                 + "border-radius:20px;background:" + edgeSearchIconBackground + ";color:" + edgeSearchForeground + ";font-size:20px;font-weight:700;}"
+                + ".urlMark img{width:22px;height:22px;border-radius:50%;object-fit:cover;}"
                 + "input{flex:1;border:0;outline:0;background:transparent;color:" + edgeSearchForeground + ";"
                 + "caret-color:" + edgeSearchForeground + ";font-size:15px;min-width:0;text-align:center;padding:0 8px;}"
                 + "input:focus,input:not(:placeholder-shown){text-align:left;}"
@@ -290,7 +312,7 @@ public class UrlUtils {
                 + "<section class='searchPanel'>"
                 + "<form onsubmit=\"var q=document.getElementById('q').value.trim();"
                 + "if(q){location.href='" + escapeJs(searchEngine) + "'+encodeURIComponent(q);}return false;\">"
-                + "<div class='urlMark' aria-hidden='true'>&#8981;</div>"
+                + "<div class='urlMark' aria-hidden='true'>" + urlMarkContent + "</div>"
                 + "<input id='q' autocomplete='off' placeholder='" + hint + "'>"
                 + "<button type='submit' aria-label='Search'>&#8594;</button>"
                 + "</form>"
@@ -463,6 +485,25 @@ public class UrlUtils {
         return value;
     }
 
+    public static String getSearchEngineName(Context context, String url) {
+        if (url == null || url.trim().isEmpty()) {
+            return "unknown";
+        }
+        Uri uri = Uri.parse(url);
+        String host = uri.getHost();
+        if (host == null) {
+            return "unknown";
+        }
+        host = host.toLowerCase(Locale.US);
+        if (host.contains("google.com")) return "Google";
+        if (host.contains("bing.com")) return "Bing";
+        if (host.contains("duckduckgo.com")) return "DuckDuckGo";
+        if (host.contains("brave.com")) return "Brave";
+        if (host.contains("yahoo.com")) return "Yahoo";
+        if (host.contains("ecosia.org")) return "Ecosia";
+        return host;
+    }
+
     public static String getUrlOrSearchUrl(Context context, String input) {
         return getUrlOrSearchUrl(context, input, false);
     }
@@ -557,6 +598,23 @@ public class UrlUtils {
         }
         return "https://www.google.com/s2/favicons?sz=128&domain_url="
                 + encodeQueryParam(quickAccessUrl);
+    }
+
+    // Favicon for a search-engine URL, built from its host (reliable Google s2 "domain" form).
+    public static String getEngineIconUrl(String engineUrl) {
+        if (engineUrl == null || engineUrl.trim().isEmpty()) {
+            return null;
+        }
+        String host;
+        try {
+            host = Uri.parse(engineUrl).getHost();
+        } catch (Exception e) {
+            return null;
+        }
+        if (host == null || host.isEmpty()) {
+            return null;
+        }
+        return "https://www.google.com/s2/favicons?sz=64&domain=" + host;
     }
 
     public static String getDirectFaviconUrl(String url) {

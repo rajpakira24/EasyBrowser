@@ -30,6 +30,7 @@ public class Tab {
     private String sessionState;
     private String parentTabId;
     private int scrollY;
+    private long loadStartTime;
 
     public Tab(GeckoSession session, String title, String url) {
         this(UUID.randomUUID().toString(), session, title, url, false);
@@ -225,5 +226,13 @@ public class Tab {
 
     public void setScrollY(int scrollY) {
         this.scrollY = Math.max(0, scrollY);
+    }
+
+    public long getLoadStartTime() {
+        return loadStartTime;
+    }
+
+    public void setLoadStartTime(long loadStartTime) {
+        this.loadStartTime = loadStartTime;
     }
 }

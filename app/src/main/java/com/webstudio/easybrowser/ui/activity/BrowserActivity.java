@@ -11,6 +11,7 @@ import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
@@ -30,6 +31,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import androidx.preference.PreferenceManager;
 import android.text.Editable;
 import android.text.SpannableString;
@@ -42,11 +44,13 @@ import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.PopupMenu;
@@ -62,6 +66,10 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.coordinatorlayout.widget.CoordinatorLayout;
 import androidx.core.content.ContextCompat;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.core.content.pm.ShortcutInfoCompat;
 import androidx.core.content.pm.ShortcutManagerCompat;
 import androidx.core.graphics.drawable.IconCompat;
@@ -113,6 +121,8 @@ import com.webstudio.easybrowser.utils.UrlUtils;
 import org.json.JSONObject;
 import org.mozilla.geckoview.GeckoResult;
 import org.mozilla.geckoview.GeckoSession;
+import org.mozilla.geckoview.WebExtension;
+import org.mozilla.geckoview.WebExtensionController;
 import org.mozilla.geckoview.GeckoSessionSettings;
 import org.mozilla.geckoview.GeckoView;
 import org.mozilla.geckoview.MediaSession;
@@ -140,6 +150,7 @@ public class BrowserActivity extends AppCompatActivity {
     static final int REQUEST_GECKO_PERMISSIONS = 1001;
     private static final long MAX_UPLOAD_CACHE_BYTES = 100L * 1024L * 1024L;
     private static final long TRUSTED_JAVASCRIPT_URI_TTL_MS = 5_000L;
+    private static final long FULLSCREEN_EXIT_SEARCH_SUPPRESS_MS = 2_000L;
     private GeckoView geckoView;
     GeckoSession session;
     private BrowserViewModel browserViewModel;
@@ -224,6 +235,17 @@ public class BrowserActivity extends AppCompatActivity {
     private int contentScrollY = 0;
     private AppBarLayout appBar;
     private boolean browserChromeVisible = true;
+    private boolean inWebFullscreen = false;
+    private long suppressSearchPopupUntilMs = 0L;
+    private int preFullscreenOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
+    private boolean preFullscreenKeepScreenOn = false;
+    private int preFullscreenCutoutMode =
+            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT;
+    private Drawable preFullscreenWindowBackground;
+    private Drawable preFullscreenGeckoBackground;
+    private ViewGroup preFullscreenGeckoParent;
+    private ViewGroup.LayoutParams preFullscreenGeckoLayoutParams;
+    private int preFullscreenGeckoIndex = -1;
     private boolean addressBarAtBottom = false;
     private boolean bottomNavigationEnabled = true;
     private boolean animateNextTabAttach;
@@ -240,6 +262,11 @@ public class BrowserActivity extends AppCompatActivity {
     private static final long BACKGROUND_MEDIA_RESUME_DELAY_MS = 450L;
     private static final long USER_MEDIA_PAUSE_SUPPRESSION_MS = 3_000L;
     private View browserRoot;
+    private View downloadChipView;
+    // One-time "This time search in:" engine override; consumed by the next search submit.
+    private String oneTimeSearchEngineUrl;
+    // Guards against running the auto-clear-on-exit more than once (Exit menu + onDestroy).
+    private boolean autoClearTriggered = false;
     private ConnectivityManager connectivityManager;
     private ConnectivityManager.NetworkCallback connectivityCallback;
     private BroadcastReceiver connectivityReceiver;
@@ -267,6 +294,9 @@ public class BrowserActivity extends AppCompatActivity {
     BrowserHistoryDelegate historyDelegate;
     private ActivityResultLauncher<Intent> filePickerLauncher;
     private ActivityResultLauncher<Intent> tabsActivityLauncher;
+    private ActivityResultLauncher<String> downloadPermissionLauncher;
+    // url, filename, mimeType awaiting a legacy storage-permission grant (API <= 28).
+    private String[] pendingDownloadParams;
     private boolean tabManagerLaunchPending;
     private final SearchSuggestionProvider suggestionProvider = new SearchSuggestionProvider();
 
@@ -300,6 +330,7 @@ public class BrowserActivity extends AppCompatActivity {
         initializeViews();
         setupFilePicker();
         setupTabsActivityLauncher();
+        setupExtensionInstallPrompt();
         setupUrlInput();
         hadExistingTabsOnCreate = tabManager != null && tabManager.getTabCount() > 0;
         setupTabManager();
@@ -490,6 +521,14 @@ public class BrowserActivity extends AppCompatActivity {
         lastPageProgress = progress;
         lastProgressChangedAtMs = System.currentTimeMillis();
         if (progress >= 100) {
+            if (session == this.session && tabManager != null) {
+                Tab currentTab = tabManager.getCurrentTab();
+                if (currentTab != null && currentTab.getSession() == session && currentTab.getLoadStartTime() > 0) {
+                    long duration = System.currentTimeMillis() - currentTab.getLoadStartTime();
+                    AnalyticsManager.logPageLoadFinished(this, currentTab.getUrl(), duration, currentTab.isPrivate());
+                    currentTab.setLoadStartTime(0);
+                }
+            }
             pendingReloadRecoveryTabId = null;
             if (progressBar != null) {
                 progressBar.setVisibility(View.GONE);
@@ -771,6 +810,20 @@ public class BrowserActivity extends AppCompatActivity {
                     }
                     pendingFilePrompt = null;
                 });
+        downloadPermissionLauncher = registerForActivityResult(
+                new ActivityResultContracts.RequestPermission(),
+                granted -> {
+                    String[] params = pendingDownloadParams;
+                    pendingDownloadParams = null;
+                    if (params == null) {
+                        return;
+                    }
+                    if (granted) {
+                        performStartDownload(params[0], params[1], params[2]);
+                    } else {
+                        Toast.makeText(this, R.string.download_failed, Toast.LENGTH_SHORT).show();
+                    }
+                });
     }
 
     private void setupTabsActivityLauncher() {
@@ -980,12 +1033,10 @@ public class BrowserActivity extends AppCompatActivity {
     }
 
     private void setupUrlInput() {
+        urlInput.setShowSoftInputOnFocus(false);
+        urlInput.setCursorVisible(false);
         urlInput.setOnClickListener(v -> showSearchPopup());
-        urlInput.setOnFocusChangeListener((v, hasFocus) -> {
-            if (hasFocus) {
-                showSearchPopup();
-            }
-        });
+        urlInput.setOnFocusChangeListener(null);
         urlInput.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_GO ||
                     actionId == EditorInfo.IME_ACTION_SEARCH ||
@@ -1000,6 +1051,10 @@ public class BrowserActivity extends AppCompatActivity {
     }
 
     private void showSearchPopup() {
+        if (inWebFullscreen || isSearchPopupSuppressed()) {
+            hideKeyboard();
+            return;
+        }
         final Dialog dialog = new Dialog(this, android.R.style.Theme_Translucent_NoTitleBar);
         dialog.setContentView(R.layout.dialog_search_popup);
         dialog.setCanceledOnTouchOutside(true);
@@ -1007,8 +1062,14 @@ public class BrowserActivity extends AppCompatActivity {
         EditText searchInput = dialog.findViewById(R.id.search_popup_input);
         ImageButton popupMic = dialog.findViewById(R.id.btn_search_popup_mic);
         ImageButton popupGo = dialog.findViewById(R.id.btn_search_popup_go);
+        ImageButton popupEngine = dialog.findViewById(R.id.btn_search_popup_engine);
         RecyclerView suggestionsRecycler = dialog.findViewById(R.id.suggestions_recycler);
         popupMic.setVisibility(View.GONE);
+        if (popupEngine != null) {
+            updatePopupSearchEngineIcon(popupEngine);
+            popupEngine.setOnClickListener(v ->
+                    showSearchEnginePickerForPopup(popupEngine, searchInput, dialog));
+        }
         bindCurrentPageSearchCard(dialog, searchInput);
 
         SuggestionsAdapter suggestionsAdapter = new SuggestionsAdapter(suggestion -> {
@@ -1056,8 +1117,9 @@ public class BrowserActivity extends AppCompatActivity {
                     }
 
                     void fetchSearch(List<String> browserResults) {
-                        String searchEngine = UrlUtils.getSearchEngineUrl(
-                                BrowserActivity.this, privateMode);
+                        String searchEngine = oneTimeSearchEngineUrl != null
+                                ? oneTimeSearchEngineUrl
+                                : UrlUtils.getSearchEngineUrl(BrowserActivity.this, privateMode);
                         suggestionProvider.fetchSuggestions(query, searchEngine,
                                 searchResults -> runOnUiThread(() -> show(
                                         mergeSuggestions(browserResults, searchResults))));
@@ -1125,6 +1187,29 @@ public class BrowserActivity extends AppCompatActivity {
         });
         dialog.setOnDismissListener(d -> urlInput.clearFocus());
         dialog.show();
+    }
+
+    private void updatePopupSearchEngineIcon(ImageButton target) {
+        if (target == null) {
+            return;
+        }
+        String engineUrl = oneTimeSearchEngineUrl != null
+                ? oneTimeSearchEngineUrl
+                : UrlUtils.getSearchEngineUrl(this, isCurrentTabPrivate());
+        Drawable fallback = ContextCompat.getDrawable(this, R.drawable.ic_search);
+        if (fallback != null) {
+            fallback = fallback.mutate();
+            fallback.setTint(ContextCompat.getColor(this, R.color.edge_search_foreground));
+        }
+        target.setImageTintList(null);
+        target.clearColorFilter();
+        target.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        Glide.with(target)
+                .load(UrlUtils.getEngineIconUrl(engineUrl))
+                .circleCrop()
+                .placeholder(fallback)
+                .error(fallback)
+                .into(target);
     }
 
     private void bindCurrentPageSearchCard(Dialog dialog, EditText searchInput) {
@@ -1225,11 +1310,23 @@ public class BrowserActivity extends AppCompatActivity {
     }
 
     private void hideKeyboard() {
+        if (urlInput == null) {
+            return;
+        }
         InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
         if (imm != null) {
             imm.hideSoftInputFromWindow(urlInput.getWindowToken(), 0);
         }
         urlInput.clearFocus();
+    }
+
+    private void suppressSearchPopupAfterFullscreenExit() {
+        suppressSearchPopupUntilMs =
+                SystemClock.uptimeMillis() + FULLSCREEN_EXIT_SEARCH_SUPPRESS_MS;
+    }
+
+    private boolean isSearchPopupSuppressed() {
+        return SystemClock.uptimeMillis() < suppressSearchPopupUntilMs;
     }
 
     @Override
@@ -1243,7 +1340,10 @@ public class BrowserActivity extends AppCompatActivity {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                if (session != null && canGoBack) {
+                if (inWebFullscreen && session != null) {
+                    suppressSearchPopupAfterFullscreenExit();
+                    session.exitFullScreen();
+                } else if (session != null && canGoBack) {
                     session.goBack();
                 } else if (shouldCloseCurrentTabOnBack()) {
                     TabManager.ClosedTab closedTab =
@@ -1303,7 +1403,14 @@ public class BrowserActivity extends AppCompatActivity {
     }
 
     private void attachTabToView(Tab tab) {
-        if (tab == null || tab.getSession() == null || geckoView == null) {
+        if (tab == null || geckoView == null) {
+            return;
+        }
+        // A tab discarded under memory pressure has no session — recreate it lazily.
+        if (tab.getSession() == null && tabManager != null) {
+            tabManager.ensureSessionForTab(tab);
+        }
+        if (tab.getSession() == null) {
             return;
         }
         showBrowserChrome(false);
@@ -1360,6 +1467,53 @@ public class BrowserActivity extends AppCompatActivity {
         targetSession.setHistoryDelegate(historyDelegate);
     }
 
+    // Drop every delegate set in configureSession so a session can't pin this Activity.
+    // Critical on rotation: BrowserViewModel keeps background-tab sessions alive across
+    // Activity recreation, and only the current tab is re-configured by attachTabToView —
+    // background sessions would otherwise hold delegates referencing the destroyed Activity.
+    private void clearSessionDelegates(GeckoSession targetSession) {
+        if (targetSession == null) {
+            return;
+        }
+        try {
+            targetSession.setNavigationDelegate(null);
+            targetSession.setContentDelegate(null);
+            targetSession.setContentBlockingDelegate(null);
+            targetSession.setProgressDelegate(null);
+            targetSession.setScrollDelegate(null);
+            targetSession.setPromptDelegate(null);
+            targetSession.setPermissionDelegate(null);
+            targetSession.setMediaSessionDelegate(null);
+            targetSession.setHistoryDelegate(null);
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    // GeckoView asks us to host a brand-new session (window.open() with an opener handle,
+    // OAuth/payment popups). Must return an UNOPENED session; GeckoView opens it.
+    GeckoResult<GeckoSession> onContentNewSession(GeckoSession opener, String uri) {
+        if (tabManager == null) {
+            return GeckoResult.fromValue(null);
+        }
+        boolean blockPopups = PreferenceManager.getDefaultSharedPreferences(this)
+                .getBoolean("block_popups", true);
+        if (blockPopups) {
+            recordBlockedPrivacyItem();
+            runOnUiThread(() ->
+                    Toast.makeText(this, R.string.popup_blocked, Toast.LENGTH_SHORT).show());
+            return GeckoResult.fromValue(null);
+        }
+        Tab tab = tabManager.adoptNewSession(opener);
+        if (tab == null || tab.getSession() == null) {
+            return GeckoResult.fromValue(null);
+        }
+        // Gate the popup's load (ad-block, HTTPS-only, external-scheme handling) from the
+        // start, even though it opens in the background and isn't attached to the GeckoView.
+        configureSession(tab.getSession());
+        runOnUiThread(this::updateTabCount);
+        return GeckoResult.fromValue(tab.getSession());
+    }
+
     void onSessionStateChanged(@NonNull GeckoSession stateSession,
                                @NonNull GeckoSession.SessionState state) {
         if (tabManager != null) {
@@ -1412,6 +1566,7 @@ public class BrowserActivity extends AppCompatActivity {
                 @Override
                 public void onBookmarkAdded(Bookmark bookmark) {
                     runOnUiThread(() -> {
+                        AnalyticsManager.logBookmarkAdded(BrowserActivity.this, currentUrl);
                         isCurrentPageBookmarked = true;
                         updateBookmarkIcon();
                         Toast.makeText(BrowserActivity.this,
@@ -1471,8 +1626,67 @@ public class BrowserActivity extends AppCompatActivity {
         }
 
         Tab tab = tabManager.getCurrentTab();
-        AnalyticsManager.logNavigationSubmitted(this, input, tab != null && tab.isPrivate());
-        loadUrl(UrlUtils.getUrlOrSearchUrl(this, input, tab != null && tab.isPrivate()));
+        if (UrlUtils.isSearchQuery(input)) {
+            boolean isPrivate = tab != null && tab.isPrivate();
+            AnalyticsManager.logSearchQuery(this, input,
+                    UrlUtils.getSearchEngineName(this, UrlUtils.getSearchUrl(this, input)),
+                    isPrivate);
+        }
+        String target;
+        if (oneTimeSearchEngineUrl != null && UrlUtils.isSearchQuery(input)) {
+            target = UrlUtils.getSearchUrlForEngine(this, input, oneTimeSearchEngineUrl);
+        } else {
+            target = UrlUtils.getUrlOrSearchUrl(this, input, tab != null && tab.isPrivate());
+        }
+        oneTimeSearchEngineUrl = null;
+        loadUrl(target);
+    }
+
+    private void showSearchEnginePickerForPopup(View anchor, EditText searchInput, Dialog dialog) {
+        SearchEnginePickerPopup.show(this, anchor, new SearchEnginePickerPopup.Callback() {
+            @Override
+            public void onEngineSelected(String name, String engineUrl) {
+                oneTimeSearchEngineUrl = engineUrl;
+                String input = searchInput.getText() != null
+                        ? searchInput.getText().toString().trim() : "";
+                if (!input.isEmpty()) {
+                    handleUrlInput(input);
+                    dialog.dismiss();
+                } else {
+                    if (anchor instanceof ImageButton) {
+                        updatePopupSearchEngineIcon((ImageButton) anchor);
+                    }
+                    searchInput.requestFocus();
+                    Toast.makeText(BrowserActivity.this,
+                            getString(R.string.search_picker_title) + " " + name,
+                            Toast.LENGTH_SHORT).show();
+                }
+            }
+
+            @Override
+            public void onBookmarks() {
+                dialog.dismiss();
+                startActivity(new Intent(BrowserActivity.this, BookmarksActivity.class));
+            }
+
+            @Override
+            public void onTabs() {
+                dialog.dismiss();
+                launchTabsActivity();
+            }
+
+            @Override
+            public void onHistory() {
+                dialog.dismiss();
+                startActivity(new Intent(BrowserActivity.this, HistoryActivity.class));
+            }
+
+            @Override
+            public void onSearchSettings() {
+                dialog.dismiss();
+                startActivity(new Intent(BrowserActivity.this, SettingsActivity.class));
+            }
+        });
     }
 
     void loadUrl(String url) {
@@ -1493,7 +1707,8 @@ public class BrowserActivity extends AppCompatActivity {
             currentTab.setInitialLoadPending(false);
             tabManager.updateTabUrl(currentTab, url);
             attachTabToView(currentTab);
-            AnalyticsManager.logPageLoadRequested(this, url, currentTab.isPrivate());
+            currentTab.setLoadStartTime(System.currentTimeMillis());
+            AnalyticsManager.logPageLoadStarted(this, url, currentTab.isPrivate());
             currentTab.getSession().loadUri(url);
         }
     }
@@ -1519,7 +1734,7 @@ public class BrowserActivity extends AppCompatActivity {
     }
 
     void syncUrlFromPageScript(GeckoSession sourceSession, String url) {
-        if (sourceSession == null || TextUtils.isEmpty(url) || !isYouTubeUrl(url)) {
+        if (sourceSession == null || TextUtils.isEmpty(url) || !isHttpUrl(url)) {
             return;
         }
         String sanitizedUrl = UrlUtils.sanitizeUrl(url);
@@ -1531,6 +1746,17 @@ public class BrowserActivity extends AppCompatActivity {
             if (tab == null) {
                 return;
             }
+            // Anti-spoof: the URL arrives through a document.title channel, which a
+            // hostile page could set to our sentinel with a forged address. But
+            // history.pushState/replaceState are same-origin only, so a legitimate
+            // in-page URL change can never cross host. Reject any reported URL whose
+            // host differs from the tab's committed host (set by onLocationChange).
+            String reportedHost = UrlUtils.getDisplayHost(sanitizedUrl);
+            String committedHost = UrlUtils.getDisplayHost(tab.getUrl());
+            if (reportedHost == null || committedHost == null
+                    || !reportedHost.equals(committedHost)) {
+                return;
+            }
             tabManager.updateTabUrl(tab, sanitizedUrl);
             if (tab == tabManager.getCurrentTab()) {
                 currentUrl = sanitizedUrl;
@@ -1539,6 +1765,23 @@ public class BrowserActivity extends AppCompatActivity {
                 updateBookmarkStatus();
             }
         });
+    }
+
+    /** True for top-level web pages where in-page (SPA) URL sync is safe to run. */
+    private boolean isHttpUrl(String url) {
+        if (url == null) {
+            return false;
+        }
+        try {
+            String scheme = Uri.parse(url).getScheme();
+            if (scheme == null) {
+                return false;
+            }
+            scheme = scheme.toLowerCase(Locale.US);
+            return scheme.equals("http") || scheme.equals("https");
+        } catch (RuntimeException ignored) {
+            return false;
+        }
     }
 
     private boolean isBackgroundPlayEnabled() {
@@ -1953,15 +2196,17 @@ public class BrowserActivity extends AppCompatActivity {
     }
 
     private boolean shouldShowDetailedToolbarUrl(String url) {
-        if (!isYouTubeUrl(url)) {
+        if (!isHttpUrl(url)) {
             return false;
         }
         try {
             Uri uri = Uri.parse(url);
             String path = uri.getPath();
             String query = uri.getQuery();
+            String fragment = uri.getFragment();
             return (path != null && !path.isEmpty() && !"/".equals(path))
-                    || (query != null && query.contains("v="));
+                    || (query != null && !query.isEmpty())
+                    || (fragment != null && !fragment.isEmpty());
         } catch (RuntimeException ignored) {
             return false;
         }
@@ -3381,9 +3626,212 @@ public class BrowserActivity extends AppCompatActivity {
         PrivacyStatsManager.recordBlockedItem(this);
     }
 
-    private void enterPip() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            enterPictureInPictureMode(new android.app.PictureInPictureParams.Builder().build());
+    /**
+     * Called from {@link BrowserContentDelegate#onFullScreen} when web content
+     * enters or leaves DOM fullscreen (e.g. tapping the fullscreen button on a
+     * YouTube video). Instead of Picture-in-Picture, the browser goes immersive
+     * fullscreen: chrome hidden, system bars hidden, locked landscape.
+     */
+    void setWebFullscreen(boolean fullscreen) {
+        if (fullscreen == inWebFullscreen) {
+            return;
+        }
+        if (!fullscreen) {
+            suppressSearchPopupAfterFullscreenExit();
+        }
+        inWebFullscreen = fullscreen;
+        runOnUiThread(() -> applyWebFullscreen(fullscreen));
+    }
+
+    boolean isInWebFullscreen() {
+        return inWebFullscreen;
+    }
+
+    private void applyWebFullscreen(boolean fullscreen) {
+        WindowInsetsControllerCompat insets =
+                WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        if (fullscreen) {
+            preFullscreenOrientation = getRequestedOrientation();
+            preFullscreenKeepScreenOn = (getWindow().getAttributes().flags
+                    & WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) != 0;
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            // Window/Gecko backgrounds default to the light theme color. When the
+            // video letterboxes (e.g. 16:9 content on a wider device), that light
+            // color shows around the video — replace with black for both surfaces.
+            preFullscreenWindowBackground = getWindow().getDecorView().getBackground();
+            getWindow().setBackgroundDrawable(
+                    new android.graphics.drawable.ColorDrawable(Color.BLACK));
+            if (geckoView != null) {
+                preFullscreenGeckoBackground = geckoView.getBackground();
+                geckoView.setBackgroundColor(Color.BLACK);
+            }
+            hideKeyboard();
+            // Draw edge-to-edge so the hidden status/nav bar regions are filled by
+            // the video instead of the (light) window background.
+            WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                WindowManager.LayoutParams lp = getWindow().getAttributes();
+                preFullscreenCutoutMode = lp.layoutInDisplayCutoutMode;
+                // ALWAYS (R+) lets the window extend into the cutout on any edge —
+                // SHORT_EDGES leaves a side strip in landscape because the cutout
+                // is then on a long edge.
+                lp.layoutInDisplayCutoutMode =
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                                ? WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                                : WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+                getWindow().setAttributes(lp);
+            }
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+            if (appBar != null) {
+                // AppBarLayout can carry a stale scroll offset; reset before hiding so
+                // the post-exit restore doesn't show a half-collapsed bar.
+                appBar.setExpanded(true, false);
+                appBar.setVisibility(View.GONE);
+            }
+            if (bottomNav != null) {
+                bottomNav.setVisibility(View.GONE);
+            }
+            if (quickTabStripContainer != null) {
+                quickTabStripContainer.setVisibility(View.GONE);
+            }
+            if (quickTabStripShadow != null) {
+                quickTabStripShadow.setVisibility(View.GONE);
+            }
+            hideSystemBarsForWebFullscreen();
+            // CoordinatorLayout/AppBarLayout otherwise pad the content by the status-bar
+            // inset, leaving a band of window background at the top. Swallow all insets
+            // while fullscreen so the video reaches every edge.
+            if (browserRoot != null) {
+                browserRoot.setPadding(0, 0, 0, 0);
+                ViewCompat.setOnApplyWindowInsetsListener(browserRoot,
+                        (v, ins) -> WindowInsetsCompat.CONSUMED);
+                ViewCompat.requestApplyInsets(browserRoot);
+            }
+            // Drop the bottom margin / vertical clipping that tracked the now-hidden
+            // bottom chrome — otherwise the GeckoView surface is short by a strip
+            // that shows the (light) window background.
+            if (swipeRefresh != null
+                    && swipeRefresh.getLayoutParams()
+                            instanceof CoordinatorLayout.LayoutParams) {
+                CoordinatorLayout.LayoutParams params =
+                        (CoordinatorLayout.LayoutParams) swipeRefresh.getLayoutParams();
+                if (params.bottomMargin != 0) {
+                    params.bottomMargin = 0;
+                    swipeRefresh.setLayoutParams(params);
+                }
+            }
+            if (geckoView != null) {
+                geckoView.setVerticalClipping(0);
+            }
+            // Re-parent GeckoView into DecorView. CoordinatorLayout/AppBarLayout/
+            // SwipeRefreshLayout each impose layout constraints (top/bottom insets,
+            // scroll offset, behavior margins) that otherwise leave residual strips
+            // around the video. Hoisting the surface above the entire chrome tree
+            // mirrors the WebView onShowCustomView pattern.
+            if (geckoView != null && geckoView.getParent() instanceof ViewGroup) {
+                preFullscreenGeckoParent = (ViewGroup) geckoView.getParent();
+                preFullscreenGeckoIndex = preFullscreenGeckoParent.indexOfChild(geckoView);
+                preFullscreenGeckoLayoutParams = geckoView.getLayoutParams();
+                preFullscreenGeckoParent.removeView(geckoView);
+                FrameLayout decor = (FrameLayout) getWindow().getDecorView();
+                decor.addView(geckoView, new FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT));
+            }
+        } else {
+            suppressSearchPopupAfterFullscreenExit();
+            if (!preFullscreenKeepScreenOn) {
+                getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            }
+            WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
+            if (browserRoot != null) {
+                ViewCompat.setOnApplyWindowInsetsListener(browserRoot, null);
+                ViewCompat.requestApplyInsets(browserRoot);
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                WindowManager.LayoutParams lp = getWindow().getAttributes();
+                lp.layoutInDisplayCutoutMode = preFullscreenCutoutMode;
+                getWindow().setAttributes(lp);
+            }
+            setRequestedOrientation(preFullscreenOrientation);
+            if (insets != null) {
+                insets.show(WindowInsetsCompat.Type.systemBars());
+            }
+            if (appBar != null) {
+                appBar.setVisibility(View.VISIBLE);
+            }
+            if (bottomNav != null) {
+                bottomNav.setVisibility(bottomNavigationEnabled ? View.VISIBLE : View.GONE);
+            }
+            getWindow().setBackgroundDrawable(preFullscreenWindowBackground != null
+                    ? preFullscreenWindowBackground
+                    : new android.graphics.drawable.ColorDrawable(
+                            ContextCompat.getColor(this, R.color.backgroundColor)));
+            preFullscreenWindowBackground = null;
+            // Re-parent GeckoView back into its original container so the SurfaceView
+            // reattaches and SwipeRefresh again has its child.
+            if (geckoView != null && preFullscreenGeckoParent != null
+                    && geckoView.getParent() instanceof ViewGroup) {
+                ((ViewGroup) geckoView.getParent()).removeView(geckoView);
+                int index = preFullscreenGeckoIndex >= 0
+                        && preFullscreenGeckoIndex <= preFullscreenGeckoParent.getChildCount()
+                        ? preFullscreenGeckoIndex
+                        : -1;
+                if (preFullscreenGeckoLayoutParams != null) {
+                    preFullscreenGeckoParent.addView(geckoView, index,
+                            preFullscreenGeckoLayoutParams);
+                } else {
+                    preFullscreenGeckoParent.addView(geckoView, index);
+                }
+            }
+            preFullscreenGeckoParent = null;
+            preFullscreenGeckoLayoutParams = null;
+            preFullscreenGeckoIndex = -1;
+            if (geckoView != null) {
+                geckoView.setBackground(preFullscreenGeckoBackground);
+                preFullscreenGeckoBackground = null;
+            }
+            // Quick tab strip + shadow visibility is owned by updateQuickTabStrip().
+            updateQuickTabStrip();
+            // Restore the bottom margin / vertical clipping for the (now visible)
+            // chrome.
+            requestWebContentBottomInsetUpdate();
+            hideKeyboard();
+            if (geckoView != null) {
+                geckoView.requestFocus();
+            }
+        }
+    }
+
+    /**
+     * Immersive hide of status + nav bars. Used both on initial fullscreen entry
+     * and re-applied after configuration changes / focus regain, since the system
+     * tends to restore bars after orientation flips.
+     */
+    private void hideSystemBarsForWebFullscreen() {
+        WindowInsetsControllerCompat insets =
+                WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        if (insets != null) {
+            insets.setSystemBarsBehavior(
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            insets.hide(WindowInsetsCompat.Type.systemBars());
+        }
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus && inWebFullscreen) {
+            hideSystemBarsForWebFullscreen();
+        }
+    }
+
+    @Override
+    public void onConfigurationChanged(@NonNull android.content.res.Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        if (inWebFullscreen) {
+            // Re-apply after the system finishes the orientation flip.
+            getWindow().getDecorView().post(this::hideSystemBarsForWebFullscreen);
         }
     }
 
@@ -3628,15 +4076,186 @@ public class BrowserActivity extends AppCompatActivity {
         return current != null && current.isPrivate();
     }
 
+    // Register the add-on install prompt so AMO's "Add to Firefox" web-install flow (and any
+    // .xpi we hand to the controller) asks the user to approve the requested permissions.
+    private void setupExtensionInstallPrompt() {
+        try {
+            RuntimeManager.getRuntime(this).getWebExtensionController().setPromptDelegate(
+                    new WebExtensionController.PromptDelegate() {
+                        @Override
+                        public GeckoResult<WebExtension.PermissionPromptResponse> onInstallPromptRequest(
+                                @NonNull WebExtension extension, @NonNull String[] permissions,
+                                @NonNull String[] origins, @NonNull String[] dataCollectionPermissions) {
+                            return promptInstallPermission(extension, permissions, origins);
+                        }
+                    });
+        } catch (Exception ignored) {
+            // Runtime not ready — installExtensionFromUrl sets the delegate again on demand.
+        }
+    }
+
+    // Install an add-on the browser encountered (an .xpi link, or AMO's "Add to Firefox"),
+    // instead of downloading the file. Prompts the user with the requested permissions first.
+    void installExtensionFromUrl(String url) {
+        if (TextUtils.isEmpty(url)) {
+            return;
+        }
+        WebExtensionController controller = RuntimeManager.getRuntime(this).getWebExtensionController();
+        controller.setPromptDelegate(new WebExtensionController.PromptDelegate() {
+            @Override
+            public GeckoResult<WebExtension.PermissionPromptResponse> onInstallPromptRequest(
+                    @NonNull WebExtension extension, @NonNull String[] permissions,
+                    @NonNull String[] origins, @NonNull String[] dataCollectionPermissions) {
+                return promptInstallPermission(extension, permissions, origins);
+            }
+        });
+        Toast.makeText(this, R.string.extension_installing, Toast.LENGTH_SHORT).show();
+        controller.install(url, WebExtensionController.INSTALLATION_METHOD_MANAGER).accept(
+                extension -> runOnUiThread(() ->
+                        Toast.makeText(this, R.string.extension_installed, Toast.LENGTH_SHORT).show()),
+                exception -> runOnUiThread(() ->
+                        Toast.makeText(this, R.string.extension_install_failed, Toast.LENGTH_LONG).show()));
+    }
+
+    private GeckoResult<WebExtension.PermissionPromptResponse> promptInstallPermission(
+            WebExtension extension, String[] permissions, String[] origins) {
+        GeckoResult<WebExtension.PermissionPromptResponse> result = new GeckoResult<>();
+        runOnUiThread(() -> {
+            String name = extension.metaData != null && extension.metaData.name != null
+                    ? extension.metaData.name : extension.id;
+            StringBuilder message = new StringBuilder(
+                    getString(R.string.extension_install_permissions_intro, name));
+            for (String permission : permissions) {
+                message.append("\n• ").append(permission);
+            }
+            for (String origin : origins) {
+                message.append("\n• ").append(origin);
+            }
+            new MaterialAlertDialogBuilder(this)
+                    .setTitle(R.string.install_extension)
+                    .setMessage(message.toString())
+                    .setPositiveButton(R.string.install_extension, (dialog, which) ->
+                            result.complete(new WebExtension.PermissionPromptResponse(true, true, true)))
+                    .setNegativeButton(R.string.cancel, (dialog, which) ->
+                            result.complete(new WebExtension.PermissionPromptResponse(false, false, false)))
+                    .setOnCancelListener(dialog ->
+                            result.complete(new WebExtension.PermissionPromptResponse(false, false, false)))
+                    .show();
+        });
+        return result;
+    }
+
     void startDownload(String url, String filename, String mimeType) {
         if (TextUtils.isEmpty(url)) {
             return;
         }
+        // On API <= 28 the download is published to public Downloads via the filesystem,
+        // which needs WRITE_EXTERNAL_STORAGE granted at runtime. Request it up front so the
+        // download doesn't transfer fully and then fail at the publish step.
+        if (needsLegacyStoragePermission()) {
+            pendingDownloadParams = new String[]{url, filename, mimeType};
+            downloadPermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+            return;
+        }
+        performStartDownload(url, filename, mimeType);
+    }
+
+    private boolean needsLegacyStoragePermission() {
+        return Build.VERSION.SDK_INT <= 28
+                && ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                        != PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void performStartDownload(String url, String filename, String mimeType) {
         try {
-            AnalyticsManager.logDownloadStarted(this, mimeType);
-            AppDownloadManager.getInstance().startDownload(this, url, filename, mimeType);
+            AnalyticsManager.logDownloadStarted(this, url, mimeType);
+            AppDownloadManager.getInstance().startDownload(this, url, filename, mimeType,
+                    new AppDownloadManager.DownloadStartListener() {
+                        @Override
+                        public void onDownloadStarted(String fileName) {
+                            runOnUiThread(() -> showDownloadStartAnimation(fileName));
+                        }
+
+                        @Override
+                        public void onDownloadQueuedForWifi(String fileName) {
+                            runOnUiThread(() -> Toast.makeText(BrowserActivity.this,
+                                    R.string.download_queued_wifi, Toast.LENGTH_SHORT).show());
+                        }
+                    });
         } catch (Exception e) {
             Toast.makeText(this, R.string.download_failed, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /**
+     * Opera/Brave-style download-start feedback: a chip slides up with the filename, then
+     * collapses into the toolbar's downloads button (which bounces). Tapping it opens Downloads.
+     */
+    private void showDownloadStartAnimation(String fileName) {
+        if (browserRoot == null || isFinishing() || isDestroyed()) {
+            Toast.makeText(this, R.string.download_started, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        dismissDownloadChip();
+        if (!(browserRoot instanceof ViewGroup)) {
+            Toast.makeText(this, R.string.download_started, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        ViewGroup rootGroup = (ViewGroup) browserRoot;
+        View chip = getLayoutInflater().inflate(R.layout.view_download_chip, rootGroup, false);
+        TextView title = chip.findViewById(R.id.download_chip_title);
+        title.setText(TextUtils.isEmpty(fileName) ? getString(R.string.download_started) : fileName);
+
+        CoordinatorLayout.LayoutParams lp = new CoordinatorLayout.LayoutParams(
+                CoordinatorLayout.LayoutParams.WRAP_CONTENT,
+                CoordinatorLayout.LayoutParams.WRAP_CONTENT);
+        lp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+        lp.leftMargin = EasyMotion.dp(this, 16);
+        lp.rightMargin = EasyMotion.dp(this, 16);
+        lp.bottomMargin = EasyMotion.dp(this, 16)
+                + (bottomNav != null && bottomNav.getVisibility() == View.VISIBLE
+                        ? bottomNav.getHeight() : 0);
+        rootGroup.addView(chip, lp);
+        downloadChipView = chip;
+
+        chip.setOnClickListener(v -> {
+            startActivity(new Intent(this, DownloadsActivity.class));
+            dismissDownloadChip();
+        });
+
+        EasyMotion.animateTabChipOpen(chip);
+
+        browserHandler.postDelayed(() -> {
+            if (downloadChipView != chip) {
+                return;
+            }
+            View target = (toolbarShortcutButton != null
+                    && toolbarShortcutButton.getVisibility() == View.VISIBLE)
+                    ? toolbarShortcutButton : null;
+            if (target == null) {
+                EasyMotion.animateDismiss(chip, () -> removeDownloadChip(chip));
+            } else {
+                EasyMotion.animateViewIntoTarget(chip, target, () -> {
+                    removeDownloadChip(chip);
+                    EasyMotion.pulse(target);
+                });
+            }
+        }, 1600L);
+    }
+
+    private void dismissDownloadChip() {
+        if (downloadChipView != null) {
+            removeDownloadChip(downloadChipView);
+        }
+    }
+
+    private void removeDownloadChip(View chip) {
+        if (chip != null && chip.getParent() instanceof ViewGroup) {
+            chip.animate().cancel();
+            ((ViewGroup) chip.getParent()).removeView(chip);
+        }
+        if (downloadChipView == chip) {
+            downloadChipView = null;
         }
     }
 
@@ -3743,6 +4362,18 @@ public class BrowserActivity extends AppCompatActivity {
     }
 
     @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        // Under heavy memory pressure, free native resources for background tabs. They are
+        // reloaded from persisted session state when the user switches back to them.
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL
+                && tabManager != null) {
+            tabManager.discardBackgroundTabs(session);
+            updateTabCount();
+        }
+    }
+
+    @Override
     protected void onDestroy() {
         unregisterBackgroundPlayReceiver();
         playingMediaSessions.clear();
@@ -3752,6 +4383,32 @@ public class BrowserActivity extends AppCompatActivity {
         stopBackgroundMediaService();
         browserHandler.removeCallbacksAndMessages(null);
         mediaHandler.removeCallbacksAndMessages(null);
+        dismissDownloadChip();
+        // Best-effort auto-clear on a real exit (back press / Exit menu) when the user enabled
+        // it — the GeckoRuntime + history executor outlive this Activity, so the async clears
+        // still complete. (Swipe-away that kills the process can't be guaranteed.)
+        if (isFinishing() && !isChangingConfigurations()
+                && PreferenceManager.getDefaultSharedPreferences(this)
+                        .getBoolean("auto_clear_on_exit", false)) {
+            performAutoClear(null);
+        }
+        // Detach delegates from every session so none keep a reference to this (destroyed)
+        // Activity. BrowserViewModel keeps the sessions alive across config changes; the new
+        // Activity re-configures the current tab via attachTabToView and each background tab
+        // the next time it is switched to.
+        if (tabManager != null) {
+            for (Tab tab : tabManager.getTabs()) {
+                if (tab != null) {
+                    clearSessionDelegates(tab.getSession());
+                }
+            }
+        }
+        if (geckoView != null && session != null) {
+            try {
+                geckoView.releaseSession();
+            } catch (Exception ignored) {
+            }
+        }
         super.onDestroy();
     }
 
@@ -3814,6 +4471,7 @@ public class BrowserActivity extends AppCompatActivity {
         Intent intent = new Intent(Intent.ACTION_SEND);
         intent.setType("text/plain");
         intent.putExtra(Intent.EXTRA_TEXT, currentUrl);
+        AnalyticsManager.logPageShared(this, currentUrl, "Android Chooser");
         startActivity(Intent.createChooser(intent, getString(R.string.share_link)));
     }
 
@@ -4218,6 +4876,19 @@ public class BrowserActivity extends AppCompatActivity {
             finish();
             return;
         }
+        performAutoClear(this::finish);
+    }
+
+    // Clear cookies/cache/history per the auto-clear-on-exit prefs. Runs at most once.
+    // Called from the Exit menu (with finish) and from onDestroy on a normal finish
+    // (back press / Exit) so the data is cleared on any real exit, not only the menu.
+    private void performAutoClear(Runnable onComplete) {
+        if (autoClearTriggered) {
+            if (onComplete != null) onComplete.run();
+            return;
+        }
+        autoClearTriggered = true;
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
         boolean clearCookies = prefs.getBoolean("auto_clear_cookies", true);
         boolean clearCache = prefs.getBoolean("auto_clear_cache", true);
         boolean clearHistory = prefs.getBoolean("auto_clear_history", true);
@@ -4231,9 +4902,16 @@ public class BrowserActivity extends AppCompatActivity {
         AtomicInteger pending = new AtomicInteger(0);
         if (flags != 0) pending.incrementAndGet();
         if (clearHistory) pending.incrementAndGet();
-        if (pending.get() == 0) { finish(); return; }
+        if (pending.get() == 0) {
+            if (onComplete != null) onComplete.run();
+            return;
+        }
 
-        Runnable checkDone = () -> { if (pending.decrementAndGet() == 0) runOnUiThread(this::finish); };
+        Runnable checkDone = () -> {
+            if (pending.decrementAndGet() == 0 && onComplete != null) {
+                runOnUiThread(onComplete);
+            }
+        };
 
         if (flags != 0) {
             RuntimeManager.getRuntime(this)
@@ -4284,7 +4962,7 @@ public class BrowserActivity extends AppCompatActivity {
     }
 
     void injectPageUrlSyncIfNeeded(GeckoSession targetSession, String url) {
-        if (targetSession == null || !isYouTubeUrl(url)) {
+        if (targetSession == null || !isHttpUrl(url)) {
             return;
         }
         String js = "(function(){try{"
@@ -4301,6 +4979,7 @@ public class BrowserActivity extends AppCompatActivity {
                 + "if(!o)return;history[k]=function(){var r=o.apply(this,arguments);"
                 + "setTimeout(report,0);setTimeout(report,250);return r;};});"
                 + "window.addEventListener('popstate',function(){setTimeout(report,0);});"
+                + "window.addEventListener('hashchange',function(){setTimeout(report,0);});"
                 + "document.addEventListener('yt-navigate-finish',report,true);"
                 + "document.addEventListener('yt-page-data-updated',report,true);"
                 + "setTimeout(report,0);setTimeout(report,500);setTimeout(report,1500);"

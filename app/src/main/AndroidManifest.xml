@@ -16,6 +16,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <!-- Hardware features -->
     <uses-feature
@@ -91,7 +92,6 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:windowSoftInputMode="adjustResize"
             android:launchMode="singleTask"
-            android:supportsPictureInPicture="true"
             android:exported="false" />
 
         <!-- Tab Management Activity -->
@@ -194,6 +194,15 @@
             android:name=".managers.BackgroundMediaService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+
+        <service
+            android:name=".managers.DownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <receiver
+            android:name=".managers.DownloadActionReceiver"
+            android:exported="false" />
 
         <!-- File provider for sharing files -->
         <provider

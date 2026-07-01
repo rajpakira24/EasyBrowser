@@ -17,6 +17,7 @@ import android.os.Environment;
 import android.provider.MediaStore;
 import android.text.TextUtils;
 import android.webkit.MimeTypeMap;
+import android.widget.RemoteViews;
 import android.widget.Toast;
 
 import androidx.core.app.NotificationCompat;
@@ -76,6 +77,14 @@ public class AppDownloadManager {
     private final Set<String> pausedDownloads = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final Set<String> cancelledDownloads = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final Set<String> wifiPendingQueue = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    // Guards against the same download running on two threads (double resume / drain race),
+    // which would open two FileOutputStreams onto the same file and corrupt it.
+    private final Set<String> runningDownloads = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    // Stable, collision-free notification id per download id (hashCode collided; Math.abs of
+    // Integer.MIN_VALUE is negative).
+    private final ConcurrentHashMap<String, Integer> notificationIds = new ConcurrentHashMap<>();
+    private final java.util.concurrent.atomic.AtomicInteger notificationIdSeq =
+            new java.util.concurrent.atomic.AtomicInteger(1000);
     private volatile ConnectivityManager.NetworkCallback networkCallback = null;
 
     public static AppDownloadManager getInstance() {
@@ -89,7 +98,21 @@ public class AppDownloadManager {
         return instance;
     }
 
+    /**
+     * Notifies the caller (UI) of the outcome of a download-start request so it can show its own
+     * feedback (e.g. an animated chip) instead of the default toast.
+     */
+    public interface DownloadStartListener {
+        void onDownloadStarted(String fileName);
+        void onDownloadQueuedForWifi(String fileName);
+    }
+
     public void startDownload(Context context, String url, String fileName, String mimeType) {
+        startDownload(context, url, fileName, mimeType, null);
+    }
+
+    public void startDownload(Context context, String url, String fileName, String mimeType,
+                              DownloadStartListener listener) {
         if (!isHttpDownloadUrl(url)) {
             Toast.makeText(context, R.string.download_failed, Toast.LENGTH_SHORT).show();
             return;
@@ -117,13 +140,21 @@ public class AppDownloadManager {
             repository.saveDownload(item, null);
             wifiPendingQueue.add(item.getId());
             registerNetworkCallbackIfNeeded(appContext);
-            Toast.makeText(context, R.string.download_queued_wifi, Toast.LENGTH_SHORT).show();
+            if (listener != null) {
+                listener.onDownloadQueuedForWifi(item.getFileName());
+            } else {
+                Toast.makeText(context, R.string.download_queued_wifi, Toast.LENGTH_SHORT).show();
+            }
             return;
         }
 
         item.setStatus(DownloadItem.Status.PENDING);
         repository.saveDownload(item, null);
-        Toast.makeText(context, R.string.download_started, Toast.LENGTH_SHORT).show();
+        if (listener != null) {
+            listener.onDownloadStarted(item.getFileName());
+        } else {
+            Toast.makeText(context, R.string.download_started, Toast.LENGTH_SHORT).show();
+        }
         startExistingDownload(appContext, item);
     }
 
@@ -167,7 +198,26 @@ public class AppDownloadManager {
         }
         pausedDownloads.remove(item.getId());
         cancelledDownloads.remove(item.getId());
-        executor.execute(() -> download(context.getApplicationContext(), item));
+        Context appContext = context.getApplicationContext();
+        // Started while the caller is (usually) foreground — elevate to a foreground service
+        // so the download survives the app being backgrounded or swiped away.
+        DownloadService.start(appContext);
+        executor.execute(() -> download(appContext, item));
+    }
+
+    private void download(Context context, DownloadItem item) {
+        if (!runningDownloads.add(item.getId())) {
+            // Already downloading on another thread — don't write the same file twice.
+            return;
+        }
+        try {
+            downloadInternal(context, item);
+        } finally {
+            runningDownloads.remove(item.getId());
+            if (runningDownloads.isEmpty()) {
+                DownloadService.stop(context);
+            }
+        }
     }
 
     public void pauseDownload(String downloadId) {
@@ -186,7 +236,23 @@ public class AppDownloadManager {
         }
     }
 
-    private void download(Context context, DownloadItem item) {
+    // Resumes a paused download from a context that doesn't already hold the DownloadItem
+    // (e.g. the notification's Resume action) by loading it from Room first.
+    public void resumeDownload(Context context, String downloadId) {
+        Context appContext = context.getApplicationContext();
+        DownloadRepository repository = new DownloadRepository(appContext);
+        repository.getDownloadById(downloadId, item -> {
+            if (item == null) {
+                return;
+            }
+            item.setStatus(DownloadItem.Status.DOWNLOADING);
+            repository.saveDownload(item, null);
+            cancelNotification(appContext, item);
+            startExistingDownload(appContext, item);
+        });
+    }
+
+    private void downloadInternal(Context context, DownloadItem item) {
         int limitBytesPerSec;
         try {
             limitBytesPerSec = Integer.parseInt(
@@ -321,21 +387,26 @@ public class AppDownloadManager {
                 item.setStatus(DownloadItem.Status.COMPLETED);
                 item.setErrorMessage(null);
                 repository.saveDownload(item, null);
-                AnalyticsManager.logDownloadCompleted(context, item.getMimeType());
+                AnalyticsManager.logDownloadCompleted(context, item.getUrl(), item.getMimeType());
+                clearOngoingNotification(context);
                 showCompletedNotification(context, item);
                 openCompletedDownloadIfEnabled(context, item);
             }
             }
-        } catch (IOException e) {
+        } catch (Exception e) {
+            // Catch Exception, not just IOException: MediaStore publish (resolver.insert /
+            // openOutputStream / update) can throw RuntimeException (IllegalState, Security,
+            // IllegalArgument). Without this the item would be stuck DOWNLOADING forever.
             if (pausedDownloads.contains(item.getId())) {
                 markPaused(context, repository, item, outputFile.exists() ? outputFile.length() : item.getDownloadedBytes());
             } else if (cancelledDownloads.contains(item.getId())) {
                 markCancelled(context, repository, item, outputFile);
             } else {
                 item.setStatus(DownloadItem.Status.FAILED);
-                item.setErrorMessage(e.getMessage());
+                item.setErrorMessage(e.getMessage() != null ? e.getMessage() : "Download failed");
                 item.setDownloadedBytes(outputFile.exists() ? outputFile.length() : item.getDownloadedBytes());
                 repository.saveDownload(item, null);
+                clearOngoingNotification(context);
                 showFailedNotification(context, item);
             }
         } finally {
@@ -393,7 +464,8 @@ public class AppDownloadManager {
         item.setRemainingSeconds(0);
         item.setStatus(DownloadItem.Status.PAUSED);
         repository.saveDownload(item, null);
-        cancelNotification(context, item);
+        clearOngoingNotification(context);
+        showPausedNotification(context, item);
         pausedDownloads.remove(item.getId());
     }
 
@@ -407,6 +479,7 @@ public class AppDownloadManager {
         item.setStatus(DownloadItem.Status.CANCELLED);
         repository.saveDownload(item, null);
         cancelNotification(context, item);
+        clearOngoingNotification(context);
         cancelledDownloads.remove(item.getId());
     }
 
@@ -830,8 +903,76 @@ public class AppDownloadManager {
                 .setContentIntent(createDownloadsPendingIntent(context))
                 .setOnlyAlertOnce(true)
                 .setOngoing(true)
-                .setProgress(100, progress, item.getTotalBytes() <= 0);
+                .setProgress(100, progress, item.getTotalBytes() <= 0)
+                .addAction(R.drawable.ic_pause, context.getString(R.string.notification_action_pause),
+                        createActionIntent(context, item, DownloadActionReceiver.ACTION_PAUSE))
+                .addAction(R.drawable.ic_close, context.getString(R.string.notification_action_cancel),
+                        createActionIntent(context, item, DownloadActionReceiver.ACTION_CANCEL));
+        // Post on the foreground-service id so this updates that single notification in place
+        // instead of showing a second, duplicate progress notification.
+        try {
+            NotificationManagerCompat.from(context)
+                    .notify(DownloadService.FOREGROUND_ID, builder.build());
+        } catch (SecurityException ignored) {
+        }
+    }
+
+    // Replaces the dismissed progress notification with a dismissible one offering Resume,
+    // so pausing from the notification shade doesn't leave the user with no way back in
+    // without reopening the app.
+    private void showPausedNotification(Context context, DownloadItem item) {
+        if (!isDownloadNotificationEnabled(context,
+                SettingsKeys.PREF_DOWNLOAD_PROGRESS_NOTIFICATIONS, true)
+                || !canPostNotifications(context)) {
+            return;
+        }
+        createNotificationChannel(context);
+        // NotificationCompat.setProgress() renders via the system's Material You accent, which
+        // ignores setColor() for the filled portion — so a genuinely gray bar (like Chrome shows
+        // for a paused download) needs a custom content view with our own progress drawable.
+        RemoteViews contentView = new RemoteViews(context.getPackageName(),
+                R.layout.notification_paused_download);
+        contentView.setTextViewText(R.id.notification_paused_title, item.getFileName());
+        contentView.setTextViewText(R.id.notification_paused_text,
+                context.getString(R.string.download_paused));
+        contentView.setProgressBar(R.id.notification_paused_progress, 100, item.getProgress(), false);
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, DOWNLOAD_CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_download)
+                .setContentTitle(item.getFileName())
+                .setContentText(context.getString(R.string.download_paused))
+                .setContentIntent(createDownloadsPendingIntent(context))
+                .setAutoCancel(true)
+                .setOngoing(false)
+                .setColor(ContextCompat.getColor(context, R.color.gray))
+                .setStyle(new NotificationCompat.DecoratedCustomViewStyle())
+                .setCustomContentView(contentView)
+                .addAction(R.drawable.ic_play, context.getString(R.string.notification_action_resume),
+                        createActionIntent(context, item, DownloadActionReceiver.ACTION_RESUME))
+                .addAction(R.drawable.ic_close, context.getString(R.string.notification_action_cancel),
+                        createActionIntent(context, item, DownloadActionReceiver.ACTION_CANCEL));
         notify(context, item, builder);
+    }
+
+    private PendingIntent createActionIntent(Context context, DownloadItem item, String action) {
+        Intent intent = new Intent(context, DownloadActionReceiver.class)
+                .setAction(action)
+                .putExtra(DownloadActionReceiver.EXTRA_DOWNLOAD_ID, item.getId());
+        int requestCode = (action + item.getId()).hashCode();
+        return PendingIntent.getBroadcast(context, requestCode, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    // Remove the in-progress (foreground) notification at a terminal state. If the foreground
+    // service is still running (other downloads active) it re-posts on the next tick; when the
+    // last download ends, the download wrapper stops the service which clears it anyway.
+    private void clearOngoingNotification(Context context) {
+        if (!DownloadService.isRunning()) {
+            try {
+                NotificationManagerCompat.from(context).cancel(DownloadService.FOREGROUND_ID);
+            } catch (RuntimeException ignored) {
+            }
+        }
     }
 
     private void showCompletedNotification(Context context, DownloadItem item) {
@@ -883,7 +1024,7 @@ public class AppDownloadManager {
     }
 
     private int getNotificationId(DownloadItem item) {
-        return Math.abs(item.getId().hashCode());
+        return notificationIds.computeIfAbsent(item.getId(), k -> notificationIdSeq.incrementAndGet());
     }
 
     private boolean canPostNotifications(Context context) {
@@ -1008,14 +1149,18 @@ public class AppDownloadManager {
             @Override
             public void onDownloadsLoaded(java.util.List<DownloadItem> downloads) {
                 for (DownloadItem item : downloads) {
-                    if (wifiPendingQueue.contains(item.getId())) {
+                    // remove() atomically claims the item; anything queued after this DB
+                    // snapshot stays in the queue for the next NOT_METERED callback rather
+                    // than being silently dropped by a blanket clear().
+                    if (wifiPendingQueue.remove(item.getId())) {
                         item.setStatus(DownloadItem.Status.PENDING);
                         repository.saveDownload(item, null);
                         startExistingDownload(ctx, item);
                     }
                 }
-                wifiPendingQueue.clear();
-                unregisterNetworkCallback(ctx);
+                if (wifiPendingQueue.isEmpty()) {
+                    unregisterNetworkCallback(ctx);
+                }
             }
 
             @Override public void onDownloadUpdated(DownloadItem download) {}

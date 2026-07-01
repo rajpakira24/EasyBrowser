@@ -3,6 +3,7 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/home_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/home_background">
@@ -100,6 +101,15 @@
                             android:textColor="@color/home_on_image_text"
                             android:textSize="15sp"
                             android:textStyle="bold" />
+
+                        <ImageButton
+                            android:id="@+id/btn_toggle_privacy_stats"
+                            android:layout_width="32dp"
+                            android:layout_height="32dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:contentDescription="@string/hide_privacy_stats"
+                            android:padding="6dp"
+                            android:src="@drawable/ic_eye" />
                     </LinearLayout>
 
                     <LinearLayout
@@ -371,9 +381,9 @@
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
         android:background="@drawable/bg_home_bottom_nav"
-        android:minHeight="72dp"
-        android:paddingTop="2dp"
-        android:paddingBottom="4dp"
+        android:minHeight="56dp"
+        android:paddingTop="0dp"
+        android:paddingBottom="0dp"
         app:elevation="0dp"
         app:itemActiveIndicatorStyle="@style/HomeBottomNavigationActiveIndicator"
         app:itemIconTint="@color/home_nav_item_selector"

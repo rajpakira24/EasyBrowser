@@ -227,6 +227,42 @@ public final class EasyMotion {
                 .start();
     }
 
+    /**
+     * Fly {@code view} toward the centre of {@code target} while shrinking and fading it out —
+     * used for the download-start chip collapsing into the toolbar/downloads button.
+     */
+    public static void animateViewIntoTarget(View view, View target, @Nullable Runnable endAction) {
+        if (view == null || target == null) {
+            run(endAction);
+            return;
+        }
+        int[] viewLoc = new int[2];
+        int[] targetLoc = new int[2];
+        view.getLocationOnScreen(viewLoc);
+        target.getLocationOnScreen(targetLoc);
+        float dx = (targetLoc[0] + target.getWidth() / 2f) - (viewLoc[0] + view.getWidth() / 2f);
+        float dy = (targetLoc[1] + target.getHeight() / 2f) - (viewLoc[1] + view.getHeight() / 2f);
+        view.animate().cancel();
+        view.setPivotX(view.getWidth() / 2f);
+        view.setPivotY(view.getHeight() / 2f);
+        view.animate()
+                .translationXBy(dx)
+                .translationYBy(dy)
+                .scaleX(0.2f)
+                .scaleY(0.2f)
+                .alpha(0f)
+                .setDuration(DURATION_LONG)
+                .setInterpolator(STANDARD_ACCELERATE)
+                .setListener(new AnimatorListenerAdapter() {
+                    @Override
+                    public void onAnimationEnd(Animator animation) {
+                        view.animate().setListener(null);
+                        run(endAction);
+                    }
+                })
+                .start();
+    }
+
     public static void pulse(View view) {
         if (view == null) {
             return;

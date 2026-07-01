@@ -51,6 +51,8 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.slider.Slider;
 import com.google.android.material.snackbar.Snackbar;
 import com.google.android.material.switchmaterial.SwitchMaterial;
+import com.google.android.material.textfield.TextInputEditText;
+import com.google.android.material.textfield.TextInputLayout;
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.webstudio.easybrowser.BuildConfig;
@@ -1196,7 +1198,7 @@ public class SettingsSubpageActivity extends AppCompatActivity {
         addStaticRow(weather, getString(R.string.weather_location),
                 weatherRepository.getLocationSummary(), this::showWeatherLocationDialog);
         addChoiceRow(weather, R.string.weather_units,
-                R.string.weather_summary,
+                0,
                 SettingsKeys.PREF_WEATHER_UNITS,
                 WeatherRepository.UNITS_CELSIUS,
                 new int[]{R.string.weather_units_celsius, R.string.weather_units_fahrenheit},
@@ -1895,11 +1897,6 @@ public class SettingsSubpageActivity extends AppCompatActivity {
                 this::openAppNotificationSettings);
         addNavigationRow(support, R.string.site_settings, R.string.site_permissions_summary,
                 () -> openSubpage(PAGE_SITE_SETTINGS));
-
-        addSection(R.string.about_settings);
-        LinearLayout about = addCard();
-        addNavigationRow(about, R.string.about_easy_browser,
-                R.string.about_easy_browser_summary, () -> openSubpage(PAGE_ABOUT));
     }
 
     private void buildAboutPage() {
@@ -2403,38 +2400,45 @@ public class SettingsSubpageActivity extends AppCompatActivity {
         WeatherRepository weatherRepository = new WeatherRepository(this);
         LinearLayout form = new LinearLayout(this);
         form.setOrientation(LinearLayout.VERTICAL);
-        int padding = dp(16);
-        form.setPadding(padding, padding, padding, 0);
+        int padding = dp(24);
+        form.setPadding(padding, dp(8), padding, 0);
 
         SwitchMaterial useCurrentLocation = new SwitchMaterial(this);
         useCurrentLocation.setText(R.string.weather_use_current_location);
         useCurrentLocation.setChecked(weatherRepository.isUsingCurrentLocation());
+        useCurrentLocation.setThumbTintList(ThemeEngine.switchThumbTint(this));
+        useCurrentLocation.setTrackTintList(ThemeEngine.switchTrackTint(this));
         LinearLayout.LayoutParams switchParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        switchParams.bottomMargin = dp(10);
+        switchParams.bottomMargin = dp(20);
         form.addView(useCurrentLocation, switchParams);
 
-        EditText name = createWeatherEditText(R.string.weather_location_name,
+        TextInputLayout nameLayout = createWeatherInputLayout(R.string.weather_location_name,
                 prefs.getString(SettingsKeys.PREF_WEATHER_LOCATION_NAME,
                         WeatherRepository.DEFAULT_LOCATION_NAME),
-                InputType.TYPE_CLASS_TEXT);
-        EditText latitude = createWeatherEditText(R.string.weather_latitude,
+                InputType.TYPE_CLASS_TEXT, 0);
+        TextInputLayout latitudeLayout = createWeatherInputLayout(R.string.weather_latitude,
                 prefs.getString(SettingsKeys.PREF_WEATHER_LATITUDE,
                         WeatherRepository.DEFAULT_LATITUDE),
                 InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL
-                        | InputType.TYPE_NUMBER_FLAG_SIGNED);
-        EditText longitude = createWeatherEditText(R.string.weather_longitude,
+                        | InputType.TYPE_NUMBER_FLAG_SIGNED, dp(16));
+        TextInputLayout longitudeLayout = createWeatherInputLayout(R.string.weather_longitude,
                 prefs.getString(SettingsKeys.PREF_WEATHER_LONGITUDE,
                         WeatherRepository.DEFAULT_LONGITUDE),
                 InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL
-                        | InputType.TYPE_NUMBER_FLAG_SIGNED);
-        form.addView(name);
-        form.addView(latitude);
-        form.addView(longitude);
+                        | InputType.TYPE_NUMBER_FLAG_SIGNED, dp(16));
+        form.addView(nameLayout);
+        form.addView(latitudeLayout);
+        form.addView(longitudeLayout);
+
+        EditText name = nameLayout.getEditText();
+        EditText latitude = latitudeLayout.getEditText();
+        EditText longitude = longitudeLayout.getEditText();
         setWeatherManualFieldsEnabled(!useCurrentLocation.isChecked(),
-                name, latitude, longitude);
+                nameLayout, latitudeLayout, longitudeLayout);
         useCurrentLocation.setOnCheckedChangeListener((buttonView, isChecked) ->
-                setWeatherManualFieldsEnabled(!isChecked, name, latitude, longitude));
+                setWeatherManualFieldsEnabled(!isChecked,
+                        nameLayout, latitudeLayout, longitudeLayout));
 
         new MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.weather_location)
@@ -2456,25 +2460,31 @@ public class SettingsSubpageActivity extends AppCompatActivity {
                 .show();
     }
 
-    private void setWeatherManualFieldsEnabled(boolean enabled, EditText... fields) {
-        for (EditText field : fields) {
-            field.setEnabled(enabled);
+    private void setWeatherManualFieldsEnabled(boolean enabled, TextInputLayout... fields) {
+        for (TextInputLayout field : fields) {
+            if (field.getEditText() != null) {
+                field.getEditText().setEnabled(enabled);
+            }
             field.setAlpha(enabled ? 1f : 0.48f);
         }
     }
 
-    private EditText createWeatherEditText(int hintRes, String value, int inputType) {
-        EditText editText = new EditText(this);
-        editText.setHint(hintRes);
+    private TextInputLayout createWeatherInputLayout(int hintRes, String value, int inputType,
+                                                       int topMargin) {
+        TextInputLayout layout = new TextInputLayout(this);
+        layout.setHint(getString(hintRes));
+        TextInputEditText editText = new TextInputEditText(layout.getContext());
         editText.setSingleLine(true);
         editText.setText(value);
         editText.setInputType(inputType);
         editText.setSelectAllOnFocus(true);
+        layout.addView(editText);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.topMargin = topMargin;
         params.bottomMargin = dp(8);
-        editText.setLayoutParams(params);
-        return editText;
+        layout.setLayoutParams(params);
+        return layout;
     }
 
     private String getWallpaperUserSummary() {

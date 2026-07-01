@@ -47,6 +47,7 @@ public final class SettingsKeys {
     public static final String PREF_ARCHIVE_DUPLICATE_TABS = "archive_duplicate_tabs";
     public static final String PREF_AUTO_CLOSE_INACTIVE_ITEMS = "auto_close_inactive_items";
     public static final String PREF_FORCE_ENABLE_ZOOM = "force_enable_zoom";
+    public static final String PREF_ABOUT_CONFIG_ENABLED = "about_config_enabled";
     public static final String PREF_READER_MODE_MENU_ENABLED = "reader_mode_menu_enabled";
     public static final String PREF_TRANSLATIONS_OFFER_POPUP = "translations_offer_popup";
     public static final String PREF_PREFERRED_LANGUAGES = "preferred_language_tags";

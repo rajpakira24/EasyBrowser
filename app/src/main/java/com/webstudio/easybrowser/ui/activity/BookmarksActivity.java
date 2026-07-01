@@ -27,6 +27,7 @@ import com.google.android.material.textfield.MaterialAutoCompleteTextView;
 import com.google.android.material.textfield.TextInputEditText;
 import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.adapters.BookmarksAdapter;
+import com.webstudio.easybrowser.managers.AnalyticsManager;
 import com.webstudio.easybrowser.models.Bookmark;
 import com.webstudio.easybrowser.repository.BookmarkRepository;
 import com.webstudio.easybrowser.utils.ThemeEngine;
@@ -329,6 +330,7 @@ public class BookmarksActivity extends AppCompatActivity implements BookmarksAda
 
     @Override
     public void onBookmarkClick(Bookmark bookmark) {
+        AnalyticsManager.logBookmarkOpened(this, bookmark.getUrl());
         Intent intent = new Intent(this, BrowserActivity.class);
         intent.putExtra("url", bookmark.getUrl());
         startActivity(intent);

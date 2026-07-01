@@ -1,10 +1,23 @@
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.compose)
 }
 
 def googleServicesConfigFile = file("google-services.json")
-def hasGoogleServicesConfig = googleServicesConfigFile.exists() &&
-        (googleServicesConfigFile.text =~ /A[I]za[0-9A-Za-z_-]{20,}/).find()
+def hasGoogleServicesConfig = false
+if (googleServicesConfigFile.exists()) {
+    try {
+        def googleServicesConfig = new groovy.json.JsonSlurper().parse(googleServicesConfigFile)
+        hasGoogleServicesConfig = googleServicesConfig.client?.any { client ->
+            client.client_info?.mobilesdk_app_id && client.api_key?.any { key -> key.current_key }
+        } ?: false
+        if (!hasGoogleServicesConfig) {
+            logger.warn("Firebase disabled: app/google-services.json is missing api_key/current_key. Download a fresh Android config file from Firebase.")
+        }
+    } catch (Exception ex) {
+        logger.warn("Firebase disabled: app/google-services.json could not be parsed: ${ex.message}")
+    }
+}
 if (hasGoogleServicesConfig) {
     apply plugin: "com.google.gms.google-services"
     apply plugin: "com.google.firebase.crashlytics"
@@ -31,10 +44,10 @@ android {
 
     defaultConfig {
         applicationId = "com.webstudio.easybrowser"
-        minSdk = 21
+        minSdk = 23
         targetSdk = 37
-        versionCode = 27
-        versionName = "2.7.1"
+        versionCode = 28
+        versionName = "2.7.2"
 
         // Required for GeckoView - must match the channel of the artifact below.
         manifestPlaceholders = [
@@ -55,6 +68,26 @@ android {
                         "room.incremental"    : "true"
                 ]
             }
+        }
+    }
+
+    // Split the app by device API level so each gets a compatible GeckoView.
+    // Both flavors share identical Java/resources; only minSdk + the GeckoView
+    // dependency differ (see dependencies block).
+    flavorDimensions += "engine"
+    productFlavors {
+        // Old devices (Android 6.0, API 23): last GeckoView line that still
+        // supports them. minSdk inherits defaultConfig (23) but set explicitly.
+        legacy {
+            dimension = "engine"
+            minSdk = 23
+            versionNameSuffix = "-legacy"
+        }
+        // Current devices: newest GeckoView (150) requires Android 8.0 (API 26)+.
+        modern {
+            dimension = "engine"
+            minSdk = 26
+            versionNameSuffix = "-modern"
         }
     }
 
@@ -89,11 +122,13 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11
+        coreLibraryDesugaringEnabled = true
     }
     buildFeatures {
         dataBinding = true
         viewBinding = true
         buildConfig = true
+        compose = true
     }
     packagingOptions {
         resources {
@@ -108,6 +143,26 @@ android {
     }
 }
 
+// Match Kotlin bytecode target to the Java 11 source/target above (avoids a JVM-target mismatch).
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11
+    }
+}
+
+// Multiple-APK delivery: each uploaded artifact needs a unique versionCode, and
+// capable devices must prefer the modern build, so give it the higher code.
+// legacy -> 1xxxxx, modern -> 2xxxxx (e.g. 100027 / 200027).
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        def engineCode = variant.flavorName == "modern" ? 2 : 1
+        variant.outputs.each { output ->
+            def base = output.versionCode.getOrElse(0)
+            output.versionCode.set(engineCode * 100000 + base)
+        }
+    }
+}
+
 dependencies {
 
     implementation libs.appcompat
@@ -118,20 +173,25 @@ dependencies {
     androidTestImplementation libs.ext.junit
     androidTestImplementation libs.espresso.core
 
-    implementation 'org.mozilla.geckoview:geckoview:144.0.20251027123126'
+    // GeckoView engine — version is selected per flavor (see productFlavors).
+    // legacy: last release that still supports Android 6.0 (API 23).
+    legacyImplementation 'org.mozilla.geckoview:geckoview:144.0.20251027123126'
+    // modern: newest engine (requires Android 7.0 / API 24+).
+    modernImplementation 'org.mozilla.geckoview:geckoview:150.0.20260511200624'
 
     // Image loading
-    implementation 'com.github.bumptech.glide:glide:5.0.7'
-    annotationProcessor 'com.github.bumptech.glide:compiler:5.0.7'
+    implementation libs.glide
+    annotationProcessor libs.compiler
+    coreLibraryDesugaring libs.desugar.jdk.libs
 
     // JSON parsing
-    implementation 'com.google.code.gson:gson:2.14.0'
+    implementation libs.gson
 
     // Room database
-    def room_version = "2.6.1"
-    implementation "androidx.room:room-runtime:$room_version"
-    annotationProcessor "androidx.room:room-compiler:$room_version"
-    androidTestImplementation "androidx.room:room-testing:$room_version"
+    def room_version = "2.8.4"
+    implementation "androidx.room:room-runtime:2.8.4"
+    annotationProcessor "androidx.room:room-compiler:2.8.4"
+    androidTestImplementation "androidx.room:room-testing:2.8.4"
 
     // Firebase. The Google Services and Crashlytics plugins are applied only
     // when app/google-services.json is present, so local debug builds still work.
@@ -141,13 +201,13 @@ dependencies {
     }
 
     // Preferences/Settings
-    implementation 'androidx.preference:preference:1.2.1'
+    implementation libs.preference
 
     // Network
-    implementation 'com.squareup.okhttp3:okhttp:5.4.0'
+    implementation libs.okhttp
 
     // Play in-app updates
-    implementation 'com.google.android.play:app-update:2.1.0'
+    implementation libs.app.update
 
     // Splash Screen
     implementation libs.core.splashscreen
@@ -157,4 +217,17 @@ dependencies {
 
     // Weather animations
     implementation libs.lottie
+
+    // Jetpack Compose (used by the Extensions screen)
+    implementation platform(libs.compose.bom)
+    androidTestImplementation platform(libs.compose.bom)
+    implementation libs.compose.ui
+    implementation libs.compose.ui.graphics
+    implementation libs.compose.ui.tooling.preview
+    implementation libs.compose.material3
+    implementation libs.compose.material.icons.extended
+    implementation libs.androidx.activity.compose
+    implementation libs.lifecycle.viewmodel.compose
+    implementation libs.coil.compose
+    debugImplementation libs.compose.ui.tooling
 }

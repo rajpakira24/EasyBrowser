@@ -78,6 +78,7 @@ public class SettingsActivity extends AppCompatActivity {
     private static final String TAG_SETTINGS_NO_RESULTS = "settings_no_results";
     private static final String TAG_DEFAULT_BROWSER_CARD = "default_browser_card";
     private static final String TAG_ADVANCED_SETTINGS_ROW = "advanced_settings_row";
+    private static final String TAG_ROW_BUBBLE = "row_bubble_icon";
     private static final String TAG_PERFORMANCE_BENCHMARK_ROW = "performance_benchmark_row";
 
     private static final int[] ADVANCED_ROW_IDS = new int[]{
@@ -86,7 +87,8 @@ public class SettingsActivity extends AppCompatActivity {
             R.id.setting_user_agent,
             R.id.setting_user_styles,
             R.id.setting_doh,
-            R.id.setting_remote_debugging
+            R.id.setting_remote_debugging,
+            R.id.setting_about_config
     };
 
     private static final int[] DUPLICATE_ROW_IDS = new int[]{
@@ -118,6 +120,7 @@ public class SettingsActivity extends AppCompatActivity {
     private SwitchMaterial switchDoNotTrack;
     private SwitchMaterial switchJavascript;
     private SwitchMaterial switchRemoteDebugging;
+    private SwitchMaterial switchAboutConfig;
     private SwitchMaterial switchSaveHistory;
     private SwitchMaterial switchBlockPopups;
     private SwitchMaterial switchOpenLinksNewTab;
@@ -441,7 +444,7 @@ public class SettingsActivity extends AppCompatActivity {
         LinearLayout row = createTopLevelActionRow(
                 getString(R.string.set_default_browser),
                 getString(R.string.set_default_browser_summary),
-                R.drawable.ic_external_link,
+                R.drawable.ic_check_circle,
                 this::requestDefaultBrowserChange);
         ImageButton closeButton = createIconButton(R.drawable.ic_close,
                 getString(R.string.dismiss_default_browser_card));
@@ -481,23 +484,24 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     private void insertAdvancedSettingsRow() {
-        View aboutRow = findViewById(R.id.setting_about);
-        if (aboutRow == null || !(aboutRow.getParent() instanceof LinearLayout)) {
+        // setting_about is wrapped in its own MaterialCardView, so its parent is NOT the scroll
+        // LinearLayout. Insert a polished card into the scroll container (like the other
+        // top-level cards) right after the About card instead.
+        NestedScrollView scrollView = findNestedScrollView(findViewById(android.R.id.content));
+        if (scrollView == null || scrollView.getChildCount() == 0
+                || !(scrollView.getChildAt(0) instanceof LinearLayout)) {
             return;
         }
-        LinearLayout parent = (LinearLayout) aboutRow.getParent();
-        if (parent.findViewWithTag(TAG_ADVANCED_SETTINGS_ROW) != null) {
+        LinearLayout container = (LinearLayout) scrollView.getChildAt(0);
+        if (container.findViewWithTag(TAG_ADVANCED_SETTINGS_ROW) != null) {
             return;
         }
 
-        View divider = new View(this);
-        divider.setBackgroundResource(resolveAttr(android.R.attr.listDivider));
         LinearLayout row = createTopLevelActionRow(
                 getString(R.string.advanced_settings),
                 getString(R.string.settings_mode_summary),
                 R.drawable.ic_settings,
                 null);
-        row.setTag(TAG_ADVANCED_SETTINGS_ROW);
         SwitchMaterial advancedSwitch = new SwitchMaterial(this);
         advancedSwitch.setChecked(areAdvancedSettingsVisible());
         advancedSwitch.setThumbTintList(ThemeEngine.switchThumbTint(this));
@@ -513,35 +517,64 @@ public class SettingsActivity extends AppCompatActivity {
         row.setOnClickListener(v -> advancedSwitch.toggle());
         attachPressMicroInteraction(row);
 
-        parent.addView(divider, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 1));
-        parent.addView(row, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        MaterialCardView card = createPolishedCard();
+        card.setTag(TAG_ADVANCED_SETTINGS_ROW);
+        card.addView(row);
+
+        View aboutCard = directChildContaining(container, R.id.setting_about);
+        int index = aboutCard != null
+                ? container.indexOfChild(aboutCard) + 1
+                : container.getChildCount();
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.setMargins(dp(16), 0, dp(16), dp(10));
+        container.addView(card, index, params);
+    }
+
+    // Returns the direct child of `container` whose subtree holds the view with `childId`.
+    private View directChildContaining(LinearLayout container, int childId) {
+        View target = findViewById(childId);
+        if (target == null) {
+            return null;
+        }
+        View v = target;
+        while (v.getParent() != container) {
+            if (!(v.getParent() instanceof View)) {
+                return null;
+            }
+            v = (View) v.getParent();
+        }
+        return v;
     }
 
     private void insertPerformanceBenchmarkRow() {
-        View aboutRow = findViewById(R.id.setting_about);
-        if (aboutRow == null || !(aboutRow.getParent() instanceof LinearLayout)) {
+        NestedScrollView scrollView = findNestedScrollView(findViewById(android.R.id.content));
+        if (scrollView == null || scrollView.getChildCount() == 0
+                || !(scrollView.getChildAt(0) instanceof LinearLayout)) {
             return;
         }
-        LinearLayout parent = (LinearLayout) aboutRow.getParent();
-        if (parent.findViewWithTag(TAG_PERFORMANCE_BENCHMARK_ROW) != null) {
+        LinearLayout container = (LinearLayout) scrollView.getChildAt(0);
+        if (container.findViewWithTag(TAG_PERFORMANCE_BENCHMARK_ROW) != null) {
             return;
         }
-        View divider = new View(this);
-        divider.setBackgroundResource(resolveAttr(android.R.attr.listDivider));
         LinearLayout row = createTopLevelActionRow(
                 getString(R.string.performance_benchmark),
                 getString(R.string.performance_benchmark_short_summary),
                 R.drawable.ic_speed,
                 () -> openSubpage(SettingsSubpageActivity.PAGE_PERFORMANCE));
-        row.setTag(TAG_PERFORMANCE_BENCHMARK_ROW);
 
-        int index = parent.indexOfChild(aboutRow);
-        parent.addView(divider, index + 1, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 1));
-        parent.addView(row, index + 2, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        MaterialCardView card = createPolishedCard();
+        card.setTag(TAG_PERFORMANCE_BENCHMARK_ROW);
+        card.addView(row);
+
+        View aboutCard = directChildContaining(container, R.id.setting_about);
+        int index = aboutCard != null
+                ? container.indexOfChild(aboutCard) + 1
+                : container.getChildCount();
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.setMargins(dp(16), 0, dp(16), dp(10));
+        container.addView(card, index, params);
     }
 
     private LinearLayout createTopLevelActionRow(String title, String summary,
@@ -606,8 +639,7 @@ public class SettingsActivity extends AppCompatActivity {
         card.setCardElevation(0);
         card.setUseCompatPadding(false);
         card.setCardBackgroundColor(ContextCompat.getColor(this, R.color.settings_card_background));
-        card.setStrokeWidth(dp(1));
-        card.setStrokeColor(ThemeEngine.homePalette(this).accentSoft);
+        card.setStrokeWidth(0);
         return card;
     }
 
@@ -641,8 +673,7 @@ public class SettingsActivity extends AppCompatActivity {
             MaterialCardView card = (MaterialCardView) view;
             card.setRadius(dp(8));
             card.setCardElevation(0);
-            card.setStrokeWidth(dp(1));
-            card.setStrokeColor(ThemeEngine.homePalette(this).accentSoft);
+            card.setStrokeWidth(0);
         }
         if (view instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) view;
@@ -665,12 +696,12 @@ public class SettingsActivity extends AppCompatActivity {
         setRowIcon(R.id.setting_https_only, R.drawable.ic_lock);
         setRowIcon(R.id.setting_do_not_track, R.drawable.ic_security);
         setRowIcon(R.id.setting_save_history, R.drawable.ic_history);
-        setRowIcon(R.id.setting_clear_data, R.drawable.ic_clear);
+        setRowIcon(R.id.setting_clear_data, R.drawable.ic_delete);
         setRowIcon(R.id.setting_cookie_manager, R.drawable.ic_cookie);
         setRowIcon(R.id.setting_site_permissions, R.drawable.ic_permissions);
         setRowIcon(R.id.setting_prevent_screenshots, R.drawable.ic_lock);
         setRowIcon(R.id.setting_terms_of_use, R.drawable.ic_article);
-        setRowIcon(R.id.setting_privacy_policy, R.drawable.ic_security);
+        setRowIcon(R.id.setting_privacy_policy, R.drawable.ic_privacy_policy);
         setRowIcon(R.id.setting_ip_infringement, R.drawable.ic_copyright);
         setRowIcon(R.id.setting_data_compliance, R.drawable.ic_compliance);
         setRowIcon(R.id.setting_tabs_and_groups, R.drawable.ic_tabs);
@@ -687,20 +718,21 @@ public class SettingsActivity extends AppCompatActivity {
         setRowIcon(R.id.setting_download_bandwidth_limit, R.drawable.ic_speed);
         setRowIcon(R.id.setting_javascript, R.drawable.ic_globe);
         setRowIcon(R.id.setting_block_popups, R.drawable.ic_security);
-        setRowIcon(R.id.setting_open_links_new_tab, R.drawable.ic_tabs);
+        setRowIcon(R.id.setting_open_links_new_tab, R.drawable.ic_open_in_new);
         setRowIcon(R.id.setting_user_agent, R.drawable.ic_desktop);
         setRowIcon(R.id.setting_user_styles, R.drawable.ic_text);
         setRowIcon(R.id.setting_doh, R.drawable.ic_security);
         setRowIcon(R.id.setting_remote_debugging, R.drawable.ic_desktop);
+        setRowIcon(R.id.setting_about_config, R.drawable.ic_settings);
         setRowIcon(R.id.setting_help_feedback, R.drawable.ic_help);
         setRowIcon(R.id.setting_check_updates, R.drawable.ic_reload);
-        setRowIcon(R.id.setting_about, R.drawable.ic_help);
+        setRowIcon(R.id.setting_about, R.drawable.ic_info);
     }
 
     private void applySectionHeadingIcons() {
         setSectionHeadingIcon(R.id.settings_section_general, R.drawable.ic_settings);
-        setSectionHeadingIcon(R.id.settings_section_privacy, R.drawable.ic_security);
-        setSectionHeadingIcon(R.id.settings_section_legal, R.drawable.ic_article);
+        setSectionHeadingIcon(R.id.settings_section_privacy, R.drawable.ic_lock);
+        setSectionHeadingIcon(R.id.settings_section_legal, R.drawable.ic_folder);
         setSectionHeadingIcon(R.id.settings_section_downloads, R.drawable.ic_download);
     }
 
@@ -721,8 +753,50 @@ public class SettingsActivity extends AppCompatActivity {
         heading.setGravity(Gravity.CENTER_VERTICAL);
     }
 
+    // New bubble icon style (matches the Advanced Settings / Performance rows): a leading
+    // accent-tinted icon in a rounded "bubble", instead of a small compound drawable on the
+    // title. Handles plain (vertical) rows and rows that already have a trailing control.
     private void setRowIcon(int rowId, int iconRes) {
-        TextView title = findFirstTextView(findViewById(rowId));
+        View rowView = findViewById(rowId);
+        if (!(rowView instanceof LinearLayout)) {
+            setLegacyRowIcon(rowView, iconRes);
+            return;
+        }
+        LinearLayout row = (LinearLayout) rowView;
+        if (row.findViewWithTag(TAG_ROW_BUBBLE) != null) {
+            return;
+        }
+        TextView title = findFirstTextView(row);
+        if (title != null) {
+            title.setCompoundDrawablesRelative(null, null, null, null);
+        }
+        ImageView bubble = createIconBubble(iconRes);
+        bubble.setTag(TAG_ROW_BUBBLE);
+
+        if (row.getOrientation() == LinearLayout.VERTICAL) {
+            // Move the existing title/summary into an inner column so the bubble sits beside them.
+            LinearLayout column = new LinearLayout(this);
+            column.setOrientation(LinearLayout.VERTICAL);
+            column.setLayoutParams(new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            while (row.getChildCount() > 0) {
+                View child = row.getChildAt(0);
+                row.removeViewAt(0);
+                column.addView(child);
+            }
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.addView(bubble, 0);
+            row.addView(column);
+        } else {
+            // Already horizontal (e.g. has a trailing switch) — just prepend the bubble.
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.addView(bubble, 0);
+        }
+    }
+
+    private void setLegacyRowIcon(View rowView, int iconRes) {
+        TextView title = findFirstTextView(rowView);
         if (title == null) {
             return;
         }
@@ -1098,6 +1172,7 @@ public class SettingsActivity extends AppCompatActivity {
         switchDoNotTrack = findViewById(R.id.switch_do_not_track);
         switchJavascript = findViewById(R.id.switch_javascript);
         switchRemoteDebugging = findViewById(R.id.switch_remote_debugging);
+        switchAboutConfig = findViewById(R.id.switch_about_config);
         switchSaveHistory = findViewById(R.id.switch_save_history);
         switchBlockPopups = findViewById(R.id.switch_block_popups);
         switchOpenLinksNewTab = findViewById(R.id.switch_open_links_new_tab);
@@ -1191,6 +1266,7 @@ public class SettingsActivity extends AppCompatActivity {
         bindSwitchRow(R.id.setting_do_not_track, switchDoNotTrack);
         bindSwitchRow(R.id.setting_javascript, switchJavascript);
         bindSwitchRow(R.id.setting_remote_debugging, switchRemoteDebugging);
+        bindSwitchRow(R.id.setting_about_config, switchAboutConfig);
         bindSwitchRow(R.id.setting_save_history, switchSaveHistory);
         bindSwitchRow(R.id.setting_block_popups, switchBlockPopups);
         bindSwitchRow(R.id.setting_open_links_new_tab, switchOpenLinksNewTab);
@@ -1223,12 +1299,49 @@ public class SettingsActivity extends AppCompatActivity {
         });
 
         switchRemoteDebugging.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            prefs.edit().putBoolean("remote_debugging_enabled", isChecked).apply();
-            GeckoRuntime runtime = RuntimeManager.getExistingRuntime();
-            if (runtime != null) {
-                runtime.getSettings().setRemoteDebuggingEnabled(isChecked);
+            if (isChecked) {
+                // Remote debugging opens a port other apps/devices can use to inspect the
+                // browser — confirm before enabling.
+                new MaterialAlertDialogBuilder(this)
+                        .setTitle(R.string.remote_debugging_warning_title)
+                        .setMessage(R.string.remote_debugging_warning_message)
+                        .setPositiveButton(R.string.extension_enable, (d, w) ->
+                                applyRemoteDebugging(true))
+                        .setNegativeButton(R.string.cancel,
+                                (d, w) -> switchRemoteDebugging.setChecked(false))
+                        .setOnCancelListener(d -> switchRemoteDebugging.setChecked(false))
+                        .show();
+            } else {
+                applyRemoteDebugging(false);
             }
-            AnalyticsManager.logSettingChanged(this, "remote_debugging", isChecked);
+        });
+
+        switchAboutConfig.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (isChecked) {
+                // about:config is a power-user footgun — confirm before enabling.
+                new MaterialAlertDialogBuilder(this)
+                        .setTitle(R.string.about_config_warning_title)
+                        .setMessage(R.string.about_config_warning_message)
+                        .setPositiveButton(R.string.extension_enable, (d, w) -> {
+                            prefs.edit()
+                                    .putBoolean(SettingsKeys.PREF_ABOUT_CONFIG_ENABLED, true)
+                                    .apply();
+                            RuntimeManager.getRuntime(this);
+                            AnalyticsManager.logSettingChanged(this, "about_config", true);
+                            Toast.makeText(this, R.string.about_config_restart_note,
+                                    Toast.LENGTH_LONG).show();
+                        })
+                        .setNegativeButton(R.string.cancel,
+                                (d, w) -> switchAboutConfig.setChecked(false))
+                        .setOnCancelListener(d -> switchAboutConfig.setChecked(false))
+                        .show();
+            } else {
+                prefs.edit()
+                        .putBoolean(SettingsKeys.PREF_ABOUT_CONFIG_ENABLED, false)
+                        .apply();
+                RuntimeManager.getRuntime(this);
+                AnalyticsManager.logSettingChanged(this, "about_config", false);
+            }
         });
 
         switchSaveHistory.setOnCheckedChangeListener((buttonView, isChecked) ->
@@ -1400,6 +1513,7 @@ public class SettingsActivity extends AppCompatActivity {
         switchDoNotTrack.setChecked(prefs.getBoolean("do_not_track", true));
         switchJavascript.setChecked(prefs.getBoolean("javascript_enabled", true));
         switchRemoteDebugging.setChecked(prefs.getBoolean("remote_debugging_enabled", false));
+        switchAboutConfig.setChecked(prefs.getBoolean(SettingsKeys.PREF_ABOUT_CONFIG_ENABLED, false));
         switchSaveHistory.setChecked(prefs.getBoolean("save_history", true));
         switchBlockPopups.setChecked(prefs.getBoolean("block_popups", true));
         switchOpenLinksNewTab.setChecked(prefs.getBoolean("open_links_new_tab", false));
@@ -1876,7 +1990,11 @@ public class SettingsActivity extends AppCompatActivity {
                 .setTitle(R.string.ua_custom)
                 .setView(input)
                 .setPositiveButton(R.string.save, (d, w) -> {
-                    String ua = input.getText().toString().trim();
+                    String ua = sanitizeUserAgent(input.getText().toString());
+                    if (ua.isEmpty()) {
+                        Toast.makeText(this, R.string.ua_custom_invalid, Toast.LENGTH_SHORT).show();
+                        return;
+                    }
                     prefs.edit()
                             .putString(SettingsKeys.PREF_USER_AGENT_PRESET, "custom")
                             .putString(SettingsKeys.PREF_USER_AGENT_CUSTOM_STRING, ua)
@@ -1966,12 +2084,57 @@ public class SettingsActivity extends AppCompatActivity {
                 .setTitle(R.string.doh_custom)
                 .setView(input)
                 .setPositiveButton(R.string.save, (d, w) -> {
-                    prefs.edit().putString("doh_uri", input.getText().toString().trim()).apply();
+                    String uri = input.getText().toString().trim();
+                    if (!isValidDohUri(uri)) {
+                        Toast.makeText(this, R.string.doh_uri_invalid, Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    prefs.edit().putString("doh_uri", uri).apply();
                     applyRuntimePreferencesIfRunning();
                     updateDohValue();
                 })
                 .setNegativeButton(R.string.cancel, null)
                 .show();
+    }
+
+    private void applyRemoteDebugging(boolean enabled) {
+        prefs.edit().putBoolean("remote_debugging_enabled", enabled).apply();
+        GeckoRuntime runtime = RuntimeManager.getExistingRuntime();
+        if (runtime != null) {
+            runtime.getSettings().setRemoteDebuggingEnabled(enabled);
+        }
+        AnalyticsManager.logSettingChanged(this, "remote_debugging", enabled);
+    }
+
+    // A DoH endpoint must be a non-empty HTTPS URL with a host. Anything else silently falls
+    // back to system DNS, so reject it with feedback instead of storing garbage.
+    private boolean isValidDohUri(String uri) {
+        if (uri == null || uri.isEmpty() || !uri.startsWith("https://")) {
+            return false;
+        }
+        try {
+            android.net.Uri parsed = android.net.Uri.parse(uri);
+            return parsed.getHost() != null && !parsed.getHost().isEmpty();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    // Drop control characters / newlines and cap the length so a custom UA can't corrupt the
+    // request header. Returns "" when nothing usable remains.
+    private String sanitizeUserAgent(String ua) {
+        if (ua == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(ua.length());
+        for (int i = 0; i < ua.length(); i++) {
+            char c = ua.charAt(i);
+            if (c >= 0x20 && c != 0x7F) {
+                sb.append(c);
+            }
+        }
+        String cleaned = sb.toString().trim();
+        return cleaned.length() > 512 ? cleaned.substring(0, 512) : cleaned;
     }
 
     private void updateDohValue() {

@@ -8,6 +8,8 @@
         <item>Ecosia</item>
         <item>Yahoo</item>
         <item>Startpage</item>
+        <item>Perplexity</item>
+        <item>Wikipedia</item>
     </string-array>
     <string-array name="search_engine_values">
         <item>https://duckduckgo.com/?q=</item>
@@ -17,6 +19,8 @@
         <item>https://www.ecosia.org/search?q=</item>
         <item>https://search.yahoo.com/search?p=</item>
         <item>https://www.startpage.com/sp/search?q=</item>
+        <item>https://www.perplexity.ai/search?q=</item>
+        <item>https://en.wikipedia.org/w/index.php?search=</item>
     </string-array>
     <string-array name="text_size_names">
         <item>Small</item>
