@@ -22,6 +22,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -48,6 +49,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -91,6 +93,7 @@ fun DownloadsScreen(
     MaterialTheme(colorScheme = DarkColors) {
         var confirmCancel by remember { mutableStateOf<DownloadItem?>(null) }
         var confirmDelete by remember { mutableStateOf<DownloadItem?>(null) }
+        var confirmRedownload by remember { mutableStateOf<DownloadItem?>(null) }
         var detailsItem by remember { mutableStateOf<DownloadItem?>(null) }
         var confirmClearCompleted by remember { mutableStateOf(false) }
         var confirmClearAll by remember { mutableStateOf(false) }
@@ -199,13 +202,17 @@ fun DownloadsScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(visibleDownloads, key = { it.id }) { item ->
+                        val missing = item.status == DownloadItem.Status.COMPLETED &&
+                            viewModel.fileExists[item.id] == false
                         DownloadRow(
                             item = item,
+                            missing = missing,
                             onOpen = { onOpenFile(item) },
                             onShare = { onShareFile(item) },
                             onDetails = { detailsItem = item },
                             onConfirmCancel = { confirmCancel = item },
                             onConfirmDelete = { confirmDelete = item },
+                            onConfirmRedownload = { confirmRedownload = item },
                             onPause = { viewModel.pause(item) },
                             onResume = { viewModel.resume(item) },
                             onRetry = { viewModel.retry(item) },
@@ -234,6 +241,16 @@ fun DownloadsScreen(
                 dismissText = stringResource(R.string.cancel),
                 onConfirm = { viewModel.delete(item); confirmDelete = null },
                 onDismiss = { confirmDelete = null },
+            )
+        }
+        confirmRedownload?.let { item ->
+            ConfirmDialog(
+                title = stringResource(R.string.download_file_removed),
+                message = stringResource(R.string.redownload_confirm_message, item.fileName),
+                confirmText = stringResource(R.string.redownload),
+                dismissText = stringResource(R.string.cancel),
+                onConfirm = { viewModel.redownload(item); confirmRedownload = null },
+                onDismiss = { confirmRedownload = null },
             )
         }
         if (confirmClearCompleted) {
@@ -265,25 +282,28 @@ fun DownloadsScreen(
 @Composable
 private fun DownloadRow(
     item: DownloadItem,
+    missing: Boolean,
     onOpen: () -> Unit,
     onShare: () -> Unit,
     onDetails: () -> Unit,
     onConfirmCancel: () -> Unit,
     onConfirmDelete: () -> Unit,
+    onConfirmRedownload: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onRetry: () -> Unit,
     onStartNow: () -> Unit,
 ) {
     val status = item.status
-    val primary: () -> Unit = when (status) {
-        DownloadItem.Status.COMPLETED -> onOpen
-        DownloadItem.Status.PAUSED -> onResume
-        DownloadItem.Status.FAILED -> onRetry
-        DownloadItem.Status.QUEUED -> onStartNow
-        DownloadItem.Status.PENDING -> onConfirmCancel
-        DownloadItem.Status.DOWNLOADING -> onPause
-        DownloadItem.Status.CANCELLED -> onRetry
+    val primary: () -> Unit = when {
+        missing -> onConfirmRedownload
+        status == DownloadItem.Status.COMPLETED -> onOpen
+        status == DownloadItem.Status.PAUSED -> onResume
+        status == DownloadItem.Status.FAILED -> onRetry
+        status == DownloadItem.Status.QUEUED -> onStartNow
+        status == DownloadItem.Status.PENDING -> onConfirmCancel
+        status == DownloadItem.Status.DOWNLOADING -> onPause
+        else -> onRetry
     }
 
     Row(
@@ -292,10 +312,11 @@ private fun DownloadRow(
             .clip(RoundedCornerShape(14.dp))
             .background(MaterialTheme.colorScheme.surface)
             .clickable(onClick = primary)
+            .alpha(if (missing) 0.55f else 1f)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TypeBadge(item)
+        TypeBadge(item, missing)
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -319,9 +340,9 @@ private fun DownloadRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    statusText(item),
+                    if (missing) stringResource(R.string.download_file_removed) else statusText(item),
                     style = MaterialTheme.typography.bodySmall,
-                    color = statusColor(status),
+                    color = if (missing) StatusRed else statusColor(status),
                 )
             }
             if (status == DownloadItem.Status.DOWNLOADING || status == DownloadItem.Status.PAUSED) {
@@ -352,17 +373,21 @@ private fun DownloadRow(
         Spacer(Modifier.width(6.dp))
         IconButton(onClick = primary) {
             Icon(
-                painter = painterResource(primaryActionIcon(status)),
+                painter = painterResource(
+                    if (missing) R.drawable.ic_download else primaryActionIcon(status)
+                ),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurface,
             )
         }
         RowOverflow(
             status = status,
+            missing = missing,
             onOpen = onOpen,
             onShare = onShare,
             onDelete = onConfirmDelete,
             onDetails = onDetails,
+            onRedownload = onConfirmRedownload,
             onPause = onPause,
             onResume = onResume,
             onCancel = onConfirmCancel,
@@ -373,16 +398,23 @@ private fun DownloadRow(
 }
 
 @Composable
-private fun TypeBadge(item: DownloadItem) {
+private fun TypeBadge(item: DownloadItem, missing: Boolean = false) {
     val type = DownloadFileType.resolve(item.mimeType, item.fileName)
-    val showThumb = type == DownloadFileType.IMAGE &&
+    // A removed file can't show a thumbnail and is grayed to read as inactive.
+    val showThumb = !missing && type == DownloadFileType.IMAGE &&
         item.status == DownloadItem.Status.COMPLETED &&
         !item.destinationPath.isNullOrBlank()
     Box(
         modifier = Modifier
             .size(48.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(if (showThumb) MaterialTheme.colorScheme.surfaceVariant else type.tint),
+            .background(
+                when {
+                    missing -> StatusGray
+                    showThumb -> MaterialTheme.colorScheme.surfaceVariant
+                    else -> type.tint
+                }
+            ),
         contentAlignment = Alignment.Center,
     ) {
         if (showThumb) {
@@ -402,16 +434,29 @@ private fun TypeBadge(item: DownloadItem) {
                 modifier = Modifier.size(26.dp),
             )
         }
+        if (missing) {
+            Icon(
+                Icons.Filled.ErrorOutline,
+                contentDescription = null,
+                tint = StatusRed,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(2.dp)
+                    .size(16.dp),
+            )
+        }
     }
 }
 
 @Composable
 private fun RowOverflow(
     status: DownloadItem.Status,
+    missing: Boolean,
     onOpen: () -> Unit,
     onShare: () -> Unit,
     onDelete: () -> Unit,
     onDetails: () -> Unit,
+    onRedownload: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onCancel: () -> Unit,
@@ -435,25 +480,30 @@ private fun RowOverflow(
                     onClick = { expanded = false; action() },
                 )
             }
-            when (status) {
-                DownloadItem.Status.COMPLETED -> {
+            when {
+                // File removed from device: Open/Share are useless, offer to fetch it again.
+                missing -> {
+                    item(R.string.redownload, onRedownload)
+                    item(R.string.delete, onDelete)
+                }
+                status == DownloadItem.Status.COMPLETED -> {
                     item(R.string.open_file, onOpen)
                     item(R.string.share, onShare)
                     item(R.string.delete, onDelete)
                 }
-                DownloadItem.Status.DOWNLOADING -> {
+                status == DownloadItem.Status.DOWNLOADING -> {
                     item(R.string.download_pause, onPause)
                     item(R.string.download_cancel, onCancel)
                 }
-                DownloadItem.Status.PAUSED -> {
+                status == DownloadItem.Status.PAUSED -> {
                     item(R.string.download_resume, onResume)
                     item(R.string.download_cancel, onCancel)
                 }
-                DownloadItem.Status.FAILED -> {
+                status == DownloadItem.Status.FAILED -> {
                     item(R.string.retry_download, onRetry)
                     item(R.string.delete, onDelete)
                 }
-                DownloadItem.Status.QUEUED -> {
+                status == DownloadItem.Status.QUEUED -> {
                     item(R.string.download_start_now, onStartNow)
                     item(R.string.delete, onDelete)
                 }

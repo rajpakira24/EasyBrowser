@@ -70,6 +70,7 @@ import com.webstudio.easybrowser.managers.AppShortcutManager;
 import com.webstudio.easybrowser.managers.PrivacyStatsManager;
 import com.webstudio.easybrowser.managers.WeatherAlertManager;
 import com.webstudio.easybrowser.models.QuickAccessItem;
+import com.webstudio.easybrowser.models.Suggestion;
 import com.webstudio.easybrowser.models.WeatherSnapshot;
 import com.webstudio.easybrowser.repository.QuickAccessRepository;
 import com.webstudio.easybrowser.repository.TabRepository;
@@ -1337,14 +1338,14 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
                 boolean browserSuggestions = prefs.getBoolean(
                         SettingsKeys.PREF_BROWSER_SUGGESTIONS_ENABLED, true);
                 boolean searchSuggestions = prefs.getBoolean(
-                        SettingsKeys.PREF_SEARCH_SUGGESTIONS_ENABLED, false);
+                        SettingsKeys.PREF_SEARCH_SUGGESTIONS_ENABLED, true);
                 if (!browserSuggestions && !searchSuggestions) {
                     suggestionsRecycler.setVisibility(View.GONE);
                     return;
                 }
 
                 class SuggestionRequest {
-                    void show(List<String> suggestions) {
+                    void show(List<Suggestion> suggestions) {
                         if (requestId != suggestionRequest[0]) {
                             return;
                         }
@@ -1359,7 +1360,7 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
                         }
                     }
 
-                    void fetchSearch(List<String> browserResults) {
+                    void fetchSearch(List<Suggestion> browserResults) {
                         String searchEngine = oneTimeSearchEngineUrl != null
                                 ? oneTimeSearchEngineUrl
                                 : UrlUtils.getSearchEngineUrl(MainActivity.this, false);
@@ -1442,23 +1443,30 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
                 && (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR1 || !isDestroyed());
     }
 
-    private List<String> mergeSuggestions(List<String> primary, List<String> secondary) {
-        List<String> merged = new ArrayList<>();
-        addUniqueSuggestions(merged, primary);
-        addUniqueSuggestions(merged, secondary);
-        return merged.size() > 8 ? new ArrayList<>(merged.subList(0, 8)) : merged;
-    }
-
-    private void addUniqueSuggestions(List<String> target, List<String> source) {
-        if (source == null) {
-            return;
-        }
-        for (String suggestion : source) {
-            if (suggestion != null && !suggestion.trim().isEmpty()
-                    && !target.contains(suggestion)) {
-                target.add(suggestion);
+    // Local (bookmark/history) rows first, then engine suggestions fill the remaining slots,
+    // deduped by what tapping the row would submit.
+    private List<Suggestion> mergeSuggestions(List<Suggestion> local, List<String> searchResults) {
+        List<Suggestion> merged = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        if (local != null) {
+            for (Suggestion suggestion : local) {
+                if (suggestion != null
+                        && seen.add(suggestion.getNavigationText().toLowerCase(Locale.US))) {
+                    merged.add(suggestion);
+                }
             }
         }
+        if (searchResults != null) {
+            for (String query : searchResults) {
+                if (query == null || query.trim().isEmpty()) {
+                    continue;
+                }
+                if (seen.add(query.trim().toLowerCase(Locale.US))) {
+                    merged.add(Suggestion.search(query.trim()));
+                }
+            }
+        }
+        return merged.size() > 8 ? new ArrayList<>(merged.subList(0, 8)) : merged;
     }
 
     private void showHomeMoreMenu() {

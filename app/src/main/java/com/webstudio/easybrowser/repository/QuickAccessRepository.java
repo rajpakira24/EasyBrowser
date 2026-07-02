@@ -197,7 +197,12 @@ public class QuickAccessRepository {
     private boolean shouldSkipQuickAccessUrl(String url) {
         return isEmpty(url)
                 || UrlUtils.isInternalPageUrl(url)
-                || UrlUtils.isSearchResultsUrl(context, url);
+                || UrlUtils.isSearchResultsUrl(context, url)
+                // Never let ad/tracker hosts become "most visited" tiles, regardless of the
+                // user's ad-block level: redirect hops and ad landing pages fire title changes
+                // (and thus recordHistory) without ever being a site the user meant to revisit.
+                // Checked with the aggressive list so it filters even when blocking is off.
+                || UrlUtils.isBlockedByAdBlock("aggressive", url);
     }
 
     private QuickAccessEntity findQuickAccessEntity(String quickAccessUrl) {

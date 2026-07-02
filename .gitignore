@@ -31,3 +31,5 @@ graphify-out/
 # Local review artifacts
 test_screens/**/*.xml
 vlc-help.txt
+app/legacy/release/*.aab
+app/modern/release/*.aab

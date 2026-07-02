@@ -1,6 +1,8 @@
 package com.webstudio.easybrowser.ui.activity;
 
+import android.app.AlarmManager;
 import android.app.Dialog;
+import android.app.PendingIntent;
 import android.app.role.RoleManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -112,6 +114,10 @@ public class SettingsActivity extends AppCompatActivity {
     };
 
     private SharedPreferences prefs;
+    // True only while loadSettings() is programmatically restoring switch states, so switch
+    // listeners that pop confirmation dialogs (about:config, remote debugging) don't fire on
+    // every screen load/resume and trap the user in a warning→restart loop.
+    private boolean restoringSwitchStates;
     private TextView searchEngineValue;
     private TextView privateSearchEngineValue;
     private TextView textSizeValue;
@@ -1299,6 +1305,9 @@ public class SettingsActivity extends AppCompatActivity {
         });
 
         switchRemoteDebugging.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (restoringSwitchStates) {
+                return;
+            }
             if (isChecked) {
                 // Remote debugging opens a port other apps/devices can use to inspect the
                 // browser — confirm before enabling.
@@ -1317,6 +1326,9 @@ public class SettingsActivity extends AppCompatActivity {
         });
 
         switchAboutConfig.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (restoringSwitchStates) {
+                return;
+            }
             if (isChecked) {
                 // about:config is a power-user footgun — confirm before enabling.
                 new MaterialAlertDialogBuilder(this)
@@ -1328,8 +1340,7 @@ public class SettingsActivity extends AppCompatActivity {
                                     .apply();
                             RuntimeManager.getRuntime(this);
                             AnalyticsManager.logSettingChanged(this, "about_config", true);
-                            Toast.makeText(this, R.string.about_config_restart_note,
-                                    Toast.LENGTH_LONG).show();
+                            showAboutConfigRestartSnackbar();
                         })
                         .setNegativeButton(R.string.cancel,
                                 (d, w) -> switchAboutConfig.setChecked(false))
@@ -1509,7 +1520,8 @@ public class SettingsActivity extends AppCompatActivity {
         textSizeValue.setText(getString(R.string.text_size_percent, textSize));
         updateDownloadBandwidthLimitValue();
 
-        // Load switches
+        // Load switches. Guard so listeners that show confirmation dialogs don't fire on restore.
+        restoringSwitchStates = true;
         switchDoNotTrack.setChecked(prefs.getBoolean("do_not_track", true));
         switchJavascript.setChecked(prefs.getBoolean("javascript_enabled", true));
         switchRemoteDebugging.setChecked(prefs.getBoolean("remote_debugging_enabled", false));
@@ -1528,9 +1540,10 @@ public class SettingsActivity extends AppCompatActivity {
         switchBrowserSuggestions.setChecked(prefs.getBoolean(
                 SettingsKeys.PREF_BROWSER_SUGGESTIONS_ENABLED, true));
         switchSearchSuggestions.setChecked(prefs.getBoolean(
-                SettingsKeys.PREF_SEARCH_SUGGESTIONS_ENABLED, false));
+                SettingsKeys.PREF_SEARCH_SUGGESTIONS_ENABLED, true));
         switchDownloadWifiOnly.setChecked(prefs.getBoolean(
                 SettingsKeys.PREF_DOWNLOAD_WIFI_ONLY, false));
+        restoringSwitchStates = false;
 
         textDownloadsFolder.setText(R.string.downloads_page_summary);
 
@@ -2232,6 +2245,30 @@ public class SettingsActivity extends AppCompatActivity {
         Snackbar.make(anchor, R.string.update_downloaded, Snackbar.LENGTH_INDEFINITE)
                 .setAction(R.string.update_restart, v -> completeUpdate.run())
                 .show();
+    }
+
+    // about:config only fully applies once GeckoRuntime is recreated from scratch — an Activity
+    // recreate() isn't enough since the runtime is a process-wide singleton. Offer a real restart
+    // instead of just telling the user to do it manually with no way to act on it.
+    private void showAboutConfigRestartSnackbar() {
+        Snackbar.make(findViewById(android.R.id.content),
+                        R.string.about_config_restart_note, Snackbar.LENGTH_INDEFINITE)
+                .setAction(R.string.update_restart, v -> restartApp())
+                .show();
+    }
+
+    private void restartApp() {
+        Intent intent = new Intent(this, MainActivity.class)
+                .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent,
+                PendingIntent.FLAG_CANCEL_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        AlarmManager alarmManager = (AlarmManager) getSystemService(ALARM_SERVICE);
+        if (alarmManager != null) {
+            alarmManager.set(AlarmManager.RTC, System.currentTimeMillis() + 200, pendingIntent);
+        }
+        // Killing the process is the only way to fully tear down and reinitialize the singleton
+        // GeckoRuntime; the alarm above relaunches the app a moment later.
+        Runtime.getRuntime().exit(0);
     }
 
     private void requestDefaultBrowserChange() {

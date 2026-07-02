@@ -17,9 +17,9 @@
     <string name="new_tab_info_message">This is a local Easy Browser page. Privacy stats and Quick Access shortcuts stay inside the browser; searches open your selected search provider.</string>
     <string name="quick_access_home_summary">Your most visited pages appear here automatically.</string>
     <string name="show_privacy_stats">Show Privacy Stats</string>
-    <string name="show_privacy_stats_summary">Show protection counters on the home screen.</string>
+    <string name="show_privacy_stats_summary">Show protection counters on the home screen and new tab page.</string>
     <string name="show_quick_access">Show Quick Access</string>
-    <string name="show_quick_access_summary">Show most visited sites on the home screen.</string>
+    <string name="show_quick_access_summary">Show most visited sites on the home screen and new tab page.</string>
     <string name="show_weather_widget">Show Weather Widget</string>
     <string name="show_weather_widget_summary">Show current weather and forecast access on the home screen.</string>
     <string name="widgets_dashboard">Widgets</string>
@@ -314,6 +314,9 @@
     <string name="no_downloads">No downloads</string>
     <string name="no_download_search_results">No downloads match your search</string>
     <string name="search_downloads">Search downloads</string>
+    <string name="download_file_removed">File removed</string>
+    <string name="redownload">Re-download</string>
+    <string name="redownload_confirm_message">This file was removed from your device. Re-download %1$s?</string>
     <!-- Permissions -->
     <!-- Errors -->
     <string name="network_status_offline">You are offline</string>

@@ -183,8 +183,11 @@ public class UrlUtils {
     public static String getNewTabPageUrl(Context context) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
         boolean showQuickAccess = prefs.getBoolean(SettingsKeys.PREF_SHOW_QUICK_ACCESS, true);
+        // Same switch as the native home screen (Settings → Display → New Tab Page), so toggling
+        // Privacy Stats hides/shows the section on both surfaces together.
+        boolean showPrivacyStats = prefs.getBoolean(SettingsKeys.PREF_SHOW_PRIVACY_STATS, true);
         boolean searchSuggestionsEnabled = prefs.getBoolean(
-                SettingsKeys.PREF_SEARCH_SUGGESTIONS_ENABLED, false);
+                SettingsKeys.PREF_SEARCH_SUGGESTIONS_ENABLED, true);
         String configuredSearchEngine = prefs.getString(
                 SettingsKeys.PREF_SEARCH_ENGINE_URL, DEFAULT_SEARCH_ENGINE);
         String appName = escapeHtml(context.getString(R.string.app_name));
@@ -317,11 +320,13 @@ public class UrlUtils {
                 + "<button type='submit' aria-label='Search'>&#8594;</button>"
                 + "</form>"
                 + "<div id='suggestions'></div></section>"
-                + "<section class='stats' aria-label='" + privacyStatsTitle + "'>"
+                + (showPrivacyStats
+                ? "<section class='stats' aria-label='" + privacyStatsTitle + "'>"
                 + "<div class='stat'><strong style='color:" + mint + "'>" + stats.pagesProtected + "</strong><span>" + pagesProtected + "</span></div>"
                 + "<div class='stat'><strong style='color:" + warm + "'>" + stats.itemsBlocked + "</strong><span>" + itemsBlocked + "</span></div>"
                 + "<div class='stat'><strong style='color:" + accent + "'>" + formatTimeSavedForPage(stats.timeSavedSeconds) + "</strong><span>" + timeSaved + "</span></div>"
                 + "</section>"
+                : "")
                 + (showQuickAccess
                 ? "<section class='qa'><div class='title'>" + quickAccess + "</div>" + quickAccessTiles + "</section>"
                 : "")

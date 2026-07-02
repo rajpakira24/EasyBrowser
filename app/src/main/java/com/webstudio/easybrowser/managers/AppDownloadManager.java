@@ -263,6 +263,28 @@ public class AppDownloadManager {
             limitBytesPerSec = 0;
         }
         DownloadRepository repository = new DownloadRepository(context);
+        // A finished download's destinationPath is the published MediaStore content:// URI (or the
+        // public Downloads path) — not a writable local file. Re-downloading such an item must
+        // restart from a fresh cache file; otherwise new File("content://…") fails with ENOENT.
+        // Paused/failed retries keep their partial cache file so HTTP-range resume still works.
+        File cacheDownloadDir = new File(context.getCacheDir(), "downloads");
+        if (item.getDestinationPath() == null
+                || !isCacheDownloadPath(cacheDownloadDir, item.getDestinationPath())) {
+            String freshName = !TextUtils.isEmpty(item.getFileName())
+                    ? item.getFileName()
+                    : guessFileName(item.getUrl(), item.getMimeType());
+            File freshTarget = createUniqueFile(context, freshName);
+            if (freshTarget == null) {
+                item.setStatus(DownloadItem.Status.FAILED);
+                item.setErrorMessage("Could not create download file");
+                repository.saveDownload(item, null);
+                clearOngoingNotification(context);
+                showFailedNotification(context, item);
+                return;
+            }
+            item.setDownloadedBytes(0);
+            item.setDestinationPath(freshTarget.getAbsolutePath());
+        }
         File outputFile = new File(item.getDestinationPath());
         long existingBytes = outputFile.exists() ? outputFile.length() : 0;
         boolean resume = existingBytes > 0 && item.getDownloadedBytes() > 0;

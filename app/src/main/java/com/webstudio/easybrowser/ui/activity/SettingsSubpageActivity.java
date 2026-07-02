@@ -1027,7 +1027,7 @@ public class SettingsSubpageActivity extends AppCompatActivity {
                 SettingsKeys.PREF_BROWSER_SUGGESTIONS_ENABLED, true, null);
         addSwitchRow(suggestions, R.string.search_suggestions_enabled,
                 R.string.search_suggestions_enabled_summary,
-                SettingsKeys.PREF_SEARCH_SUGGESTIONS_ENABLED, false, null);
+                SettingsKeys.PREF_SEARCH_SUGGESTIONS_ENABLED, true, null);
     }
 
     private void showSearchEngineDialog(boolean privateMode) {
