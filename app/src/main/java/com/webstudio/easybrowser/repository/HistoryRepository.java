@@ -40,6 +40,9 @@ public class HistoryRepository {
         executor.execute(() -> {
             HistoryEntity existing = database.historyDao().getHistoryByUrl(item.getUrl());
             if (existing != null) {
+                if (item.getTitle() != null && !item.getTitle().trim().isEmpty()) {
+                    existing.setTitle(item.getTitle());
+                }
                 existing.setVisitCount(existing.getVisitCount() + 1);
                 existing.setVisitTime(System.currentTimeMillis());
                 database.historyDao().update(existing);

@@ -224,6 +224,7 @@ public class BrowserActivity extends AppCompatActivity {
     String currentUrl;
     String currentTitle;
     private String lastRecordedUrl;
+    private String lastRecordedTitle;
     private boolean isCurrentPageBookmarked = false;
     private BottomNavigationView bottomNav;
     private Toolbar browserToolbar;
@@ -3599,15 +3600,19 @@ public class BrowserActivity extends AppCompatActivity {
         if (UrlUtils.isInternalPageUrl(currentUrl)) {
             return;
         }
-        if (currentUrl.equals(lastRecordedUrl)) {
+        String title = currentTitle != null && !currentTitle.isEmpty() ? currentTitle : currentUrl;
+        // Compare url+title, not just url: SPA sites (e.g. YouTube) fire onTitleChange again on
+        // the same URL once the real page title loads in — that re-fire must still go through so
+        // the corrected title overwrites the generic one recorded on first load.
+        if (currentUrl.equals(lastRecordedUrl) && title.equals(lastRecordedTitle)) {
             return;
         }
         Tab currentTab = tabManager != null ? tabManager.getCurrentTab() : null;
         if (currentTab != null && currentTab.isPrivate()) {
             return;
         }
-        String title = currentTitle != null && !currentTitle.isEmpty() ? currentTitle : currentUrl;
         lastRecordedUrl = currentUrl;
+        lastRecordedTitle = title;
         PrivacyStatsManager.recordProtectedPage(this);
         if (!PreferenceManager.getDefaultSharedPreferences(this).getBoolean("save_history", true)) {
             return;
@@ -4429,7 +4434,7 @@ public class BrowserActivity extends AppCompatActivity {
         }
         GeckoSession.PermissionDelegate.Callback callback = pendingPermissionCallback;
         pendingPermissionCallback = null;
-        // Empty grantResults indicates the request was cancelled (e.g. activity recreated
+        // Empty grantResults indicates the request was Cancelled (e.g. activity recreated
         // or user dismissed the system dialog). Treat as denial — never grant by default.
         boolean granted = isGeckoPermissionRequestGranted(permissions, grantResults);
         if (granted) {

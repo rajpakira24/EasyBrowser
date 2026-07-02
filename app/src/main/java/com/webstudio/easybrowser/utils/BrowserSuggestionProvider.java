@@ -57,7 +57,7 @@ public final class BrowserSuggestionProvider {
             List<Candidate> candidates = new ArrayList<>();
             collectBookmarks(database.bookmarkDao().getAllBookmarks(), needle, candidates);
             if (shouldSuggestHistory(appContext)) {
-                collectHistory(database.historyDao().getAllHistory(), needle, candidates);
+                collectHistory(appContext, database.historyDao().getAllHistory(), needle, candidates);
             }
             callback.onSuggestions(pickBest(candidates, limit));
         });
@@ -84,12 +84,18 @@ public final class BrowserSuggestionProvider {
         }
     }
 
-    private static void collectHistory(List<HistoryEntity> history, String needle,
-                                       List<Candidate> out) {
+    private static void collectHistory(Context context, List<HistoryEntity> history,
+                                       String needle, List<Candidate> out) {
         if (history == null) {
             return;
         }
         for (HistoryEntity item : history) {
+            // Skip search-results pages ("flipkart site:... at DuckDuckGo") — they're query
+            // history, not a site the user meant to revisit, and clutter suggestions with
+            // near-duplicate engine URLs.
+            if (UrlUtils.isSearchResultsUrl(context, item.getUrl())) {
+                continue;
+            }
             int score = matchScore(item.getTitle(), item.getUrl(), needle);
             if (score >= 0) {
                 out.add(new Candidate(
