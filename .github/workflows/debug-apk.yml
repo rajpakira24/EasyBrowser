@@ -24,7 +24,14 @@ jobs:
       - name: Build debug APKs
         run: |
           chmod +x gradlew
-          ./gradlew assembleModernDebug assembleLegacyDebug --stacktrace
+          set -o pipefail
+          ./gradlew assembleModernDebug assembleLegacyDebug --stacktrace 2>&1 | tee build.log
+
+      - name: Summarize build errors
+        if: failure()
+        run: |
+          errors=$(grep -E "error:|error: |FAILED|What went wrong|Execution failed|Could not|symbol:|location:|^e: " build.log | head -60 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          echo "::error title=Build errors::${errors}"
 
       - name: Publish APKs as a pre-release
         env:
