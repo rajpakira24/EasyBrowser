@@ -59,48 +59,6 @@ final class LoginPromptSheets {
         sheet.show(onDismiss);
     }
 
-    /** Lets the user pick which saved login to fill. */
-    static void showSelect(Context context, String origin, String[] usernames,
-                           java.util.function.IntConsumer onPick, Runnable onDismiss) {
-        Sheet sheet = new Sheet(context, origin);
-        sheet.root.addView(sheet.text(context.getString(R.string.password_fill_title), 20, true,
-                sheet.palette.onSurface, Gravity.CENTER_HORIZONTAL, 14));
-        sheet.root.addView(sheet.text(hostOf(origin), 13, false, sheet.palette.onSurfaceMuted,
-                Gravity.CENTER_HORIZONTAL, 2));
-
-        for (int i = 0; i < usernames.length; i++) {
-            final int index = i;
-            LinearLayout row = new LinearLayout(context);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(sheet.dp(14), sheet.dp(12), sheet.dp(14), sheet.dp(12));
-            row.setBackground(sheet.rounded(0x1FFFFFFF, sheet.dp(14)));
-            row.addView(sheet.avatar(usernames[i].isEmpty() ? hostOf(origin) : usernames[i], 36, 15));
-            TextView name = sheet.text(usernames[i].isEmpty()
-                            ? context.getString(R.string.password_no_username) : usernames[i],
-                    15, false, sheet.palette.onSurface, Gravity.START, 0);
-            name.setSingleLine(true);
-            name.setEllipsize(TextUtils.TruncateAt.END);
-            name.setPadding(sheet.dp(12), 0, 0, 0);
-            row.addView(name, new LinearLayout.LayoutParams(
-                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-            ImageView lock = new ImageView(context);
-            lock.setImageResource(R.drawable.ic_lock);
-            lock.setColorFilter(sheet.palette.accent);
-            row.addView(lock, new LinearLayout.LayoutParams(sheet.dp(18), sheet.dp(18)));
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            params.topMargin = sheet.dp(i == 0 ? 16 : 8);
-            row.setOnClickListener(v -> {
-                sheet.chosen.set(true);
-                sheet.dialog.dismiss();
-                onPick.accept(index);
-            });
-            sheet.root.addView(row, params);
-        }
-        sheet.show(onDismiss);
-    }
-
     private static String hostOf(String origin) {
         String host = origin == null ? null : Uri.parse(origin).getHost();
         if (host == null) {

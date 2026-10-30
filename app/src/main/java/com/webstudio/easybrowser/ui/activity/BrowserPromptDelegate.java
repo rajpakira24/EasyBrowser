@@ -1,5 +1,7 @@
 package com.webstudio.easybrowser.ui.activity;
 
+import android.os.SystemClock;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
@@ -11,6 +13,12 @@ import org.mozilla.geckoview.GeckoResult;
 import org.mozilla.geckoview.GeckoSession;
 
 class BrowserPromptDelegate implements GeckoSession.PromptDelegate {
+    // Gecko asks again each time a login field gains focus, so stay quiet for a while after
+    // the user has answered instead of putting the suggestion back in front of them.
+    private static final long AFTER_PICK_QUIET_MS = 60_000L;
+    private static final long AFTER_DISMISS_QUIET_MS = 15_000L;
+    private static final java.util.Map<String, Long> suppressedUntilByOrigin =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     private final BrowserActivity activity;
 
@@ -58,12 +66,25 @@ class BrowserPromptDelegate implements GeckoSession.PromptDelegate {
         if (request.options.length == 0) {
             return GeckoResult.fromValue(request.dismiss());
         }
-        GeckoResult<PromptResponse> result = new GeckoResult<>();
         String origin = request.options[0].value.origin;
-        activity.runOnUiThread(() -> LoginPromptSheets.showSelect(activity, origin,
+        long now = SystemClock.elapsedRealtime();
+        Long suppressedUntil = suppressedUntilByOrigin.get(origin);
+        if (suppressedUntil != null && now < suppressedUntil) {
+            return GeckoResult.fromValue(request.dismiss());
+        }
+        GeckoResult<PromptResponse> result = new GeckoResult<>();
+        activity.runOnUiThread(() -> LoginSuggestionBar.show(activity,
                 usernames(request.options),
-                which -> result.complete(request.confirm(request.options[which])),
-                () -> result.complete(request.dismiss())));
+                which -> {
+                    suppressedUntilByOrigin.put(origin,
+                            SystemClock.elapsedRealtime() + AFTER_PICK_QUIET_MS);
+                    result.complete(request.confirm(request.options[which]));
+                },
+                () -> {
+                    suppressedUntilByOrigin.put(origin,
+                            SystemClock.elapsedRealtime() + AFTER_DISMISS_QUIET_MS);
+                    result.complete(request.dismiss());
+                }));
         return result;
     }
 
