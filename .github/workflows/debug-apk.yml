@@ -38,7 +38,7 @@ jobs:
         run: |
           aar=$(find ~/.gradle -name "geckoview-15*.aar" | head -1)
           mkdir -p /tmp/gv && cd /tmp/gv && unzip -q -o "$aar" classes.jar
-          out=$(javap -cp classes.jar org.mozilla.geckoview.ContentBlockingController | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          out=$(for c in $(unzip -Z1 classes.jar | grep -E '^org/mozilla/geckoview/(ContentBlocking|StorageController|GeckoRuntime)[^/]*\.class$' | sed 's/\.class$//; s#/#.#g'); do javap -cp classes.jar $c | grep -iE "class |xception|ContentPermission|Perm" ; done | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
           echo "::error title=GeckoView API::${out}"
 
       - name: Publish APKs as a pre-release
