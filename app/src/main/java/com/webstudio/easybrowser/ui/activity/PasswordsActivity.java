@@ -443,7 +443,7 @@ public class PasswordsActivity extends AppCompatActivity {
 
     private MaterialButton makeTextButton(int labelRes) {
         MaterialButton button = new MaterialButton(this, null,
-                com.google.android.material.R.attr.borderlessButtonStyle);
+                android.R.attr.borderlessButtonStyle);
         button.setText(labelRes);
         button.setAllCaps(false);
         button.setTextSize(13);
