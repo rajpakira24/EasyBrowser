@@ -196,7 +196,9 @@
     <string name="data_compliance">Data Compliance</string>
     <string name="data_compliance_summary">How app data practices are reviewed and disclosed.</string>
     <string name="shields">Shields</string>
+    <string name="more_tools">More tools</string>
     <string name="passwords">Passwords</string>
+    <string name="passwords_summary">Saved logins, protected by your phone lock</string>
     <string name="save_passwords">Save passwords</string>
     <string name="password_save_title">Save password?</string>
     <string name="password_save_message">Save the login for %1$s on %2$s?</string>
@@ -204,6 +206,17 @@
     <string name="password_fill_title">Fill saved login</string>
     <string name="password_no_username">(no username)</string>
     <string name="passwords_empty">No saved passwords</string>
+    <string name="passwords_empty_hint">Logins you save while browsing show up here, protected by your phone lock.</string>
+    <string name="passwords_search_hint">Search saved logins</string>
+    <string name="passwords_no_results">No matching logins</string>
+    <string name="save_passwords_summary">Offer to save logins when you sign in</string>
+    <string name="passwords_hide">Hide</string>
+    <string name="passwords_copy">Copy</string>
+    <string name="passwords_copied">Copied</string>
+    <string name="passwords_username">Username</string>
+    <string name="passwords_password">Password</string>
+    <string name="passwords_open_site">Open site</string>
+    <string name="passwords_count">%1$d saved</string>
     <string name="passwords_unlock_title">Unlock saved passwords</string>
     <string name="passwords_show">Show password</string>
     <string name="password_delete_confirm">Delete this saved login?</string>

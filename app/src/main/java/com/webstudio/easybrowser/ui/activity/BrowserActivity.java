@@ -3531,10 +3531,6 @@ public class BrowserActivity extends AppCompatActivity {
         addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_BOOKMARKS,
                 new MoreMenuPopup.Action(R.drawable.ic_bookmarks, R.string.bookmarks,
                         true, () -> startActivity(new Intent(this, BookmarksActivity.class))));
-        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_lock, R.string.passwords,
-                true, () -> startActivity(new Intent(this, PasswordsActivity.class))));
-        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_search, R.string.scan_qr_code,
-                true, this::startQrScan));
         addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_FIND_IN_PAGE,
                 new MoreMenuPopup.Action(R.drawable.ic_search, R.string.find_in_page,
                         session != null, this::showFindInPageDialog));
@@ -3553,37 +3549,40 @@ public class BrowserActivity extends AppCompatActivity {
                         R.string.reader_settings, true, this::showReaderSettingsDialog));
             }
         }
-        addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_ADD_TO_QUICK_ACCESS,
+
+        boolean hasPage = currentUrl != null && !currentUrl.trim().isEmpty()
+                && !"about:blank".equals(currentUrl);
+        List<MoreMenuPopup.Action> toolActions = new ArrayList<>();
+        addMenuAction(toolActions, prefs, SettingsKeys.PREF_MENU_ADD_TO_QUICK_ACCESS,
                 new MoreMenuPopup.Action(R.drawable.ic_view_grid, R.string.add_to_quick_access,
-                        currentUrl != null && !currentUrl.trim().isEmpty(),
-                        this::addCurrentPageToQuickAccess));
-        addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_ZOOM,
+                        hasPage, this::addCurrentPageToQuickAccess));
+        addMenuAction(toolActions, prefs, SettingsKeys.PREF_MENU_ADD_TO_HOME_SCREEN,
+                new MoreMenuPopup.Action(R.drawable.ic_home, R.string.add_to_home_screen,
+                        hasPage, this::addToHomeScreen));
+        addMenuAction(toolActions, prefs, SettingsKeys.PREF_MENU_ZOOM,
                 new MoreMenuPopup.Action(R.drawable.ic_search, R.string.zoom_for_site,
-                        currentUrl != null && !currentUrl.trim().isEmpty()
-                                && !"about:blank".equals(currentUrl),
-                        this::showSiteZoomDialog));
-        addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_SAVE_PAGE,
+                        hasPage, this::showSiteZoomDialog));
+        addMenuAction(toolActions, prefs, SettingsKeys.PREF_MENU_SAVE_PAGE,
                 new MoreMenuPopup.Action(R.drawable.ic_pdf, R.string.save_page,
                         session != null, this::savePageAsPdf));
-        addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_ADD_TO_HOME_SCREEN,
-                new MoreMenuPopup.Action(R.drawable.ic_home, R.string.add_to_home_screen,
-                        currentUrl != null && !currentUrl.trim().isEmpty()
-                                && !"about:blank".equals(currentUrl),
-                        this::addToHomeScreen));
-        addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_READING_LIST,
+        addMenuAction(toolActions, prefs, SettingsKeys.PREF_MENU_TRANSLATE,
+                new MoreMenuPopup.Action(R.drawable.ic_translate, R.string.translate_page,
+                        hasPage, this::translatePage));
+        addMenuAction(toolActions, prefs, SettingsKeys.PREF_MENU_SAVE_TO_READING_LIST,
+                new MoreMenuPopup.Action(R.drawable.ic_download, R.string.save_to_reading_list,
+                        session != null && hasPage, this::saveToReadingList));
+        addMenuAction(toolActions, prefs, SettingsKeys.PREF_MENU_READING_LIST,
                 new MoreMenuPopup.Action(R.drawable.ic_history, R.string.reading_list,
                         true, () -> startActivity(new Intent(this, ReadingListActivity.class))));
-        addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_SAVE_TO_READING_LIST,
-                new MoreMenuPopup.Action(R.drawable.ic_download, R.string.save_to_reading_list,
-                        session != null && currentUrl != null && !currentUrl.trim().isEmpty(),
-                        this::saveToReadingList));
-        addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_TRANSLATE,
-                new MoreMenuPopup.Action(R.drawable.ic_translate, R.string.translate_page,
-                        currentUrl != null && !currentUrl.trim().isEmpty(),
-                        this::translatePage));
-        addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_EXTENSIONS,
+        toolActions.add(new MoreMenuPopup.Action(R.drawable.ic_search, R.string.scan_qr_code,
+                true, this::startQrScan));
+        addMenuAction(toolActions, prefs, SettingsKeys.PREF_MENU_EXTENSIONS,
                 new MoreMenuPopup.Action(R.drawable.ic_extensions_puzzle, R.string.extensions,
                         true, () -> startActivity(new Intent(this, ExtensionsActivity.class))));
+        if (!toolActions.isEmpty()) {
+            menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_view_grid, R.string.more_tools,
+                    true, () -> MoreToolsSheet.show(this, R.string.more_tools, toolActions)));
+        }
         menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_settings, R.string.settings,
                 true, () -> startActivity(new Intent(this, SettingsActivity.class))));
         addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_EXIT,

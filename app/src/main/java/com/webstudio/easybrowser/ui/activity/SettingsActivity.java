@@ -1264,6 +1264,8 @@ public class SettingsActivity extends AppCompatActivity {
         findViewById(R.id.setting_check_updates).setOnClickListener(v -> checkForUpdates());
         findViewById(R.id.setting_about).setOnClickListener(v ->
                 openSubpage(SettingsSubpageActivity.PAGE_ABOUT));
+        findViewById(R.id.setting_passwords).setOnClickListener(v ->
+                startActivity(new android.content.Intent(this, PasswordsActivity.class)));
         findViewById(R.id.setting_cookie_manager).setOnClickListener(v ->
                 startActivity(new android.content.Intent(this, CookieManagerActivity.class)));
         findViewById(R.id.setting_site_permissions).setOnClickListener(v ->
