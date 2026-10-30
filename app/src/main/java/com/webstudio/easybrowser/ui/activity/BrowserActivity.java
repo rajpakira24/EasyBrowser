@@ -5233,7 +5233,6 @@ public class BrowserActivity extends AppCompatActivity {
                 PreferenceManager.getDefaultSharedPreferences(this), host, !enabled);
         Tab tab = tabManager != null ? tabManager.getCurrentTab() : null;
         GeckoSession target = tab != null ? tab.getSession() : null;
-        SiteShieldManager.applyException(RuntimeManager.getRuntime(this), target, !enabled);
         if (target != null) {
             target.reload();
         }

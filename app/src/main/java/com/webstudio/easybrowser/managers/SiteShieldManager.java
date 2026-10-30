@@ -1,7 +1,6 @@
 package com.webstudio.easybrowser.managers;
 
 import android.content.SharedPreferences;
-import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -9,8 +8,6 @@ import androidx.annotation.Nullable;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.mozilla.geckoview.GeckoResult;
-import org.mozilla.geckoview.GeckoRuntime;
-import org.mozilla.geckoview.GeckoSession;
 import org.mozilla.geckoview.WebExtension;
 
 import java.util.HashSet;
@@ -18,16 +15,14 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Per-site shield: lets the user turn ad and tracker blocking off for one host.
- * The host list lives in preferences; Gecko tracking protection is bypassed through its
- * content blocking exceptions and the built-in cosmetic ad blocker asks us over native
- * messaging whether it should stay quiet on a host.
+ * Per-site shield: lets the user turn the built-in ad blocker off for one host. The host
+ * list lives in preferences and the cosmetic ad blocker extension asks us over native
+ * messaging whether it should stay quiet on a host. GeckoView has no per-site exception
+ * for its tracking protection, so that part stays global.
  */
 public final class SiteShieldManager {
     public static final String PREF_DISABLED_HOSTS = "adblock_disabled_hosts";
     public static final String NATIVE_APP = "browser";
-
-    private static final String TAG = "SiteShieldManager";
 
     private SiteShieldManager() {
     }
@@ -60,23 +55,6 @@ public final class SiteShieldManager {
             hosts.remove(key);
         }
         prefs.edit().putStringSet(PREF_DISABLED_HOSTS, hosts).apply();
-    }
-
-    /** Mirrors the preference onto Gecko's tracking protection exception for the session. */
-    public static void applyException(@Nullable GeckoRuntime runtime,
-                                      @Nullable GeckoSession session, boolean disabled) {
-        if (runtime == null || session == null) {
-            return;
-        }
-        try {
-            if (disabled) {
-                runtime.getContentBlockingController().addException(session);
-            } else {
-                runtime.getContentBlockingController().removeException(session);
-            }
-        } catch (RuntimeException e) {
-            Log.e(TAG, "Failed to update content blocking exception", e);
-        }
     }
 
     /** Answers the built-in ad blocker extension's "is this host disabled" question. */

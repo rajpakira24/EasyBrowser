@@ -213,7 +213,7 @@
     <string name="scan_qr_code">Scan QR code</string>
     <string name="qr_scan_prompt">Point the camera at a QR code</string>
     <string name="site_shield_title">Shield for this site</string>
-    <string name="site_shield_summary">Block ads and trackers on this site</string>
+    <string name="site_shield_summary">Hide ads on this site</string>
     <string name="site_shield_enabled">Shield on for this site</string>
     <string name="site_shield_disabled">Shield off for this site</string>
     <string name="ad_blocking">Ad and Tracker Blocking</string>
