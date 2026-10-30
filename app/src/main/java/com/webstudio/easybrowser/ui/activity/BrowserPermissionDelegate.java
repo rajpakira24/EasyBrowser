@@ -49,6 +49,10 @@ class BrowserPermissionDelegate implements GeckoSession.PermissionDelegate {
                                             @Nullable String[] permissions,
                                             @NonNull Callback callback) {
         String[] requestedPermissions = normalizeAndroidPermissions(permissions);
+        if (activity.pendingPermissionCallback != null) {
+            // A newer request supersedes the pending one; finish the old one so the page isn't left waiting.
+            activity.pendingPermissionCallback.reject();
+        }
         activity.pendingPermissionCallback = callback;
         if (requestedPermissions.length > 0) {
             androidx.core.app.ActivityCompat.requestPermissions(
@@ -66,13 +70,8 @@ class BrowserPermissionDelegate implements GeckoSession.PermissionDelegate {
                                                            @NonNull ContentPermission perm) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(activity);
         if (perm.permission == GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_INAUDIBLE) {
-            String autoplay = prefs.getString(SettingsKeys.PREF_SITE_AUTOPLAY,
-                    SettingsKeys.VALUE_DENY);
-            if (SettingsKeys.VALUE_ALLOW.equals(autoplay)
-                    || SettingsKeys.VALUE_DENY.equals(autoplay)
-                    || SettingsKeys.VALUE_ASK.equals(autoplay)) {
-                return GeckoResult.fromValue(ContentPermission.VALUE_ALLOW);
-            }
+            // Inaudible (muted) autoplay is always allowed; the autoplay setting only
+            // governs audible autoplay below.
             return GeckoResult.fromValue(ContentPermission.VALUE_ALLOW);
         }
         if (perm.permission == GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_AUDIBLE) {

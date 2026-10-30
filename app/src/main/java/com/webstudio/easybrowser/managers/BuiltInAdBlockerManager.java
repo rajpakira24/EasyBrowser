@@ -25,8 +25,13 @@ public final class BuiltInAdBlockerManager {
         }
         runtime.getWebExtensionController()
                 .ensureBuiltIn(EXTENSION_LOCATION, EXTENSION_ID)
-                .accept(extension -> { },
-                        error -> Log.e(TAG, "Failed to install built-in ad blocker", error));
+                .accept(extension -> {
+                    if (extension != null) {
+                        extension.setMessageDelegate(
+                                SiteShieldManager.createMessageDelegate(prefs),
+                                SiteShieldManager.NATIVE_APP);
+                    }
+                }, error -> Log.e(TAG, "Failed to install built-in ad blocker", error));
     }
 
     private static void uninstall(GeckoRuntime runtime) {

@@ -50,6 +50,7 @@ public class RuntimeManager {
 
                     try {
                         runtime = GeckoRuntime.create(context, runtimeSettings.build());
+                        runtime.setAutocompleteStorageDelegate(new LoginStorageDelegate(context));
                         BuiltInAdBlockerManager.apply(runtime, prefs);
                         DefaultExtensionInstaller.preinstallDefaults(runtime, prefs);
                     } catch (Exception e) {

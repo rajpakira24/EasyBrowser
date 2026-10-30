@@ -62,6 +62,13 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.viewinterop.AndroidView
+import org.mozilla.geckoview.GeckoSession
+import org.mozilla.geckoview.GeckoView
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.layout.statusBarsPadding
 import coil.compose.AsyncImage
 
 private val DarkColors = darkColorScheme(
@@ -98,6 +105,22 @@ fun ExtensionsScreen(
         } else {
         val snackbarHostState = remember { SnackbarHostState() }
         var showInstallDialog by remember { mutableStateOf(false) }
+
+        viewModel.popupSession?.let { session ->
+            ExtensionPopupDialog(
+                title = viewModel.popupTitle,
+                session = session,
+                onDismiss = { viewModel.closePopup() },
+            )
+        }
+
+        val pendingUrl = viewModel.pendingOpenUrl
+        LaunchedEffect(pendingUrl) {
+            if (pendingUrl != null) {
+                viewModel.consumePendingOpenUrl()
+                onOpenUrl(pendingUrl)
+            }
+        }
 
         val status = viewModel.statusMessage
         LaunchedEffect(status) {
@@ -145,7 +168,8 @@ fun ExtensionsScreen(
                         EnabledRow(
                             item = item,
                             icon = viewModel.installedIcons[item.id],
-                            onOpen = { item.optionsUrl?.let(onOpenUrl) },
+                            canOpen = viewModel.actions.containsKey(item.id) || item.optionsUrl != null,
+                            onOpen = { viewModel.openExtension(item) },
                             onToggle = { viewModel.setEnabled(item, !item.enabled) },
                             onUpdate = { viewModel.update(item) },
                             onRemove = { viewModel.uninstall(item) },
@@ -201,6 +225,43 @@ fun ExtensionsScreen(
     }
 }
 
+/** Hosts an add-on's popup or options page (a GeckoSession) in a full-screen dialog. */
+@Composable
+private fun ExtensionPopupDialog(title: String, session: GeckoSession, onDismiss: () -> Unit) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+        ) {
+            Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close")
+                    }
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { ctx -> GeckoView(ctx).also { it.setSession(session) } },
+                    onRelease = { it.releaseSession() },
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun SectionHeader(text: String) {
     Text(
@@ -216,6 +277,7 @@ private fun SectionHeader(text: String) {
 private fun EnabledRow(
     item: InstalledExtension,
     icon: ImageBitmap?,
+    canOpen: Boolean,
     onOpen: () -> Unit,
     onToggle: () -> Unit,
     onUpdate: () -> Unit,
@@ -281,7 +343,7 @@ private fun EnabledRow(
                 Icon(Icons.Filled.MoreVert, contentDescription = "More")
             }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                if (item.enabled && item.optionsUrl != null) {
+                if (item.enabled && canOpen) {
                     DropdownMenuItem(text = { Text("Open") }, onClick = { menuOpen = false; onOpen() })
                 }
                 DropdownMenuItem(

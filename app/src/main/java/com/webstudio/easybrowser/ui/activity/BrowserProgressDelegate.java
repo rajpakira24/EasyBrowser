@@ -18,6 +18,11 @@ class BrowserProgressDelegate implements GeckoSession.ProgressDelegate {
     }
 
     @Override
+    public void onPageStart(@NonNull GeckoSession session, @NonNull String url) {
+        activity.runOnUiThread(() -> activity.onReaderPageStart(session));
+    }
+
+    @Override
     public void onSecurityChange(@NonNull GeckoSession session,
                                  @NonNull GeckoSession.ProgressDelegate.SecurityInformation securityInfo) {
         if (session != activity.session) {

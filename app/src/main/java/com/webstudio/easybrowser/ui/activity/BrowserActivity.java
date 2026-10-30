@@ -59,6 +59,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
+import com.journeyapps.barcodescanner.ScanContract;
+import com.journeyapps.barcodescanner.ScanOptions;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
@@ -94,6 +96,7 @@ import com.webstudio.easybrowser.managers.AppShortcutManager;
 import com.webstudio.easybrowser.managers.AppDownloadManager;
 import com.webstudio.easybrowser.managers.BackgroundMediaService;
 import com.webstudio.easybrowser.managers.PrivacyStatsManager;
+import com.webstudio.easybrowser.managers.SiteShieldManager;
 import com.webstudio.easybrowser.managers.RuntimeManager;
 import com.webstudio.easybrowser.managers.TabManager;
 import com.webstudio.easybrowser.managers.TabThumbnailCache;
@@ -135,6 +138,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -151,6 +155,11 @@ public class BrowserActivity extends AppCompatActivity {
     static final int REQUEST_GECKO_PERMISSIONS = 1001;
     private static final long MAX_UPLOAD_CACHE_BYTES = 100L * 1024L * 1024L;
     private static final long TRUSTED_JAVASCRIPT_URI_TTL_MS = 5_000L;
+    private GeckoSession readerSession;
+    private android.speech.tts.TextToSpeech readerSpeech;
+    private boolean readerSpeechReady;
+    private String pendingReaderSpeech;
+    private String readerScript;
     private static final long FULLSCREEN_EXIT_SEARCH_SUPPRESS_MS = 2_000L;
     private GeckoView geckoView;
     GeckoSession session;
@@ -295,6 +304,7 @@ public class BrowserActivity extends AppCompatActivity {
     GeckoResult<GeckoSession.PromptDelegate.PromptResponse> pendingFileResult;
     BrowserHistoryDelegate historyDelegate;
     private ActivityResultLauncher<Intent> filePickerLauncher;
+    private ActivityResultLauncher<ScanOptions> qrScanLauncher;
     private ActivityResultLauncher<Intent> tabsActivityLauncher;
     private ActivityResultLauncher<String> downloadPermissionLauncher;
     // url, filename, mimeType awaiting a legacy storage-permission grant (API <= 28).
@@ -302,7 +312,9 @@ public class BrowserActivity extends AppCompatActivity {
     private boolean tabManagerLaunchPending;
     private final SearchSuggestionProvider suggestionProvider = new SearchSuggestionProvider();
 
+    private static final String PREF_DESKTOP_SITE_HOSTS = "desktop_site_hosts";
     private boolean isDesktopMode = false;
+    private boolean siteDesktopApplied = false;
 
     // F12 — Site info bottom sheet
     GeckoSession.ProgressDelegate.SecurityInformation lastSecurityInfo;
@@ -331,6 +343,7 @@ public class BrowserActivity extends AppCompatActivity {
         initializeViewModel();
         initializeViews();
         setupFilePicker();
+        setupQrScanner();
         setupTabsActivityLauncher();
         setupExtensionInstallPrompt();
         setupUrlInput();
@@ -788,6 +801,28 @@ public class BrowserActivity extends AppCompatActivity {
     private void initializeViewModel() {
         browserViewModel = new ViewModelProvider(this).get(BrowserViewModel.class);
         tabManager = browserViewModel.getTabManager();
+    }
+
+    private void setupQrScanner() {
+        qrScanLauncher = registerForActivityResult(new ScanContract(), result -> {
+            String contents = result != null ? result.getContents() : null;
+            if (contents == null || contents.trim().isEmpty()) {
+                return;
+            }
+            loadUrl(contents.trim());
+        });
+    }
+
+    private void startQrScan() {
+        if (qrScanLauncher == null) {
+            return;
+        }
+        ScanOptions options = new ScanOptions()
+                .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                .setPrompt(getString(R.string.qr_scan_prompt))
+                .setBeepEnabled(false)
+                .setOrientationLocked(false);
+        qrScanLauncher.launch(options);
     }
 
     private void setupFilePicker() {
@@ -1349,7 +1384,9 @@ public class BrowserActivity extends AppCompatActivity {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                if (inWebFullscreen && session != null) {
+                if (isReaderModeActive()) {
+                    closeReaderMode();
+                } else if (inWebFullscreen && session != null) {
                     suppressSearchPopupAfterFullscreenExit();
                     session.exitFullScreen();
                 } else if (session != null && canGoBack) {
@@ -3494,19 +3531,27 @@ public class BrowserActivity extends AppCompatActivity {
         addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_BOOKMARKS,
                 new MoreMenuPopup.Action(R.drawable.ic_bookmarks, R.string.bookmarks,
                         true, () -> startActivity(new Intent(this, BookmarksActivity.class))));
+        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_lock, R.string.passwords,
+                true, () -> startActivity(new Intent(this, PasswordsActivity.class))));
+        menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_search, R.string.scan_qr_code,
+                true, this::startQrScan));
         addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_FIND_IN_PAGE,
                 new MoreMenuPopup.Action(R.drawable.ic_search, R.string.find_in_page,
                         session != null, this::showFindInPageDialog));
         addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_DESKTOP_SITE,
                 new MoreMenuPopup.Action(R.drawable.ic_desktop, R.string.desktop_site,
                         session != null, this::toggleDesktopSite));
-        boolean isReaderMode = currentUrl != null && currentUrl.startsWith("about:reader");
+        boolean isReaderMode = isReaderModeActive();
         if (prefs.getBoolean(SettingsKeys.PREF_READER_MODE_MENU_ENABLED, true)) {
             addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_READER_MODE,
                     new MoreMenuPopup.Action(R.drawable.ic_text,
                             isReaderMode ? R.string.reader_mode_on : R.string.reader_mode,
                             session != null && currentUrl != null,
                             this::toggleReaderMode));
+            if (isReaderMode) {
+                menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_settings,
+                        R.string.reader_settings, true, this::showReaderSettingsDialog));
+            }
         }
         addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_ADD_TO_QUICK_ACCESS,
                 new MoreMenuPopup.Action(R.drawable.ic_view_grid, R.string.add_to_quick_access,
@@ -3852,13 +3897,47 @@ public class BrowserActivity extends AppCompatActivity {
         if (session == null) {
             return;
         }
-        isDesktopMode = !isDesktopMode;
-        session.getSettings().setUserAgentMode(isDesktopMode
+        setDesktopMode(!isDesktopMode);
+        // Remember the choice for this site so it comes back on the next visit.
+        String host = UrlUtils.getDisplayHost(currentUrl);
+        if (host != null) {
+            SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+            Set<String> hosts = new HashSet<>(
+                    prefs.getStringSet(PREF_DESKTOP_SITE_HOSTS, new HashSet<>()));
+            if (isDesktopMode) {
+                hosts.add(host);
+            } else {
+                hosts.remove(host);
+            }
+            prefs.edit().putStringSet(PREF_DESKTOP_SITE_HOSTS, hosts).apply();
+            siteDesktopApplied = isDesktopMode;
+        }
+        reloadCurrentPage();
+    }
+
+    private void setDesktopMode(boolean desktop) {
+        isDesktopMode = desktop;
+        session.getSettings().setUserAgentMode(desktop
                 ? GeckoSessionSettings.USER_AGENT_MODE_DESKTOP
                 : GeckoSessionSettings.USER_AGENT_MODE_MOBILE);
-        session.getSettings().setViewportMode(isDesktopMode
+        session.getSettings().setViewportMode(desktop
                 ? GeckoSessionSettings.VIEWPORT_MODE_DESKTOP
                 : GeckoSessionSettings.VIEWPORT_MODE_MOBILE);
+    }
+
+    /** Switches the current tab to or from desktop mode when the site was saved as desktop. */
+    void applyPerSiteDesktopMode(String url) {
+        String host = UrlUtils.getDisplayHost(url);
+        if (session == null || host == null) {
+            return;
+        }
+        boolean wantDesktop = PreferenceManager.getDefaultSharedPreferences(this)
+                .getStringSet(PREF_DESKTOP_SITE_HOSTS, new HashSet<>()).contains(host);
+        if (wantDesktop == isDesktopMode || (!wantDesktop && !siteDesktopApplied)) {
+            return;
+        }
+        siteDesktopApplied = wantDesktop;
+        setDesktopMode(wantDesktop);
         reloadCurrentPage();
     }
 
@@ -4388,6 +4467,10 @@ public class BrowserActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        if (readerSpeech != null) {
+            readerSpeech.shutdown();
+            readerSpeech = null;
+        }
         unregisterBackgroundPlayReceiver();
         playingMediaSessions.clear();
         geckoMediaSessions.clear();
@@ -4488,14 +4571,272 @@ public class BrowserActivity extends AppCompatActivity {
         startActivity(Intent.createChooser(intent, getString(R.string.share_link)));
     }
 
+    /** Handles "play:&lt;text&gt;" and "stop" sent by the reader overlay through the page title. */
+    void handleReaderSpeech(GeckoSession source, String command) {
+        if (source != readerSession) {
+            return;
+        }
+        if (command.startsWith("play:")) {
+            String text;
+            try {
+                text = Uri.decode(command.substring(5));
+            } catch (RuntimeException e) {
+                return;
+            }
+            runOnUiThread(() -> startReaderSpeech(text));
+        } else {
+            runOnUiThread(this::stopReaderSpeech);
+        }
+    }
+
+    private void startReaderSpeech(String text) {
+        if (readerSpeech == null) {
+            pendingReaderSpeech = text;
+            readerSpeech = new android.speech.tts.TextToSpeech(this, status -> {
+                readerSpeechReady = status == android.speech.tts.TextToSpeech.SUCCESS;
+                if (!readerSpeechReady) {
+                    Toast.makeText(this, R.string.reader_listen_unavailable,
+                            Toast.LENGTH_SHORT).show();
+                    notifyReaderSpeechDone();
+                    return;
+                }
+                readerSpeech.setOnUtteranceProgressListener(
+                        new android.speech.tts.UtteranceProgressListener() {
+                            @Override public void onStart(String utteranceId) {}
+                            @Override public void onError(String utteranceId) {
+                                runOnUiThread(BrowserActivity.this::notifyReaderSpeechDone);
+                            }
+                            @Override public void onDone(String utteranceId) {
+                                if ("reader_last".equals(utteranceId)) {
+                                    runOnUiThread(BrowserActivity.this::notifyReaderSpeechDone);
+                                }
+                            }
+                        });
+                String queued = pendingReaderSpeech;
+                pendingReaderSpeech = null;
+                if (queued != null) {
+                    speakReaderText(queued);
+                }
+            });
+            return;
+        }
+        if (readerSpeechReady) {
+            speakReaderText(text);
+        } else {
+            pendingReaderSpeech = text;
+        }
+    }
+
+    private void speakReaderText(String text) {
+        readerSpeech.stop();
+        int maxLength = Math.max(500, android.speech.tts.TextToSpeech.getMaxSpeechInputLength() - 100);
+        int start = 0;
+        int mode = android.speech.tts.TextToSpeech.QUEUE_FLUSH;
+        while (start < text.length()) {
+            int end = Math.min(text.length(), start + maxLength);
+            if (end < text.length()) {
+                int boundary = text.lastIndexOf(". ", end);
+                if (boundary > start) {
+                    end = boundary + 1;
+                }
+            }
+            String chunk = text.substring(start, end).trim();
+            start = end;
+            if (chunk.isEmpty()) {
+                continue;
+            }
+            String id = start >= text.length() ? "reader_last" : "reader_" + start;
+            readerSpeech.speak(chunk, mode, null, id);
+            mode = android.speech.tts.TextToSpeech.QUEUE_ADD;
+        }
+    }
+
+    private void stopReaderSpeech() {
+        pendingReaderSpeech = null;
+        if (readerSpeech != null) {
+            readerSpeech.stop();
+        }
+    }
+
+    private void notifyReaderSpeechDone() {
+        if (isReaderModeActive()) {
+            loadTrustedJavascript(readerSession,
+                    "if(window.__ebReader){window.__ebReader.speechDone();}void 0;", true);
+        }
+    }
+
+    private boolean isReaderModeActive() {
+        return readerSession != null && readerSession == session;
+    }
+
+    void onReaderPageStart(GeckoSession startedSession) {
+        // A new navigation replaces the page the reader overlay was injected into.
+        if (startedSession == readerSession) {
+            stopReaderSpeech();
+            readerSession = null;
+        }
+    }
+
     private void toggleReaderMode() {
         if (session == null || currentUrl == null) return;
-        if (currentUrl.startsWith("about:reader")) {
-            String orig = Uri.parse(currentUrl).getQueryParameter("url");
-            if (orig != null) loadUrl(orig);
+        if (isReaderModeActive()) {
+            closeReaderMode();
         } else {
-            loadUrl("about:reader?url=" + Uri.encode(currentUrl));
+            openReaderMode();
         }
+    }
+
+    private void openReaderMode() {
+        String script = loadReaderScript();
+        if (script == null) {
+            Toast.makeText(this, R.string.reader_mode_unavailable, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        readerSession = session;
+        loadTrustedJavascript(session, script
+                + "\nwindow.__ebReader.open(" + buildReaderConfig() + ");void 0;", true);
+    }
+
+    private void closeReaderMode() {
+        stopReaderSpeech();
+        if (readerSession != null) {
+            loadTrustedJavascript(readerSession,
+                    "if(window.__ebReader){window.__ebReader.close();}void 0;", true);
+        }
+        readerSession = null;
+    }
+
+    private void applyReaderSettings() {
+        if (isReaderModeActive()) {
+            loadTrustedJavascript(readerSession,
+                    "if(window.__ebReader){window.__ebReader.apply(" + buildReaderConfig()
+                            + ");}void 0;", true);
+        }
+    }
+
+    private String loadReaderScript() {
+        if (readerScript == null) {
+            try (InputStream in = getAssets().open("reader/reader.js")) {
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                byte[] buffer = new byte[4096];
+                int read;
+                while ((read = in.read(buffer)) != -1) {
+                    out.write(buffer, 0, read);
+                }
+                readerScript = out.toString("UTF-8");
+            } catch (java.io.IOException e) {
+                Log.e("BrowserActivity", "Failed to load reader script", e);
+            }
+        }
+        return readerScript;
+    }
+
+    private String buildReaderConfig() {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        String theme = prefs.getString(SettingsKeys.PREF_READER_THEME, "auto");
+        if ("auto".equals(theme)) {
+            boolean night = (getResources().getConfiguration().uiMode
+                    & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+                    == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+            theme = night ? "dark" : "light";
+        }
+        try {
+            JSONObject strings = new JSONObject();
+            strings.put("noArticle", getString(R.string.reader_mode_no_article));
+            strings.put("minRead", getString(R.string.reader_min_read));
+            strings.put("listen", getString(R.string.reader_listen));
+            strings.put("stopListening", getString(R.string.reader_stop_listening));
+            JSONObject config = new JSONObject();
+            config.put("fontSize", prefs.getInt(SettingsKeys.PREF_READER_FONT_SIZE, 18));
+            config.put("fontFamily", prefs.getString(SettingsKeys.PREF_READER_FONT_FAMILY, "sans"));
+            config.put("theme", theme);
+            config.put("strings", strings);
+            return config.toString();
+        } catch (org.json.JSONException e) {
+            return "{}";
+        }
+    }
+
+    private void showReaderSettingsDialog() {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        int padding = dp(16);
+        android.widget.LinearLayout container = new android.widget.LinearLayout(this);
+        container.setOrientation(android.widget.LinearLayout.VERTICAL);
+        container.setPadding(padding, padding, padding, 0);
+
+        TextView sizeLabel = new TextView(this);
+        int currentSize = prefs.getInt(SettingsKeys.PREF_READER_FONT_SIZE, 18);
+        sizeLabel.setText(getString(R.string.reader_font_size, currentSize));
+        sizeLabel.setTextSize(16);
+        container.addView(sizeLabel);
+
+        Slider slider = new Slider(this);
+        slider.setValueFrom(12f);
+        slider.setValueTo(32f);
+        slider.setStepSize(1f);
+        slider.setValue(Math.max(12, Math.min(32, currentSize)));
+        slider.addOnChangeListener((s, value, fromUser) -> {
+            int size = Math.round(value);
+            sizeLabel.setText(getString(R.string.reader_font_size, size));
+            if (fromUser) {
+                prefs.edit().putInt(SettingsKeys.PREF_READER_FONT_SIZE, size).apply();
+                applyReaderSettings();
+            }
+        });
+        container.addView(slider);
+
+        container.addView(buildReaderChoiceRow(R.string.reader_font_family,
+                SettingsKeys.PREF_READER_FONT_FAMILY, "sans",
+                new String[]{"sans", "serif", "mono"},
+                new int[]{R.string.reader_font_sans, R.string.reader_font_serif,
+                        R.string.reader_font_mono}));
+        container.addView(buildReaderChoiceRow(R.string.reader_theme,
+                SettingsKeys.PREF_READER_THEME, "auto",
+                new String[]{"auto", "light", "dark", "sepia"},
+                new int[]{R.string.reader_theme_auto, R.string.reader_theme_light,
+                        R.string.reader_theme_dark, R.string.reader_theme_sepia}));
+
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.reader_settings)
+                .setView(container)
+                .setPositiveButton(android.R.string.ok, null)
+                .show();
+    }
+
+    private View buildReaderChoiceRow(int labelRes, String prefKey, String defaultValue,
+                                      String[] values, int[] labels) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        android.widget.LinearLayout row = new android.widget.LinearLayout(this);
+        row.setOrientation(android.widget.LinearLayout.VERTICAL);
+        row.setPadding(0, dp(12), 0, 0);
+
+        TextView label = new TextView(this);
+        label.setText(labelRes);
+        label.setTextSize(16);
+        row.addView(label);
+
+        android.widget.RadioGroup group = new android.widget.RadioGroup(this);
+        group.setOrientation(android.widget.RadioGroup.HORIZONTAL);
+        String selected = prefs.getString(prefKey, defaultValue);
+        for (int i = 0; i < values.length; i++) {
+            android.widget.RadioButton button = new android.widget.RadioButton(this);
+            button.setId(View.generateViewId());
+            button.setText(labels[i]);
+            button.setTag(values[i]);
+            group.addView(button);
+            if (values[i].equals(selected)) {
+                group.check(button.getId());
+            }
+        }
+        group.setOnCheckedChangeListener((g, checkedId) -> {
+            View checked = g.findViewById(checkedId);
+            if (checked != null) {
+                prefs.edit().putString(prefKey, (String) checked.getTag()).apply();
+                applyReaderSettings();
+            }
+        });
+        row.addView(group);
+        return row;
     }
 
     private void translatePage() {
@@ -4882,6 +5223,22 @@ public class BrowserActivity extends AppCompatActivity {
         sheet.show(getSupportFragmentManager(), "site_info");
     }
 
+    boolean isSiteShieldEnabled(String host) {
+        return !SiteShieldManager.isDisabled(
+                PreferenceManager.getDefaultSharedPreferences(this), host);
+    }
+
+    void setSiteShieldEnabled(String host, boolean enabled) {
+        SiteShieldManager.setDisabled(
+                PreferenceManager.getDefaultSharedPreferences(this), host, !enabled);
+        Tab tab = tabManager != null ? tabManager.getCurrentTab() : null;
+        GeckoSession target = tab != null ? tab.getSession() : null;
+        SiteShieldManager.applyException(RuntimeManager.getRuntime(this), target, !enabled);
+        if (target != null) {
+            target.reload();
+        }
+    }
+
     // F13 — Exit with optional auto-clear
     private void exitApp() {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
@@ -5011,10 +5368,15 @@ public class BrowserActivity extends AppCompatActivity {
     }
 
     private void loadTrustedJavascript(GeckoSession targetSession, String js) {
+        loadTrustedJavascript(targetSession, js, false);
+    }
+
+    /** {@code encode} percent-encodes the script, which javascript: URIs decode before running. */
+    private void loadTrustedJavascript(GeckoSession targetSession, String js, boolean encode) {
         if (targetSession == null || js == null || js.trim().isEmpty()) {
             return;
         }
-        String scriptUri = "javascript:" + js;
+        String scriptUri = "javascript:" + (encode ? Uri.encode(js) : js);
         trustedJavascriptUris.add(scriptUri);
         try {
             targetSession.loadUri(scriptUri);

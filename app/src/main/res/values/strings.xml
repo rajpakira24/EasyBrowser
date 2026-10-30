@@ -196,6 +196,26 @@
     <string name="data_compliance">Data Compliance</string>
     <string name="data_compliance_summary">How app data practices are reviewed and disclosed.</string>
     <string name="shields">Shields</string>
+    <string name="passwords">Passwords</string>
+    <string name="save_passwords">Save passwords</string>
+    <string name="password_save_title">Save password?</string>
+    <string name="password_save_message">Save the login for %1$s on %2$s?</string>
+    <string name="password_not_now">Not now</string>
+    <string name="password_fill_title">Fill saved login</string>
+    <string name="password_no_username">(no username)</string>
+    <string name="passwords_empty">No saved passwords</string>
+    <string name="passwords_unlock_title">Unlock saved passwords</string>
+    <string name="passwords_show">Show password</string>
+    <string name="password_delete_confirm">Delete this saved login?</string>
+    <string name="reader_listen">Listen</string>
+    <string name="reader_stop_listening">Stop</string>
+    <string name="reader_listen_unavailable">Text-to-speech is not available</string>
+    <string name="scan_qr_code">Scan QR code</string>
+    <string name="qr_scan_prompt">Point the camera at a QR code</string>
+    <string name="site_shield_title">Shield for this site</string>
+    <string name="site_shield_summary">Block ads and trackers on this site</string>
+    <string name="site_shield_enabled">Shield on for this site</string>
+    <string name="site_shield_disabled">Shield off for this site</string>
     <string name="ad_blocking">Ad and Tracker Blocking</string>
     <string name="ad_blocking_off">Off</string>
     <string name="ad_blocking_balanced">Balanced</string>
@@ -537,6 +557,20 @@
     <!-- Reader Mode -->
     <string name="reader_mode">Reader Mode</string>
     <string name="reader_mode_on">Exit Reader Mode</string>
+    <string name="reader_settings">Reader settings</string>
+    <string name="reader_mode_unavailable">Reader mode is unavailable</string>
+    <string name="reader_mode_no_article">No readable article found on this page</string>
+    <string name="reader_min_read">min read</string>
+    <string name="reader_font_size">Font size: %1$d</string>
+    <string name="reader_font_family">Font</string>
+    <string name="reader_font_sans">Sans</string>
+    <string name="reader_font_serif">Serif</string>
+    <string name="reader_font_mono">Mono</string>
+    <string name="reader_theme">Theme</string>
+    <string name="reader_theme_auto">Auto</string>
+    <string name="reader_theme_light">Light</string>
+    <string name="reader_theme_dark">Dark</string>
+    <string name="reader_theme_sepia">Sepia</string>
     <!-- Translation -->
     <string name="translate_page">Translate Page</string>
     <!-- Print -->

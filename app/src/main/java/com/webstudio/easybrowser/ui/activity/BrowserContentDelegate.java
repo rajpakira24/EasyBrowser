@@ -10,6 +10,8 @@ import org.mozilla.geckoview.WebResponse;
 class BrowserContentDelegate implements GeckoSession.ContentDelegate {
     private static final String PAGE_URL_TITLE_PREFIX = "__EASY_BROWSER_PAGE_URL__";
 
+    private static final String READER_TTS_TITLE_PREFIX = "__EASY_BROWSER_READER_TTS__";
+
     private final BrowserActivity activity;
 
     BrowserContentDelegate(BrowserActivity activity) {
@@ -18,6 +20,11 @@ class BrowserContentDelegate implements GeckoSession.ContentDelegate {
 
     @Override
     public void onTitleChange(@NonNull GeckoSession session, String title) {
+        if (title != null && title.startsWith(READER_TTS_TITLE_PREFIX)) {
+            activity.handleReaderSpeech(session,
+                    title.substring(READER_TTS_TITLE_PREFIX.length()));
+            return;
+        }
         if (title != null && title.startsWith(PAGE_URL_TITLE_PREFIX)) {
             activity.syncUrlFromPageScript(session,
                     title.substring(PAGE_URL_TITLE_PREFIX.length()));

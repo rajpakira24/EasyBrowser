@@ -49,6 +49,9 @@ public final class SettingsKeys {
     public static final String PREF_FORCE_ENABLE_ZOOM = "force_enable_zoom";
     public static final String PREF_ABOUT_CONFIG_ENABLED = "about_config_enabled";
     public static final String PREF_READER_MODE_MENU_ENABLED = "reader_mode_menu_enabled";
+    public static final String PREF_READER_FONT_SIZE = "reader_font_size";
+    public static final String PREF_READER_FONT_FAMILY = "reader_font_family";
+    public static final String PREF_READER_THEME = "reader_theme";
     public static final String PREF_TRANSLATIONS_OFFER_POPUP = "translations_offer_popup";
     public static final String PREF_PREFERRED_LANGUAGES = "preferred_language_tags";
     public static final String PREF_TOOLBAR_SHORTCUT = "toolbar_shortcut";

@@ -1,5 +1,5 @@
 [versions]
-agp = "9.2.1"
+agp = "9.5.0"
 appUpdate = "2.1.0"
 coreSplashscreen = "1.2.0"
 desugar_jdk_libs = "2.1.5"

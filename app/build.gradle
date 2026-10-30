@@ -237,6 +237,9 @@ dependencies {
     // Network
     implementation libs.okhttp
 
+    // QR code scanner
+    implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
+
     // Play in-app updates
     implementation libs.app.update
 

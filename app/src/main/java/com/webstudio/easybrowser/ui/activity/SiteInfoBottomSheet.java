@@ -82,6 +82,7 @@ public class SiteInfoBottomSheet extends BottomSheetDialogFragment {
 
         root.addView(makeHeader(host.isEmpty() ? url : host, isSecure, shieldColor, palette));
         root.addView(makeStatusRow(shieldLevel, privacyScore, blockedToday, shieldColor, palette));
+        root.addView(makeShieldToggleRow(host, shieldColor, palette));
         root.addView(makeInfoRow(R.drawable.ic_settings,
                 getString(R.string.site_info_cookies_title),
                 getCookieCompactSummary(prefs),
@@ -222,6 +223,35 @@ public class SiteInfoBottomSheet extends BottomSheetDialogFragment {
         texts.addView(titleView);
         texts.addView(summaryView);
         row.addView(texts);
+        return row;
+    }
+
+    private LinearLayout makeShieldToggleRow(String host, int accent,
+                                             ThemeEngine.Palette palette) {
+        LinearLayout row = makeInfoRow(R.drawable.ic_security,
+                getString(R.string.site_shield_title),
+                getString(R.string.site_shield_summary),
+                accent,
+                palette);
+        BrowserActivity activity = requireActivity() instanceof BrowserActivity
+                ? (BrowserActivity) requireActivity() : null;
+        boolean globalOff = "off".equals(PreferenceManager
+                .getDefaultSharedPreferences(requireContext())
+                .getString("ad_blocking_level", "balanced"));
+        if (activity == null || host.isEmpty() || globalOff) {
+            row.setAlpha(0.5f);
+            return row;
+        }
+        androidx.appcompat.widget.SwitchCompat toggle =
+                new androidx.appcompat.widget.SwitchCompat(requireContext());
+        toggle.setChecked(activity.isSiteShieldEnabled(host));
+        toggle.setOnCheckedChangeListener((button, checked) -> {
+            activity.setSiteShieldEnabled(host, checked);
+            Toast.makeText(requireContext(),
+                    checked ? R.string.site_shield_enabled : R.string.site_shield_disabled,
+                    Toast.LENGTH_SHORT).show();
+        });
+        row.addView(toggle);
         return row;
     }
 

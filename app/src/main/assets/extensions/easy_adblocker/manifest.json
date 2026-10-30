@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Easy Browser Ad Blocker",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Built-in cosmetic ad filtering for Easy Browser.",
   "browser_specific_settings": {
     "gecko": {
@@ -26,5 +26,14 @@
       "run_at": "document_start",
       "all_frames": true
     }
-  ]
+  ],
+  "permissions": [
+    "nativeMessaging",
+    "geckoViewAddons"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  }
 }

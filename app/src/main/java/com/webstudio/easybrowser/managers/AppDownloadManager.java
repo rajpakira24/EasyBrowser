@@ -309,6 +309,11 @@ public class AppDownloadManager {
             if (body == null) {
                 throw new IOException("Empty response");
             }
+            boolean append = shouldAppendResponse(resume, existingBytes, response.code(),
+                    response.header("Content-Range"));
+            if (!append) {
+                existingBytes = 0;
+            }
 
             String responseMimeType = normalizeMimeType(response.header("content-type"));
             String resolvedFileName = resolveFileName(
@@ -324,31 +329,6 @@ public class AppDownloadManager {
                 item.setMimeType(responseMimeType);
             }
 
-            // A 206 response is the only case where the server honored our Range
-            // request and we may safely append to the local file. If the server
-            // returned 200 (or anything else with a body), it ignored Range and is
-            // sending the file from the beginning — we must truncate or we will
-            // append fresh bytes onto stale partial data and corrupt the file.
-            // Additionally verify Content-Range starts at the byte we asked for,
-            // so a server that returns 206 with a different range can't trick us.
-            boolean append = false;
-            if (resume && response.code() == 206) {
-                String contentRange = response.header("Content-Range");
-                String expectedPrefix = "bytes " + existingBytes + "-";
-                if (contentRange != null
-                        && contentRange.toLowerCase(Locale.US).startsWith(expectedPrefix.toLowerCase(Locale.US))) {
-                    append = true;
-                }
-            }
-            if (resume && !append) {
-                existingBytes = 0;
-                // Truncate the partial file so write-from-byte-0 does not append onto stale data.
-                try (FileOutputStream truncate = new FileOutputStream(outputFile, false)) {
-                    // Opened in non-append mode to zero out; nothing to write here.
-                    truncate.getChannel().truncate(0);
-                } catch (IOException ignored) {
-                }
-            }
             long contentLength = body.contentLength();
             long totalBytes = contentLength > 0 ? existingBytes + contentLength : item.getTotalBytes();
             item.setTotalBytes(totalBytes);
@@ -436,6 +416,19 @@ public class AppDownloadManager {
         }
     }
 
+    static boolean shouldAppendResponse(boolean resume, long existingBytes, int responseCode,
+                                        String contentRange) throws IOException {
+        if (responseCode != 206) {
+            return false;
+        }
+        String expectedPrefix = "bytes " + existingBytes + "-";
+        if (!resume || contentRange == null
+                || !contentRange.regionMatches(true, 0, expectedPrefix, 0, expectedPrefix.length())) {
+            throw new IOException("Invalid Content-Range for resumed download");
+        }
+        return true;
+    }
+
     private Response executeDownloadRequest(String downloadId, Request request) throws IOException {
         Request currentRequest = request;
         for (int redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
@@ -514,8 +507,8 @@ public class AppDownloadManager {
         if (newFile == null) {
             return null;
         }
-        boolean hasExistingData = currentFile.exists() && currentFile.length() > 0;
-        if (hasExistingData && !currentFile.renameTo(newFile)) {
+        if (currentFile.exists() && !currentFile.renameTo(newFile)) {
+            newFile.delete();
             return null;
         }
         item.setFileName(newFile.getName());
@@ -540,29 +533,14 @@ public class AppDownloadManager {
 
     private File createUniqueFile(Context context, String fileName) {
         File downloadDir = new File(context.getCacheDir(), "downloads");
-        if (!downloadDir.exists() && !downloadDir.mkdirs()) {
+        if (!downloadDir.isDirectory() && !downloadDir.mkdirs() && !downloadDir.isDirectory()) {
             return null;
         }
-
-        String safeName = fileName.replaceAll("[\\\\/:*?\"<>|]", "_");
-        File file = new File(downloadDir, safeName);
-        if (!file.exists()) {
-            return file;
+        try {
+            return createUniqueFileInDirectory(downloadDir, fileName);
+        } catch (IOException e) {
+            return null;
         }
-
-        String baseName = safeName;
-        String extension = "";
-        int dotIndex = safeName.lastIndexOf('.');
-        if (dotIndex > 0) {
-            baseName = safeName.substring(0, dotIndex);
-            extension = safeName.substring(dotIndex);
-        }
-        int index = 1;
-        do {
-            file = new File(downloadDir, baseName + " (" + index + ")" + extension);
-            index++;
-        } while (file.exists());
-        return file;
     }
 
     private void cleanupStaleCacheDownloads(Context context) {
@@ -581,7 +559,7 @@ public class AppDownloadManager {
                     continue;
                 }
                 DownloadItem.Status status = DownloadItem.Status.valueOf(entity.getStatus());
-                if (status == DownloadItem.Status.PAUSED) {
+                if (status == DownloadItem.Status.PAUSED || status == DownloadItem.Status.QUEUED) {
                     keepPaths.add(new File(destinationPath).getAbsolutePath());
                     continue;
                 }
@@ -705,10 +683,11 @@ public class AppDownloadManager {
         item.setDestinationPath(destination.getAbsolutePath());
     }
 
-    private File createUniqueFileInDirectory(File directory, String fileName) {
+    static File createUniqueFileInDirectory(File directory, String fileName) throws IOException {
         String safeName = fileName.replaceAll("[\\\\/:*?\"<>|]", "_");
         File file = new File(directory, safeName);
-        if (!file.exists()) {
+        // Reserve the name now, including while downloads are queued or awaiting a response.
+        if (file.createNewFile()) {
             return file;
         }
         String baseName = safeName;
@@ -722,7 +701,7 @@ public class AppDownloadManager {
         do {
             file = new File(directory, baseName + " (" + index + ")" + extension);
             index++;
-        } while (file.exists());
+        } while (!file.createNewFile());
         return file;
     }
 

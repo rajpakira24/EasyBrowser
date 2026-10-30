@@ -16,6 +16,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <!-- Hardware features -->
     <uses-feature
@@ -27,6 +28,12 @@
     <uses-feature
         android:name="android.hardware.microphone"
         android:required="false" />
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
 
     <application
         android:name=".EasyBrowserApplication"
@@ -123,6 +130,11 @@
 
         <activity
             android:name=".ui.activity.SettingsSubpageActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.activity.SettingsActivity" />
+
+        <activity
+            android:name=".ui.activity.PasswordsActivity"
             android:exported="false"
             android:parentActivityName=".ui.activity.SettingsActivity" />
 

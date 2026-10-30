@@ -19,6 +19,7 @@ import okhttp3.Request
 import okhttp3.Response
 import org.json.JSONObject
 import org.mozilla.geckoview.GeckoResult
+import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.WebExtension
 import org.mozilla.geckoview.WebExtensionController
 import java.io.IOException
@@ -79,8 +80,8 @@ class ExtensionsViewModel(app: Application) : AndroidViewModel(app) {
     private val http = OkHttpClient()
     private var marketplaceCall: Call? = null
 
-    private val controller: WebExtensionController =
-        RuntimeManager.getRuntime(app).webExtensionController
+    private val runtime = RuntimeManager.getRuntime(app)
+    private val controller: WebExtensionController = runtime.webExtensionController
 
     val installed = mutableStateListOf<InstalledExtension>()
     val recommended = mutableStateListOf<StoreExtension>()
@@ -97,6 +98,20 @@ class ExtensionsViewModel(app: Application) : AndroidViewModel(app) {
     var detailLoading by mutableStateOf(false)
         private set
     private var detailCall: Call? = null
+
+    // Toolbar (browser) action of each installed add-on, reported by GeckoView once the
+    // ActionDelegate is attached. Its presence is what makes an add-on "openable".
+    val actions = mutableStateMapOf<String, WebExtension.Action>()
+
+    // Add-on popup / options page currently shown in the full-screen dialog.
+    var popupSession by mutableStateOf<GeckoSession?>(null)
+        private set
+    var popupTitle by mutableStateOf("")
+        private set
+
+    // URL an add-on asked to open in a new tab; the screen hands it to the browser.
+    var pendingOpenUrl by mutableStateOf<String?>(null)
+        private set
 
     init {
         controller.promptDelegate = object : WebExtensionController.PromptDelegate {
@@ -123,6 +138,7 @@ class ExtensionsViewModel(app: Application) : AndroidViewModel(app) {
                     if (ext != null && ext.id != builtInAdBlockerId) {
                         installed.add(ext.toInstalled())
                         loadInstalledIcon(ext)
+                        attachDelegates(ext)
                     }
                 }
                 markRecommendedInstalled()
@@ -130,6 +146,98 @@ class ExtensionsViewModel(app: Application) : AndroidViewModel(app) {
         }, {
             onMain { installed.clear() }
         })
+    }
+
+    /**
+     * GeckoView only reports an add-on's toolbar action and popup to an [WebExtension.ActionDelegate],
+     * and its options page / new tabs to a [WebExtension.TabDelegate]. Without them an installed
+     * add-on has no UI at all, so there was nothing to open after installing it.
+     */
+    private fun attachDelegates(ext: WebExtension) {
+        val id = ext.id ?: return
+        ext.setActionDelegate(object : WebExtension.ActionDelegate {
+            override fun onBrowserAction(
+                extension: WebExtension,
+                session: GeckoSession?,
+                action: WebExtension.Action,
+            ) {
+                onMain { actions[id] = action }
+            }
+
+            override fun onTogglePopup(
+                extension: WebExtension,
+                action: WebExtension.Action,
+            ): GeckoResult<GeckoSession>? = createPopupSession(extension)
+
+            override fun onOpenPopup(
+                extension: WebExtension,
+                action: WebExtension.Action,
+            ): GeckoResult<GeckoSession>? = createPopupSession(extension)
+        })
+        ext.tabDelegate = object : WebExtension.TabDelegate {
+            override fun onNewTab(
+                source: WebExtension,
+                details: WebExtension.CreateTabDetails,
+            ): GeckoResult<GeckoSession>? {
+                val url = details.url
+                if (!url.isNullOrBlank()) onMain { pendingOpenUrl = url }
+                return GeckoResult.fromValue(null)
+            }
+
+            override fun onOpenOptionsPage(source: WebExtension) {
+                val url = source.metaData?.optionsPageUrl?.takeIf { it.isNotEmpty() } ?: return
+                onMain { showInPopup(source.metaData?.name ?: source.id.orEmpty(), url) }
+            }
+        }
+    }
+
+    private fun createPopupSession(extension: WebExtension): GeckoResult<GeckoSession> {
+        val result = GeckoResult<GeckoSession>()
+        onMain {
+            closePopup()
+            // GeckoView only loads the popup URI into this session; it has to be opened here.
+            val session = GeckoSession()
+            session.open(runtime)
+            popupTitle = extension.metaData?.name ?: extension.id.orEmpty()
+            popupSession = session
+            result.complete(session)
+        }
+        return result
+    }
+
+    private fun showInPopup(title: String, url: String) {
+        closePopup()
+        val session = GeckoSession()
+        session.open(runtime)
+        popupTitle = title
+        popupSession = session
+        session.loadUri(url)
+    }
+
+    /** Open an installed add-on: its toolbar popup if it has one, otherwise its options page. */
+    fun openExtension(item: InstalledExtension) {
+        val action = actions[item.id]
+        if (action != null) {
+            // Opens the popup through the ActionDelegate, or fires the add-on's onClicked handler.
+            action.click()
+            return
+        }
+        val options = item.optionsUrl ?: return
+        showInPopup(item.name, options)
+    }
+
+    fun closePopup() {
+        popupSession?.let { session ->
+            try {
+                if (session.isOpen) session.close()
+            } catch (ignored: Exception) {
+            }
+        }
+        popupSession = null
+    }
+
+    fun consumePendingOpenUrl() {
+        pendingOpenUrl = null
     }
 
     private fun loadInstalledIcon(ext: WebExtension) {
@@ -169,7 +277,7 @@ class ExtensionsViewModel(app: Application) : AndroidViewModel(app) {
             enabled = meta?.enabled ?: true,
             rating = meta?.averageRating ?: 0.0,
             reviewCount = meta?.reviewCount ?: 0,
-            optionsUrl = meta?.optionsPageUrl?.takeIf { it.isNotEmpty() } ?: meta?.baseUrl,
+            optionsUrl = meta?.optionsPageUrl?.takeIf { it.isNotEmpty() },
         )
     }
 
@@ -462,6 +570,7 @@ class ExtensionsViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
+        closePopup()
         marketplaceCall?.cancel()
         detailCall?.cancel()
         super.onCleared()

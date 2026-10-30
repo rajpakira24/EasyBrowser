@@ -24,6 +24,10 @@ import java.util.List;
 class BrowserNavigationDelegate implements GeckoSession.NavigationDelegate {
 
     private final BrowserActivity activity;
+    /** https URL we upgraded to -> the original http URL, so a failed upgrade can offer a fallback. */
+    private final java.util.Map<String, String> httpUpgrades = new java.util.HashMap<>();
+    /** http URLs the user explicitly chose to open without the HTTPS upgrade (one-shot). */
+    private final java.util.Set<String> httpFallbackAllowed = new java.util.HashSet<>();
 
     BrowserNavigationDelegate(BrowserActivity activity) {
         this.activity = activity;
@@ -35,19 +39,23 @@ class BrowserNavigationDelegate implements GeckoSession.NavigationDelegate {
                                  Boolean hasUserGesture) {
         activity.runOnUiThread(() -> {
             if (url != null && !url.equals("about:blank")) {
+                Tab tab = activity.tabManager != null ? activity.tabManager.findTabBySession(session) : null;
+                if (tab != null) {
+                    activity.tabManager.updateTabUrl(tab, url);
+                }
+                // These injections belong to the navigating session, including background tabs.
+                activity.injectUserStyleIfNeeded(session, url);
+                activity.injectPageUrlSyncIfNeeded(session, url);
+                if (activity.session != session) {
+                    return;
+                }
                 activity.updateUrlInputForUrl(url);
                 activity.currentUrl = url;
                 activity.lastSecurityInfo = null;
                 activity.updateSmartShieldIndicator();
                 activity.updateBookmarkStatus();
                 applyPerSiteZoom(url);
-                Tab tab = activity.tabManager != null ? activity.tabManager.getCurrentTab() : null;
-                if (tab != null && tab.getSession() == session) {
-                    activity.tabManager.updateTabUrl(tab, url);
-                }
-                // F14: Inject user CSS style if configured for this host
-                activity.injectUserStyleIfNeeded(session, url);
-                activity.injectPageUrlSyncIfNeeded(session, url);
+                activity.applyPerSiteDesktopMode(url);
             }
         });
     }
@@ -104,14 +112,22 @@ class BrowserNavigationDelegate implements GeckoSession.NavigationDelegate {
             return GeckoResult.allow();
         }
         if (shouldOpenExternally(request.uri)) {
-            openExternalUri(request.uri);
+            // Only hand off to other apps for real user taps on top-level links, so pages
+            // cannot spam app choosers from iframes or scripted redirects.
+            if (request.hasUserGesture && isTopLevelNavigation(request)) {
+                openExternalUri(request.uri);
+            }
             return GeckoResult.deny();
+        }
+        if (request.uri != null && httpFallbackAllowed.remove(request.uri)) {
+            return GeckoResult.allow();
         }
         if (prefs.getBoolean("https_only", true)
                 && request.uri != null
-                && request.uri.startsWith("http://")
+                && request.uri.regionMatches(true, 0, "http://", 0, 7)
                 && !isLocalUri(request.uri)) {
             String upgraded = "https://" + request.uri.substring("http://".length());
+            httpUpgrades.put(upgraded, request.uri);
             activity.runOnUiThread(() -> activity.loadUrl(upgraded));
             return GeckoResult.deny();
         }
@@ -179,7 +195,16 @@ class BrowserNavigationDelegate implements GeckoSession.NavigationDelegate {
     public GeckoResult<String> onLoadError(GeckoSession session, String uri, WebRequestError error) {
         AnalyticsManager.logWebPageError(activity, uri, error.code);
         ErrorPage errorPage = createErrorPage(error);
-        return GeckoResult.fromValue(buildErrorPageHtml(uri, errorPage));
+        String html = buildErrorPageHtml(uri, errorPage);
+        String httpUri = uri != null ? httpUpgrades.remove(uri) : null;
+        if (httpUri != null) {
+            httpFallbackAllowed.add(httpUri);
+            html = html.replace("</div></body></html>",
+                    "<p style=\"margin-top:16px\"><a href=\""
+                            + android.text.TextUtils.htmlEncode(httpUri)
+                            + "\">Continue over HTTP (not secure)</a></p></div></body></html>");
+        }
+        return GeckoResult.fromValue(html);
     }
 
     private void loadErrorPage(GeckoSession session, String uri, ErrorPage errorPage) {
