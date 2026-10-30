@@ -33,6 +33,14 @@ jobs:
           errors=$(grep -E "error:|error: |FAILED|What went wrong|Execution failed|Could not|symbol:|location:|^e: " build.log | head -60 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
           echo "::error title=Build errors::${errors}"
 
+      - name: Inspect GeckoView API
+        if: failure()
+        run: |
+          aar=$(find ~/.gradle -name "geckoview-15*.aar" | head -1)
+          mkdir -p /tmp/gv && cd /tmp/gv && unzip -q -o "$aar" classes.jar
+          out=$(javap -cp classes.jar org.mozilla.geckoview.ContentBlockingController | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          echo "::error title=GeckoView API::${out}"
+
       - name: Publish APKs as a pre-release
         env:
           GH_TOKEN: ${{ github.token }}
