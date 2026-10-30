@@ -703,6 +703,7 @@ public class SettingsActivity extends AppCompatActivity {
         setRowIcon(R.id.setting_do_not_track, R.drawable.ic_security);
         setRowIcon(R.id.setting_save_history, R.drawable.ic_history);
         setRowIcon(R.id.setting_clear_data, R.drawable.ic_delete);
+        setRowIcon(R.id.setting_passwords, R.drawable.ic_lock);
         setRowIcon(R.id.setting_cookie_manager, R.drawable.ic_cookie);
         setRowIcon(R.id.setting_site_permissions, R.drawable.ic_permissions);
         setRowIcon(R.id.setting_prevent_screenshots, R.drawable.ic_lock);

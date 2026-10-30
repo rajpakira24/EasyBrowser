@@ -2,9 +2,7 @@ package com.webstudio.easybrowser.ui.activity;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.appcompat.app.AlertDialog;
 
-import com.webstudio.easybrowser.R;
 import com.webstudio.easybrowser.managers.PasswordStore;
 import com.webstudio.easybrowser.models.Tab;
 
@@ -45,16 +43,10 @@ class BrowserPromptDelegate implements GeckoSession.PromptDelegate {
         Autocomplete.LoginSaveOption option = request.options[0];
         Autocomplete.LoginEntry entry = option.value;
         GeckoResult<PromptResponse> result = new GeckoResult<>();
-        activity.runOnUiThread(() -> new AlertDialog.Builder(activity)
-                .setTitle(R.string.password_save_title)
-                .setMessage(activity.getString(R.string.password_save_message,
-                        entry.username == null ? "" : entry.username, entry.origin))
-                .setPositiveButton(R.string.save,
-                        (d, w) -> result.complete(request.confirm(option)))
-                .setNegativeButton(R.string.password_not_now,
-                        (d, w) -> result.complete(request.dismiss()))
-                .setOnCancelListener(d -> result.complete(request.dismiss()))
-                .show());
+        activity.runOnUiThread(() -> LoginPromptSheets.showSave(activity, entry.origin,
+                entry.username,
+                () -> result.complete(request.confirm(option)),
+                () -> result.complete(request.dismiss())));
         return result;
     }
 
@@ -66,19 +58,21 @@ class BrowserPromptDelegate implements GeckoSession.PromptDelegate {
         if (request.options.length == 0) {
             return GeckoResult.fromValue(request.dismiss());
         }
-        String[] labels = new String[request.options.length];
-        for (int i = 0; i < labels.length; i++) {
-            String username = request.options[i].value.username;
-            labels[i] = username == null || username.isEmpty()
-                    ? activity.getString(R.string.password_no_username) : username;
-        }
         GeckoResult<PromptResponse> result = new GeckoResult<>();
-        activity.runOnUiThread(() -> new AlertDialog.Builder(activity)
-                .setTitle(R.string.password_fill_title)
-                .setItems(labels, (d, which) ->
-                        result.complete(request.confirm(request.options[which])))
-                .setOnCancelListener(d -> result.complete(request.dismiss()))
-                .show());
+        String origin = request.options[0].value.origin;
+        activity.runOnUiThread(() -> LoginPromptSheets.showSelect(activity, origin,
+                usernames(request.options),
+                which -> result.complete(request.confirm(request.options[which])),
+                () -> result.complete(request.dismiss())));
         return result;
+    }
+
+    private static String[] usernames(Autocomplete.LoginSelectOption[] options) {
+        String[] names = new String[options.length];
+        for (int i = 0; i < names.length; i++) {
+            String username = options[i].value.username;
+            names[i] = username == null ? "" : username;
+        }
+        return names;
     }
 }
