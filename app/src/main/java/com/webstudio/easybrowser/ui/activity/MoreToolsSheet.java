@@ -71,7 +71,9 @@ final class MoreToolsSheet {
 
         ImageView icon = new ImageView(context);
         icon.setImageResource(action.iconResId);
-        icon.setColorFilter(action.enabled ? palette.accent : palette.onSurfaceMuted);
+        icon.setColorFilter(action.enabled
+                ? androidx.core.graphics.ColorUtils.blendARGB(palette.accent, Color.WHITE, 0.35f)
+                : palette.onSurfaceMuted);
         icon.setPadding(dp(density, 13), dp(density, 13), dp(density, 13), dp(density, 13));
         icon.setBackground(rounded(0x24FFFFFF, dp(density, 24), false));
         cell.addView(icon, new LinearLayout.LayoutParams(dp(density, 48), dp(density, 48)));

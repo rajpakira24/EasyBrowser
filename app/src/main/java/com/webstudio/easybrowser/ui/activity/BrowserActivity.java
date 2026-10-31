@@ -3560,21 +3560,21 @@ public class BrowserActivity extends AppCompatActivity {
                 new MoreMenuPopup.Action(R.drawable.ic_home, R.string.add_to_home_screen,
                         hasPage, this::addToHomeScreen));
         addMenuAction(toolActions, prefs, SettingsKeys.PREF_MENU_ZOOM,
-                new MoreMenuPopup.Action(R.drawable.ic_search, R.string.zoom_for_site,
+                new MoreMenuPopup.Action(R.drawable.ic_zoom_in, R.string.zoom_for_site,
                         hasPage, this::showSiteZoomDialog));
         addMenuAction(toolActions, prefs, SettingsKeys.PREF_MENU_SAVE_PAGE,
-                new MoreMenuPopup.Action(R.drawable.ic_pdf, R.string.save_page,
+                new MoreMenuPopup.Action(R.drawable.ic_pdf_doc, R.string.save_page,
                         session != null, this::savePageAsPdf));
         addMenuAction(toolActions, prefs, SettingsKeys.PREF_MENU_TRANSLATE,
                 new MoreMenuPopup.Action(R.drawable.ic_translate, R.string.translate_page,
                         hasPage, this::translatePage));
         addMenuAction(toolActions, prefs, SettingsKeys.PREF_MENU_SAVE_TO_READING_LIST,
-                new MoreMenuPopup.Action(R.drawable.ic_download, R.string.save_to_reading_list,
+                new MoreMenuPopup.Action(R.drawable.ic_reading_list_add, R.string.save_to_reading_list,
                         session != null && hasPage, this::saveToReadingList));
         addMenuAction(toolActions, prefs, SettingsKeys.PREF_MENU_READING_LIST,
-                new MoreMenuPopup.Action(R.drawable.ic_history, R.string.reading_list,
+                new MoreMenuPopup.Action(R.drawable.ic_reading_list, R.string.reading_list,
                         true, () -> startActivity(new Intent(this, ReadingListActivity.class))));
-        toolActions.add(new MoreMenuPopup.Action(R.drawable.ic_search, R.string.scan_qr_code,
+        toolActions.add(new MoreMenuPopup.Action(R.drawable.ic_qr_scan, R.string.scan_qr_code,
                 true, this::startQrScan));
         addMenuAction(toolActions, prefs, SettingsKeys.PREF_MENU_EXTENSIONS,
                 new MoreMenuPopup.Action(R.drawable.ic_extensions_puzzle, R.string.extensions,
