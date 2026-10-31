@@ -33,12 +33,22 @@ class BrowserNavigationDelegate implements GeckoSession.NavigationDelegate {
         this.activity = activity;
     }
 
+    private String failedPageUrl;
+
     @Override
-    public void onLocationChange(GeckoSession session, String url,
+    public void onLocationChange(GeckoSession session, String rawUrl,
                                  List<GeckoSession.PermissionDelegate.ContentPermission> perms,
                                  Boolean hasUserGesture) {
         activity.runOnUiThread(() -> {
-            if (url != null && !url.equals("about:blank")) {
+            // Our own error page is a data: URL; keep showing (and saving) the site that failed.
+            String shown = rawUrl;
+            if (rawUrl != null && rawUrl.startsWith("data:text/html") && failedPageUrl != null) {
+                shown = failedPageUrl;
+            } else {
+                failedPageUrl = null;
+            }
+            if (shown != null && !shown.equals("about:blank")) {
+                String url = shown;
                 Tab tab = activity.tabManager != null ? activity.tabManager.findTabBySession(session) : null;
                 if (tab != null) {
                     activity.tabManager.updateTabUrl(tab, url);
@@ -221,6 +231,7 @@ class BrowserNavigationDelegate implements GeckoSession.NavigationDelegate {
         if (session == null) {
             return;
         }
+        failedPageUrl = uri;
         String html = buildErrorPageHtml(uri, errorPage);
         String dataUrl = "data:text/html;charset=utf-8," + Uri.encode(html);
         activity.runOnUiThread(() -> session.loadUri(dataUrl));
