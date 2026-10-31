@@ -375,6 +375,8 @@ public class BrowserActivity extends AppCompatActivity {
         lastResumedAtMs = System.currentTimeMillis();
         reattachCurrentSessionAfterResume();
         browserHandler.postDelayed(this::reattachCurrentSessionAfterResume, RESUME_REATTACH_DELAY_MS);
+        // Some devices only get the surface back after the window has fully settled.
+        browserHandler.postDelayed(this::reattachCurrentSessionAfterResume, RESUME_REATTACH_DELAY_MS * 4);
         if (session != null) {
             applyMediaPlaybackPreference(session);
             session.setActive(true);
@@ -439,6 +441,8 @@ public class BrowserActivity extends AppCompatActivity {
         }
         try {
             geckoView.requestNewSurface();
+            geckoView.setVisibility(View.VISIBLE);
+            geckoView.requestLayout();
         } catch (Exception e) {
             Log.w("BrowserActivity", "Failed to request GeckoView surface after resume", e);
         }
@@ -1489,10 +1493,11 @@ public class BrowserActivity extends AppCompatActivity {
     }
 
     private void configureSession(GeckoSession targetSession) {
-        targetSession.setNavigationDelegate(new BrowserNavigationDelegate(this));
+        BrowserNavigationDelegate navigationDelegate = new BrowserNavigationDelegate(this);
+        targetSession.setNavigationDelegate(navigationDelegate);
         targetSession.setContentDelegate(new BrowserContentDelegate(this));
         targetSession.setContentBlockingDelegate(new BrowserContentBlockingDelegate(this));
-        targetSession.setProgressDelegate(new BrowserProgressDelegate(this));
+        targetSession.setProgressDelegate(new BrowserProgressDelegate(this, navigationDelegate));
         targetSession.setScrollDelegate(new GeckoSession.ScrollDelegate() {
             @Override
             public void onScrollChanged(@NonNull GeckoSession scrollSession,

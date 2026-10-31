@@ -207,6 +207,16 @@ class BrowserNavigationDelegate implements GeckoSession.NavigationDelegate {
         return GeckoResult.fromValue(html);
     }
 
+    /**
+     * Shown when a site never answers, which is how some networks block sites (the connection
+     * hangs instead of being refused). Other browsers show their own timed-out page here.
+     */
+    void showLoadTimeoutPage(GeckoSession session, String uri) {
+        loadErrorPage(session, uri, new ErrorPage("Site Can't Be Reached",
+                "The site took too long to respond. It may be down, or blocked on your network. "
+                        + "Check the connection or try again later.", "!", true));
+    }
+
     private void loadErrorPage(GeckoSession session, String uri, ErrorPage errorPage) {
         if (session == null) {
             return;
