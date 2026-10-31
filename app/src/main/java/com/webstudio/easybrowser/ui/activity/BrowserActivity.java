@@ -3517,7 +3517,7 @@ public class BrowserActivity extends AppCompatActivity {
 
         List<MoreMenuPopup.Action> menuActions = new ArrayList<>();
         addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_NEW_TAB,
-                new MoreMenuPopup.Action(R.drawable.ic_tabs, R.string.new_tab,
+                new MoreMenuPopup.Action(R.drawable.ic_new_tab, R.string.new_tab,
                         true, () -> createNewTab(false)));
         addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_NEW_PRIVATE_TAB,
                 new MoreMenuPopup.Action(R.drawable.ic_incognito, R.string.new_private_tab,
@@ -3532,7 +3532,7 @@ public class BrowserActivity extends AppCompatActivity {
                 new MoreMenuPopup.Action(R.drawable.ic_bookmarks, R.string.bookmarks,
                         true, () -> startActivity(new Intent(this, BookmarksActivity.class))));
         addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_FIND_IN_PAGE,
-                new MoreMenuPopup.Action(R.drawable.ic_search, R.string.find_in_page,
+                new MoreMenuPopup.Action(R.drawable.ic_find_in_page, R.string.find_in_page,
                         session != null, this::showFindInPageDialog));
         addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_DESKTOP_SITE,
                 new MoreMenuPopup.Action(R.drawable.ic_desktop, R.string.desktop_site,
@@ -3540,7 +3540,7 @@ public class BrowserActivity extends AppCompatActivity {
         boolean isReaderMode = isReaderModeActive();
         if (prefs.getBoolean(SettingsKeys.PREF_READER_MODE_MENU_ENABLED, true)) {
             addMenuAction(menuActions, prefs, SettingsKeys.PREF_MENU_READER_MODE,
-                    new MoreMenuPopup.Action(R.drawable.ic_text,
+                    new MoreMenuPopup.Action(R.drawable.ic_reader_mode,
                             isReaderMode ? R.string.reader_mode_on : R.string.reader_mode,
                             session != null && currentUrl != null,
                             this::toggleReaderMode));
@@ -3580,7 +3580,7 @@ public class BrowserActivity extends AppCompatActivity {
                 new MoreMenuPopup.Action(R.drawable.ic_extensions_puzzle, R.string.extensions,
                         true, () -> startActivity(new Intent(this, ExtensionsActivity.class))));
         if (!toolActions.isEmpty()) {
-            menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_view_grid, R.string.more_tools,
+            menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_more_tools, R.string.more_tools,
                     true, () -> MoreToolsSheet.show(this, R.string.more_tools, toolActions)));
         }
         menuActions.add(new MoreMenuPopup.Action(R.drawable.ic_settings, R.string.settings,

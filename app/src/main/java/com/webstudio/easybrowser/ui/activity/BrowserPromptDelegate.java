@@ -15,7 +15,7 @@ import org.mozilla.geckoview.GeckoSession;
 class BrowserPromptDelegate implements GeckoSession.PromptDelegate {
     // Gecko asks again each time a login field gains focus, so stay quiet for a while after
     // the user has answered instead of putting the suggestion back in front of them.
-    private static final long AFTER_PICK_QUIET_MS = 60_000L;
+    private static final long AFTER_PICK_QUIET_MS = 2_000L;
     private static final long AFTER_DISMISS_QUIET_MS = 15_000L;
     private static final java.util.Map<String, Long> suppressedUntilByOrigin =
             new java.util.concurrent.ConcurrentHashMap<>();
