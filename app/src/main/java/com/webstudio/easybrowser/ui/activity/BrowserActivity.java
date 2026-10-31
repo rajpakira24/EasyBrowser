@@ -4949,6 +4949,8 @@ public class BrowserActivity extends AppCompatActivity {
             Toast.makeText(this, R.string.error_invalid_url, Toast.LENGTH_SHORT).show();
             return;
         }
+        // An explicit add always counts, regardless of how often the site was visited.
+        item.setPinned(true);
         quickAccessRepository.updateQuickAccessItem(item);
         Toast.makeText(this, R.string.added_to_quick_access, Toast.LENGTH_SHORT).show();
     }

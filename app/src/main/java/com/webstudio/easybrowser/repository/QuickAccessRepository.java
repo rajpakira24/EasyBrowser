@@ -19,6 +19,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 public class QuickAccessRepository {
+    private static final int MIN_VISITS_FOR_QUICK_ACCESS = 3;
+
     private AppDatabase database;
     private ExecutorService executor;
     // Application context only — guaranteed-safe lifetime, no Activity leak risk.
@@ -253,7 +255,14 @@ public class QuickAccessRepository {
                 }
             }
         }
-        List<QuickAccessItem> items = new ArrayList<>(groupedItems.values());
+        // Quick Access is for sites you keep coming back to, not everything you have opened:
+        // only pinned sites and ones visited several times qualify.
+        List<QuickAccessItem> items = new ArrayList<>();
+        for (QuickAccessItem candidate : groupedItems.values()) {
+            if (candidate.isPinned() || candidate.getVisitCount() >= MIN_VISITS_FOR_QUICK_ACCESS) {
+                items.add(candidate);
+            }
+        }
         Collections.sort(items, (first, second) -> {
             if (first.isPinned() != second.isPinned()) {
                 return first.isPinned() ? -1 : 1;

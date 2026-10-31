@@ -1566,20 +1566,18 @@ public class MainActivity extends AppCompatActivity implements QuickAccessAdapte
     @Override
     public void onQuickAccessLongClick(QuickAccessItem item, View view) {
         PopupMenu menu = new PopupMenu(this, view);
-        menu.getMenu().add(Menu.NONE, QUICK_ACCESS_MENU_OPEN_NEW_TAB,
-                Menu.NONE, R.string.context_menu_open_new_tab);
-        menu.getMenu().add(Menu.NONE, QUICK_ACCESS_MENU_OPEN_NEW_TAB_IN_GROUP,
-                Menu.NONE, R.string.context_menu_open_new_tab_in_group);
-        menu.getMenu().add(Menu.NONE, QUICK_ACCESS_MENU_OPEN_PRIVATE_TAB,
-                Menu.NONE, R.string.context_menu_open_private_tab);
-        menu.getMenu().add(Menu.NONE, QUICK_ACCESS_MENU_DOWNLOAD_LINK,
-                Menu.NONE, R.string.context_menu_download_link);
+        // Kept short on purpose: the popup is as wide as its longest label, and Remove must
+        // stay visible without scrolling.
         menu.getMenu().add(Menu.NONE, QUICK_ACCESS_MENU_REMOVE,
                 Menu.NONE, R.string.remove);
         menu.getMenu().add(Menu.NONE, QUICK_ACCESS_MENU_PIN,
                 Menu.NONE, item.isPinned()
                         ? R.string.quick_access_unpin_shortcut
                         : R.string.quick_access_pin_shortcut);
+        menu.getMenu().add(Menu.NONE, QUICK_ACCESS_MENU_OPEN_NEW_TAB,
+                Menu.NONE, R.string.context_menu_open_new_tab);
+        menu.getMenu().add(Menu.NONE, QUICK_ACCESS_MENU_OPEN_PRIVATE_TAB,
+                Menu.NONE, R.string.context_menu_open_private_tab);
         menu.setOnMenuItemClickListener(menuItem -> {
             switch (menuItem.getItemId()) {
                 case QUICK_ACCESS_MENU_OPEN_NEW_TAB:
