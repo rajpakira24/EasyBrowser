@@ -1475,6 +1475,11 @@ public class BrowserActivity extends AppCompatActivity {
         applyMediaPlaybackPreference(session);
         configureSession(session);
         geckoView.setSession(session);
+        // A session recreated for a discarded tab otherwise stays inactive and paints nothing.
+        if (!browserStopped) {
+            session.setActive(true);
+            session.setFocused(true);
+        }
         applyMediaPlaybackPreferenceToTabs();
         updateUIForTab(tab);
         updateQuickTabStrip();

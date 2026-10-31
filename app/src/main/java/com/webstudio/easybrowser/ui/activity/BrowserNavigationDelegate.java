@@ -238,31 +238,45 @@ class BrowserNavigationDelegate implements GeckoSession.NavigationDelegate {
         String iconText = cssColor(R.color.error);
         String shadow = cssColorWithAlpha(R.color.colorOnBackground, 0.12f);
         String retryLink = errorPage.showRetry && !safeUri.isEmpty()
-                ? "<a href=\"" + safeUri + "\" style=\"display:inline-block;margin-top:20px;"
-                  + "padding:10px 28px;background:" + primary + ";color:" + primaryText + ";border-radius:4px;"
-                  + "text-decoration:none;font-size:15px;font-weight:500\">Retry</a>"
+                ? "<a class=\"retry\" href=\"" + safeUri + "\">Retry</a>"
                 : "";
         String safeTitle = android.text.TextUtils.htmlEncode(errorPage.title);
         String safeMessage = android.text.TextUtils.htmlEncode(errorPage.message);
         String safeIconText = android.text.TextUtils.htmlEncode(errorPage.iconText);
+        String host = safeUri;
+        try {
+            String parsed = Uri.parse(uri).getHost();
+            if (parsed != null) {
+                host = android.text.TextUtils.htmlEncode(parsed);
+            }
+        } catch (RuntimeException ignored) {
+        }
         String html = "<!DOCTYPE html><html><head>"
                 + "<meta name='viewport' content='width=device-width,initial-scale=1'>"
                 + "<style>"
                 + "body{font-family:sans-serif;margin:0;background:" + background + ";"
                 + "display:flex;align-items:center;justify-content:center;min-height:100vh}"
-                + ".card{background:" + surface + ";border-radius:12px;padding:36px 28px;"
-                + "max-width:440px;width:90%;text-align:center;"
-                + "box-shadow:0 1px 6px " + shadow + "}"
-                + ".icon{display:inline-flex;align-items:center;justify-content:center;"
-                + "width:56px;height:56px;border-radius:50%;background:" + iconBackground + ";"
-                + "color:" + iconText + ";font-size:0;font-weight:700;margin-bottom:4px}"
-                + ".icon:before{content:'!';font-size:28px}"
-                + "h2{margin:12px 0 8px;color:" + text + ";font-size:20px;font-weight:600}"
-                + "p{color:" + muted + ";font-size:14px;line-height:1.5;margin:0}"
+                + ".wrap{width:100%;max-width:420px;padding:0 32px;box-sizing:border-box;"
+                + "text-align:center}"
+                + ".icon{display:flex;align-items:center;justify-content:center;"
+                + "width:88px;height:88px;border-radius:50%;margin:0 auto 24px;"
+                + "background:" + iconBackground + ";color:" + iconText + "}"
+                + ".icon svg{width:44px;height:44px}"
+                + "h2{margin:0 0 10px;color:" + text + ";font-size:22px;font-weight:700}"
+                + ".host{display:inline-block;margin:0 0 14px;padding:4px 12px;border-radius:999px;"
+                + "background:" + surface + ";color:" + text + ";font-size:13px;opacity:.85}"
+                + "p{color:" + muted + ";font-size:15px;line-height:1.55;margin:0}"
+                + "a.retry{display:inline-block;margin-top:28px;padding:13px 44px;"
+                + "border-radius:999px;background:" + primary + ";color:" + primaryText + ";"
+                + "text-decoration:none;font-size:15px;font-weight:600}"
                 + "</style></head>"
-                + "<body><div class='card'>"
-                + "<div class='icon'>⚠️</div>"
+                + "<body><div class='wrap'>"
+                + "<div class='icon'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' "
+                + "stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'>"
+                + "<circle cx='12' cy='12' r='9'/><path d='M12 7.5v5.5'/><circle cx='12' cy='16.5' r='.6' "
+                + "fill='currentColor'/></svg></div>"
                 + "<h2>" + safeTitle + "</h2>"
+                + (host.isEmpty() ? "" : "<div class='host'>" + host + "</div>")
                 + "<p>" + safeMessage + "</p>"
                 + retryLink
                 + "</div></body></html>";
